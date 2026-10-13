@@ -60,9 +60,17 @@ answer), `everyday`, `coding`. It is a plain object; write your own.
 
 ## What was tried, and what was not
 
-Tested as far as tests go: the five verbs, the two files, the cleaning, the
-hooks, what the library decides to show. Not yet tried against a real agent,
-nor in a real page of this repository: see CONVENTIONS.md, section 7.
+Tried for real, once: an agent (OpenCode, on hosted open models) in its own
+machine, given the server; an application (Clavarium) showing the exchange.
+Invited, the agent said it was ready through `tell` in 19 seconds; told a
+message arrived, it read it, did the job, and asked a question with two
+choices through `ask`; answered with one touch on the page, it read the
+answer and went on. Nothing of that exchange was typed in its terminal but
+the one line "a message arrived".
+
+Not tried: any other agent; `show` and `status` with a real agent (it did
+not use them unasked); an answer coming hours later; a mirror between two
+agents; the profiles in a real page.
 
 ## Licence
 
