@@ -28,24 +28,27 @@ arrived. See [docs/protocol.md](docs/protocol.md).
 | Piece | File | What it is |
 |---|---|---|
 | The agent's side | `server/parley-mcp.mjs` | an MCP server over standard input and output; one file, no dependency |
-| The application's side | `host/parley-host.mjs` | reads and writes the two files, cleans what the agent wrote, and has two hooks |
+| The application's side | `host/parley-host.mjs` | reads and writes the two files, cleans what the agent wrote, and takes two hooks: `toAgent`, `toPerson` |
 | The screen | `ui/parley-ui.js`, `ui/parley-ui.css` | shows the exchange; no framework; profiles for different people |
 
 ## Use it
 
-    import { install, Parley, byTmux, watch } from 'clavarium-parley/host';
+    import { install, Parley } from 'clavarium-parley/host';
 
     // once: put the bridge in a folder the agent can reach
     const declared = install('/path/to/folder');   // { name: 'parley', command: ['node', '.../server.mjs'] }
     // declare that to the agent as an MCP server, the way that agent wants it
 
-    // towards the agent: one function that gets a line to it
-    const parley = new Parley('/path/to/folder', { nudge: byTmux({ target: 'main' }) });
+    const parley = new Parley('/path/to/folder', {
+        toAgent: (line) => { /* get this one line to your agent, your way */ },
+        toPerson: (message) => { /* the agent posted something: alert, or not */ },
+    });
+    parley.listen();
     await parley.invite();                 // asks the agent to use the five verbs
     await parley.say('Blue, please.', questionId);
 
-    // from the agent: called for each thing it posts
-    const stop = watch('/path/to/folder', (message) => { /* ring a phone, light a lamp */ });
+Two hooks, two plain functions, and nothing more specific than that: how a
+line reaches your agent and how a person is alerted are yours to decide.
 
 and in a page:
 

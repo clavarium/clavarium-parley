@@ -3,9 +3,15 @@
  * The agent's side is parley-mcp.mjs. This is what an application uses to
  * read what the agent posted, to write what the person answers, and to tell
  * the agent that a message arrived. It knows nothing of screens (see ui/) and
- * nothing of how an agent is reached: the application gives it one function,
- * `nudge(line)`, which gets that line to the agent -- typed in its terminal,
- * most of the time.
+ * nothing of how an agent is reached, nor of how a person is alerted. The
+ * application gives it TWO HOOKS, two plain functions, and that is all the
+ * wiring there is:
+ *
+ *   toAgent(line)       gets one line to the agent: that a message arrived.
+ *                       How (its terminal, a queue, anything) is the
+ *                       application's business, not this file's.
+ *   toPerson(message)   called for each thing the agent posts: to ring a
+ *                       phone, light a lamp, or do nothing.
  *
  * WHAT IS READ HERE WAS WRITTEN BY AN AGENT: text chosen by a program. It is
  * bounded, cleaned of what a screen obeys rather than shows, and handed over
@@ -14,7 +20,6 @@
 import { appendFileSync, readFileSync, writeFileSync, mkdirSync, copyFileSync, existsSync, statSync, lstatSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
-import { execFile } from 'node:child_process';
 
 export const TEXT_MAX = 4000;
 export const SHOWN_MAX = 200;
@@ -56,10 +61,11 @@ export function install(dir, { as = dir } = {}) {
 }
 
 export class Parley {
-    #dir; #nudge; #now;
+    #dir; #toAgent; #toPerson; #now;
 
-    /* `nudge(line)`: gets one line to the agent; resolves true when it did. */
-    constructor(dir, { nudge = async () => false, now = () => new Date() } = {}) { this.#dir = dir; this.#nudge = nudge; this.#now = now; }
+    /* `toAgent(line)` resolves true when the line reached the agent.
+       `toPerson(message)` is called once `listen()` was started. */
+    constructor(dir, { toAgent = async () => false, toPerson, now = () => new Date() } = {}) { this.#dir = dir; this.#toAgent = toAgent; this.#toPerson = toPerson; this.#now = now; }
 
     /* Both sides, in the order they were written; how many questions wait; where the agent says it is. */
     read() {
@@ -90,39 +96,22 @@ export class Parley {
             if (asked) { entry.answers = asked.id; entry.question = oneLine(asked.text, 300); }
         }
         appendFileSync(`${this.#dir}/to-agent.jsonl`, `${JSON.stringify(entry)}\n`);
-        const told = await Promise.resolve(this.#nudge(ARRIVED)).then((r) => r !== false, () => false);
+        const told = await this.#tell(ARRIVED);
         return { ...this.read(), told };
     }
 
     /* Asks the agent, once it has been given the server, to use it. */
-    async invite() { return Promise.resolve(this.#nudge(INVITE)).then((r) => r !== false, () => false); }
-}
+    invite() { return this.#tell(INVITE); }
+    async #tell(line) { try { return (await this.#toAgent(line)) !== false; } catch { return false; } }
 
-/* ---------- the two hooks ---------- */
-
-/* TOWARDS THE AGENT. `nudge` is any function that gets one line to the agent.
-   Two ready-made ones:
-
-   byTmux    the agent runs in a tmux session: the line is typed there, then
-             Enter. `prefix` is put before the command when tmux is not
-             reached directly (a machine, a container): an argument vector.
-   byCommand any program of yours: it receives the line as its last argument. */
-const run = (argv) => new Promise((resolve) => { execFile(argv[0], argv.slice(1), { timeout: 30_000 }, (error) => resolve(!error)); });
-export function byTmux({ target, socket, prefix = [] }) {
-    const tmux = [...prefix, 'tmux', ...(socket ? ['-L', socket] : []), 'send-keys', '-t', target];
-    return async (line) => (await run([...tmux, '-l', '--', line])) && run([...tmux, 'Enter']);
-}
-export const byCommand = (argv) => (line) => run([...argv, line]);
-
-/* FROM THE AGENT. Calls `onMessage(message)` for each thing the agent posts
-   from now on (a question to ring a phone for, a status to show somewhere).
-   Resolves with a function that stops it. A file is looked at; nothing is
-   pushed, so nothing is missed while nobody watches: `read()` has it all. */
-export function watch(dir, onMessage, { every = 2000 } = {}) {
-    const parley = new Parley(dir);
-    const all = () => { const r = parley.read(); return [...r.messages.filter((m) => m.from === 'agent'), ...(r.status ? [{ from: 'agent', kind: 'status', id: `status@${r.status.at}`, at: r.status.at, state: r.status.state, text: r.status.note, choices: [] }] : [])]; };
-    const seen = new Set(all().map((m) => m.id));
-    const timer = setInterval(() => { for (const m of all()) if (!seen.has(m.id)) { seen.add(m.id); try { onMessage(m); } catch { /* a listener that fails does not stop the watch */ } } }, every);
-    timer.unref?.();
-    return () => clearInterval(timer);
+    /* Starts calling `toPerson` for each thing the agent posts FROM NOW ON.
+       Resolves with a function that stops it. The file is looked at, nothing
+       is pushed: what was posted while nobody listened is still in `read()`. */
+    listen({ every = 2000 } = {}) {
+        const posted = () => { const r = this.read(); return [...r.messages.filter((m) => m.from === 'agent'), ...(r.status ? [{ from: 'agent', kind: 'status', id: `status@${r.status.at}`, at: r.status.at, state: r.status.state, text: r.status.note, choices: [] }] : [])]; };
+        const seen = new Set(posted().map((m) => m.id));
+        const timer = setInterval(() => { for (const m of posted()) if (!seen.has(m.id)) { seen.add(m.id); try { this.#toPerson?.(m); } catch { /* a hook that fails does not stop the listening */ } } }, every);
+        timer.unref?.();
+        return () => clearInterval(timer);
+    }
 }

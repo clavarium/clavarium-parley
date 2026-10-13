@@ -5,7 +5,7 @@ import { mkdtempSync, rmSync, readFileSync, writeFileSync, existsSync } from 'no
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { install, Parley, watch, byCommand, INVITE, ARRIVED } from '../host/parley-host.mjs';
+import { install, Parley, INVITE, ARRIVED } from '../host/parley-host.mjs';
 import { view, PROFILES } from '../ui/parley-ui.js';
 
 const SERVER = fileURLToPath(new URL('../server/parley-mcp.mjs', import.meta.url));
@@ -52,7 +52,7 @@ test('a whole exchange: the agent asks without waiting, the person answers, the 
     const dir = folder(t);
     install(dir);
     const lines = [];
-    const parley = new Parley(dir, { nudge: async (line) => { lines.push(line); return true; } });
+    const parley = new Parley(dir, { toAgent: async (line) => { lines.push(line); return true; } });
     const run = (calls) => agent(dir, calls, join(dir, 'server.mjs'));
     assert.equal(await parley.invite(), true);
     const first = await run([tool('status', { state: 'working', note: 'on the report' }), tool('tell', { text: 'Half written.' }), tool('ask', { question: 'Blue or red cover?', choices: ['blue', 'red'] }), tool('show', { path: '/work/report.html', note: 'The draft.' }), tool('status', { state: 'waiting' }), tool('read')]);
@@ -70,7 +70,7 @@ test('a whole exchange: the agent asks without waiting, the person answers, the 
     assert.equal(said(second[1]), 'Answer to your question "Blue or red cover?": blue\nMessage: And keep it under two pages.\nThanks.');
     assert.equal(said(second[2]), 'No new message.', 'read once');
     await assert.rejects(parley.say('   '), /Write something/);
-    assert.equal((await new Parley(dir, { nudge: async () => { throw new Error('no terminal'); } }).say('still written')).told, false, 'a line that cannot be delivered does not lose the message');
+    assert.equal((await new Parley(dir, { toAgent: async () => { throw new Error('no terminal'); } }).say('still written')).told, false, 'a line that cannot be delivered does not lose the message');
     assert.match(said((await run([tool('read')]))[1]), /still written/);
     assert.equal((await run([tool('status', { state: 'sleeping' })]))[1].result.isError, true);
 });
@@ -94,22 +94,28 @@ test('what the agent posts is text chosen by a program: bounded, cleaned, never 
     assert.equal(status.state, 'working', 'a state it does not know is not passed on');
 });
 
-test('the two hooks: a line towards the agent by any program, and a call for each thing the agent posts', async (t) => {
+test('the two hooks are two plain functions: one line towards the agent, one call for each thing the agent posts', async (t) => {
     const dir = folder(t);
     install(dir);
-    const out = join(dir, 'typed.txt');
-    const parley = new Parley(dir, { nudge: byCommand(['sh', '-c', `printf '%s' "$0" > ${out}`]) });
-    assert.equal((await parley.say('hello')).told, true);
-    assert.equal(readFileSync(out, 'utf8'), ARRIVED);
-    assert.equal(await new Parley(dir, { nudge: byCommand(['false']) }).invite(), false);
-    await agent(dir, [tool('tell', { text: 'before anyone watched' })], join(dir, 'server.mjs'));
-    const heard = [];
-    const stop = watch(dir, (m) => heard.push([m.kind, m.text ?? '', m.state ?? '']), { every: 40 });
+    const lines = []; const heard = [];
+    const parley = new Parley(dir, { toAgent: (line) => { lines.push(line); }, toPerson: (m) => heard.push([m.kind, m.text ?? '', m.state ?? '']) });
+    assert.equal((await parley.say('hello')).told, true, 'a hook that returns nothing has delivered');
+    assert.deepEqual(lines, [ARRIVED]);
+    assert.equal(await new Parley(dir, { toAgent: () => false }).invite(), false);
+    assert.equal(await new Parley(dir).invite(), false, 'no hook, nothing delivered, and said so');
+    await agent(dir, [tool('tell', { text: 'before anyone listened' })], join(dir, 'server.mjs'));
+    const stop = parley.listen({ every: 40 });
     t.after(stop);
     await agent(dir, [tool('ask', { question: 'Shall I go on?' }), tool('status', { state: 'waiting' })], join(dir, 'server.mjs'));
     await new Promise((r) => setTimeout(r, 250));
     assert.deepEqual(heard, [['ask', 'Shall I go on?', ''], ['status', '', 'waiting']], 'only what came after, each once');
     stop();
+    /* A hook that throws stops nothing. */
+    const fragile = new Parley(dir, { toPerson: () => { throw new Error('the phone is off'); } });
+    const quiet = fragile.listen({ every: 40 }); t.after(quiet);
+    await agent(dir, [tool('tell', { text: 'still posted' })], join(dir, 'server.mjs'));
+    await new Promise((r) => setTimeout(r, 150));
+    assert.equal(fragile.read().messages.at(-1).text, 'still posted');
     assert.equal(existsSync(join(dir, 'from-agent.jsonl')), true);
 });
 

@@ -42,6 +42,16 @@ agent, by a way of its own (typed in its terminal, most of the time):
 What was written is never on that line. The agent calls `read` and finds it.
 An answer may therefore come two minutes or two days later.
 
+## The two hooks of an application
+
+| Hook | Called | To |
+|---|---|---|
+| `toAgent(line)` | when something was written to the agent | get that one line to it |
+| `toPerson(message)` | for each thing the agent posts | alert a person, or not |
+
+They are plain functions. Parley knows neither how an agent is reached nor
+how a person is alerted.
+
 ## What each side must not trust
 
 - What the agent posts is text chosen by a program. The application's side
