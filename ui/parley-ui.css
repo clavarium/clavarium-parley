@@ -127,7 +127,8 @@
 .parley-sign-stop { fill: currentColor; stroke: none; }
 .parley-mic .parley-sign-stop, .parley-mic[aria-pressed="true"] .parley-sign-mic { display: none; }
 .parley-mic[aria-pressed="true"] .parley-sign-stop { display: block; }
-.parley .parley-mic[aria-pressed="true"] { background: var(--parley-live); border-color: var(--parley-live); color: #ffffff; }
+/* Listening: outlined in red, so that it does not weigh more than Send beside it. */
+.parley .parley-mic[aria-pressed="true"] { background: var(--parley-bg); border: 2px solid var(--parley-live); color: var(--parley-live); }
 .parley-mic[data-state="hearing"] { animation: parley-heard 1.1s infinite ease-in-out; }
 @keyframes parley-heard { 50% { box-shadow: 0 0 0 .3em color-mix(in srgb, var(--parley-live) 30%, transparent); } }
 .parley-voice { display: flex; align-items: center; gap: .4em .7em; flex-wrap: wrap; margin-top: calc(var(--parley-gap) * -.5); font-size: .9em; color: var(--parley-dim); }
@@ -140,9 +141,13 @@
 .parley-voice[data-state="error"] .parley-voice-text::before { background: var(--parley-ask); }
 .parley .parley-auto { min-height: 2.5em; padding: 0 .9em; border-radius: 999px; font-size: inherit; color: var(--parley-text); border-color: var(--parley-action); }
 .parley .parley-auto[hidden] { display: none; }
-.parley .parley-auto::before { content: ""; display: inline-block; width: 1em; height: 1em; margin-right: .5em; border-radius: 4px; border: 2px solid var(--parley-action); vertical-align: -.15em; }
+/* A switch: on, what is said is sent by itself. */
+.parley .parley-auto { position: relative; padding-left: 3.4em; }
+.parley .parley-auto::before { content: ""; position: absolute; left: .7em; top: 50%; width: 2.1em; height: 1.2em; margin-top: -.6em; border-radius: 999px; background: var(--parley-line); transition: background .15s; }
+.parley .parley-auto::after { content: ""; position: absolute; left: .85em; top: 50%; width: .9em; height: .9em; margin-top: -.45em; border-radius: 50%; background: var(--parley-bg); transition: transform .15s; }
 .parley .parley-auto[aria-pressed="true"] { font-weight: 650; }
-.parley .parley-auto[aria-pressed="true"]::before { background: var(--parley-action); border-color: var(--parley-action); box-shadow: inset 0 0 0 2px var(--parley-bg); }
+.parley .parley-auto[aria-pressed="true"]::before { background: var(--parley-action); }
+.parley .parley-auto[aria-pressed="true"]::after { transform: translateX(.9em); }
 .parley-quick { display: flex; align-items: flex-start; gap: .4em; margin-bottom: calc(var(--parley-gap) * -.4); }
 .parley-quick[hidden], .parley-quick[data-empty="true"] { display: none; }
 .parley-quick[data-choices="seen"] .parley-answer { display: none; }
