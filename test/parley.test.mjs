@@ -7,7 +7,7 @@ import { mkdtempSync, rmSync, readFileSync, writeFileSync, existsSync, mkdirSync
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { install, Parley, WAKE, invitation, languageName, texts, fill, LANGUAGES } from '../host/parley-host.mjs';
+import { install, Parley, WAKE, REREAD, invitation, languageName, texts, fill, LANGUAGES } from '../host/parley-host.mjs';
 import { view, KEYS, quick, sends, joined, REPLIES_MAX, LABEL_MAX } from '../ui/parley-ui.js';
 import { run, HELP } from '../bin/parley.mjs';
 import { findFolder } from '../server/parley-mcp.mjs';
@@ -157,7 +157,9 @@ test('the texts an agent reads are English and say the person\'s language; the l
     const text = invitation({ lang: 'fr-FR', install: 'npm install -g /tools/clavarium-parley-0.2.0.tgz', shared: '/work' });
     for (const part of ['npm install -g /tools/clavarium-parley-0.2.0.tgz', 'parley --help', 'parley tell', 'parley ask', 'parley show', 'parley doing', 'parley status', 'under /work', 'Write to them in French.', 'You have a new message', 'parley read']) assert.ok(text.includes(part), part);
     assert.ok(/^[\x20-\x7e]+$/.test(text), 'one line, plain ASCII');
-    for (const line of [text, WAKE]) assert.ok(!/[`'$\\]/.test(line), 'nothing a shell would run or wait on, should one listen instead of an agent');
+    assert.equal(REREAD, 'Your chat with the person is kept: run "parley read --all" before going on.');
+    assert.ok(/^[\x20-\x7e]+$/.test(REREAD));
+    for (const line of [text, WAKE, REREAD]) assert.ok(!/[`'$\\]/.test(line), 'nothing a shell would run or wait on, should one listen instead of an agent');
     assert.equal(new Parley('/nowhere').invite('de'), invitation({ lang: 'de' }));
     assert.match(invitation({ lang: 'de' }), /Write to them in German\./);
     assert.deepEqual([languageName('en-GB'), languageName('it'), languageName('<b>'), languageName(undefined)], ['English', 'Italian', 'English', 'English']);
@@ -361,4 +363,80 @@ test('the helpers of the box: the quick answers above it, what Enter does, what 
     assert.equal(sends(key({ isComposing: true }), 'send', true), false, 'a character being composed is not sent');
     assert.equal(sends({ key: 'a' }, 'send', true), false);
     assert.deepEqual([joined('', ' hello  there '), joined('Hi', 'you'), joined('Hi ', 'you'), joined('Hi', '  ')], ['hello there', 'Hi you', 'Hi you', 'Hi']);
+});
+
+test('after a restart the agent picks up the thread: "read --all" gives the whole exchange, both sides, oldest first, and reads everything', async (t) => {
+    const home = folder(t);
+    const dir = join(home, '.parley'); install(dir);
+    const host = new Parley(dir);
+    assert.equal(parley(home, ['read', '--all']).out, 'Nothing was written yet, on either side.\n');
+    host.say('Write the family story.');
+    writeFileSync(join(home, 'chapter.html'), 'x');
+    assert.equal(parley(home, ['tell', 'Starting with the farm.']).code, 0);
+    assert.equal(parley(home, ['doing', 'reading']).code, 0);
+    assert.equal(parley(home, ['ask', 'His voice, or about him?', 'his voice', 'about him']).code, 0);
+    assert.equal(parley(home, ['show', 'chapter.html', 'Chapter 1']).code, 0);
+    assert.equal(parley(home, ['read']).out, 'Message: Write the family story.\n');
+    host.say('his voice', host.read().messages.find((m) => m.kind === 'ask').id);
+    const all = parley(home, ['read', '--all']).out.split('\n');
+    assert.match(all[0], /^The whole exchange with the person, oldest first \(5\):$/);
+    assert.deepEqual(all.slice(1, 6).map((l) => l.replace(/^\[\d{4}-\d\d-\d\d \d\d:\d\d\] /, '')), [
+        'They wrote: Write the family story.',
+        'You told them: Starting with the farm.',
+        'You asked them: His voice, or about him? (choices: his voice, about him)',
+        `You showed them a file: ${join(home, 'chapter.html')} (Chapter 1)`,
+        'They answered your question "His voice, or about him?": his voice (new)',
+    ], 'what it did not read yet is marked; what it was doing is not part of the exchange');
+    assert.equal(all[6], 'End of the exchange: everything is read now.');
+    assert.equal(host.unread(), 0);
+    assert.equal(parley(home, ['read']).out, 'No new message.\n');
+    assert.equal(parley(home, ['read', '--every']).code, 64);
+    /* The same through MCP. */
+    const replies = await agent(dir, [tool('read', { all: true })], join(dir, 'server.mjs'));
+    assert.match(said(replies[1]), /^The whole exchange with the person, oldest first \(5\):/);
+    assert.ok(HELP.includes('parley read --all'));
+});
+
+test('the person attaches files to a message: the agent is told where they are, the screen opens them the application\'s way', async (t) => {
+    const home = folder(t);
+    const dir = join(home, '.parley'); install(dir);
+    const events = [];
+    const host = new Parley(dir, { on: (e) => events.push(e), reach: (path) => (path.startsWith('/work/.parley/files/') ? `work:${path.slice(6)}` : null) });
+    const now = host.say('Here is the photo.', undefined, [{ path: '/work/.parley/files/a1/photo.jpg', name: 'photo.jpg', size: 2048 }, { path: '/elsewhere/x.txt', size: 3 }]);
+    const mine = now.messages.at(-1);
+    assert.deepEqual(mine.files, [{ path: '/work/.parley/files/a1/photo.jpg', name: 'photo.jpg', size: 2048, open: 'work:.parley/files/a1/photo.jpg' }, { path: '/elsewhere/x.txt', name: 'x.txt', size: 3, open: null }]);
+    assert.equal(events.at(-1).type, 'person-wrote');
+    assert.equal(events.at(-1).message.files.length, 2);
+    /* Files alone are a message; a file is a whole path; ten at most. */
+    host.say('', undefined, [{ path: '/work/.parley/files/b2/plan.pdf', name: 'plan.pdf', size: 1048576 * 3 }]);
+    assert.throws(() => host.say('x', undefined, [{ path: 'relative.txt' }]), /whole path/);
+    assert.throws(() => host.say('x', undefined, Array.from({ length: 11 }, (_, i) => ({ path: `/f${i}` }))), /10 files at most/);
+    assert.throws(() => host.say('  ', undefined, []), /Write something/);
+    assert.equal(parley(home, ['read']).out, 'Message: Here is the photo.\n  Attached file: /work/.parley/files/a1/photo.jpg (2 KB)\n  Attached file: /elsewhere/x.txt (3 bytes)\nMessage: \n  Attached file: /work/.parley/files/b2/plan.pdf (3.0 MB)\n');
+    /* On the screen: by name in its bubble, opened the application's way; its whole path in the detailed view. */
+    const data = host.read();
+    const simple = view(data, { words: texts('en') });
+    assert.deepEqual(simple.items[0].files, [{ path: '/work/.parley/files/a1/photo.jpg', name: 'photo.jpg', open: 'work:.parley/files/a1/photo.jpg', shown: '' }, { path: '/elsewhere/x.txt', name: 'x.txt', open: null, shown: '' }]);
+    assert.equal(view(data, { words: texts('en'), view: 'detailed' }).items[0].files[0].shown, '/work/.parley/files/a1/photo.jpg');
+    for (const key of ['attach', 'remove-file', 'sending-files']) assert.ok(KEYS.includes(key));
+});
+
+test('lines of the application: said in the thread where they happened, grey, with its buttons; they take no step and hide no "not read yet"', () => {
+    const at = (m) => new Date(Date.UTC(2030, 0, 1, 9, m)).toISOString();
+    const data = {
+        messages: [
+            { from: 'agent', id: 'a', at: at(0), kind: 'say', text: 'Working on it.' },
+            { from: 'person', id: 'p', at: at(1), kind: 'say', text: 'Thanks', seen: false },
+            { from: 'system', id: 'y', at: at(3), text: 'It ran out of memory once.', level: 'warn', actions: [{ id: 'memory', label: 'More memory...' }, { id: 'restart', label: 'Restart...' }, { id: 'x', label: '' }, { id: 'a', label: 'a' }, { id: 'b', label: 'b' }, { id: 'c', label: 'c' }] },
+        ],
+        steps: [{ id: 's', kind: 'doing', state: 'working', note: 'reading', at: at(2) }],
+    };
+    const v = view(data, { words: texts('en'), now: Date.parse(at(5)) });
+    const line = v.rows.find((r) => r.from === 'system');
+    assert.deepEqual([line.kind, line.level, line.text, line.time], ['system', 'warn', 'It ran out of memory once.', '9:03 AM']);
+    assert.deepEqual(line.actions.map((a) => a.id), ['memory', 'restart', 'a', 'b'], 'labelled buttons only, four at most');
+    assert.equal(line.trail, null);
+    assert.equal(v.items.find((i) => i.id === 'p').mark, 'Not read yet', 'the person\'s last word is still said not read');
+    assert.equal(v.rows.at(-1).type, 'now', 'what it does now stays the agent\'s turn');
+    assert.equal(view({ messages: [{ from: 'system', id: 'z', at: at(0), text: 'Restarted.', level: 'nonsense' }] }).items[0].level, 'info');
 });

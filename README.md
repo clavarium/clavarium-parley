@@ -18,7 +18,8 @@ application, any agent that can run a command.
 | `parley ask "question" [choice ...]` | ask, with or without choices; it does not wait |
 | `parley show path ["note"]` | point to a file it made |
 | `parley doing "text"` | say in one line what it is doing now, at each new step |
-| `parley read` | read what was written to it, answers included |
+| `parley read` | read what was written to it, answers and attached files included |
+| `parley read --all` | the whole exchange, both sides: to pick up the thread after a restart |
 | `parley status working\|waiting\|done ["note"]` | say where it is |
 
 `parley --help` says all of it to the agent. The same six verbs are an MCP
@@ -68,7 +69,7 @@ are, changes, or does not use.
         reach: (path) => (path.startsWith('/work/') ? path : null),   // what the person can open
     });
     parley.listen();
-    typeInTheAgentsTerminal(parley.invite('fr', { install: 'npm install -g /path/to/clavarium-parley-0.4.0.tgz', shared: '/work' }));
+    typeInTheAgentsTerminal(parley.invite('fr', { install: 'npm install -g /path/to/clavarium-parley-0.5.0.tgz', shared: '/work' }));
 
 and in a page:
 
@@ -77,7 +78,7 @@ and in a page:
         voice: yourDictation, replies: yourReadyAnswers });
 
 The agent installs the command itself, from the archive `npm pack` makes:
-`npm install -g clavarium-parley-0.4.0.tgz`, then `parley --help`. It finds
+`npm install -g clavarium-parley-0.5.0.tgz`, then `parley --help`. It finds
 its folder as git finds a repository: the nearest `.parley` from where it
 stands, or `--dir`, or `$PARLEY_DIR`.
 
@@ -108,6 +109,12 @@ gives it. Without a slot, nothing of it is shown.
 | `replies` | `[{ label, text, send }]`, or later `handle.replies = [...]` | ready answers above the box: `send` sends at once, else the text is put in the box; one line, the rest behind "N more" |
 | `enter` | `'auto'`, `'send'` or `'newline'` | Enter sends with a keyboard (`auto`), is a new line on a touch screen; Shift+Enter a new line and Ctrl+Enter sends, always |
 | `touch` | true on a touch screen (default: any coarse pointer) | the box is never focused by the page, only by a finger: the keyboard never comes up by itself, and a tap on a button of the box leaves it open |
+| `attach` | `{ upload(file, name) }`, resolving with `{ path, name, size }`: where the agent finds the file | a button beside the box picks files; they are shown above it until sent; on Send each is uploaded, then the message goes with them (files alone are a message); in the thread, by name in the person's bubble |
+
+Lines of the application -- what happened around the agent, such as its
+machine short of memory -- are given with the messages (`from: "system"`) and
+shown as grey lines across the thread with their time and buttons, which call
+the application's `act(id, line)`. See the protocol.
 
 When the agent asks with choices, they are answered in its message; once
 that message has scrolled away (or a keyboard took the room), the same
@@ -142,7 +149,9 @@ Not tried yet with a real agent: `doing` and the line of what it does now
 (version 0.3, tested here with stand-ins); the box's slots (version 0.4:
 dictation, ready answers, the keyboard of a phone), tested in an
 application's own end-to-end runs with a recorded voice and an emulated
-phone, not yet by a person on a real phone; any agent but OpenCode; an answer
+phone, not yet by a person on a real phone; files attached by the person,
+lines of the application and `read --all` (version 0.5), tested here and in an
+application's own end-to-end runs, not yet with a real agent; any agent but OpenCode; an answer
 coming hours later; a mirror between two agents.
 
 ## Licence

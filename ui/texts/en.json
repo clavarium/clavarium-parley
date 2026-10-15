@@ -40,5 +40,8 @@
   "voice-off": "The microphone is not available. Allow it for this site, then try again.",
   "replies": "Ready answers",
   "replies-more": "{count} more",
-  "replies-less": "Less"
+  "replies-less": "Less",
+  "attach": "Attach a file",
+  "remove-file": "Remove {name}",
+  "sending-files": "Sending the files..."
 }
