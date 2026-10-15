@@ -182,7 +182,7 @@ test('what the screen shows is decided from the messages alone: two views of one
         files: [{ path: '/work/report.html', note: 'The draft.', open: 'work/report.html', at: '2026-01-05T05:30:00.000Z' }, { path: '/tmp/secret.txt', note: '', open: null, at: '2026-01-05T05:40:00.000Z' }],
         messages: [
             { from: 'agent', id: 'q1', kind: 'ask', text: 'Blue or red?', choices: ['blue', 'red'] },
-            { from: 'person', id: 'p1', kind: 'say', text: 'blue', answers: 'q1', seen: true },
+            { from: 'person', id: 'p1', kind: 'say', text: 'blue', answers: 'q1', seen: false },
             { from: 'agent', id: 'q2', kind: 'ask', text: 'One page or two?', choices: ['one', 'two'] },
             { from: 'agent', id: 's1', kind: 'show', text: 'The draft.', path: '/work/report.html', open: 'work/report.html' },
             { from: 'agent', id: 's2', kind: 'show', text: '', path: '/tmp/secret.txt', open: null },
@@ -190,19 +190,23 @@ test('what the screen shows is decided from the messages alone: two views of one
             { from: 'person', id: 'p2', kind: 'say', text: 'two', seen: false },
         ] };
     const simple = view(data, { words, view: 'simple' });
-    assert.deepEqual(simple.items.map((i) => [i.from, i.kind, i.open, i.choices.length, i.label]), [['agent', 'ask', false, 0, ''], ['person', 'say', false, 0, ''], ['agent', 'ask', true, 2, 'It asks you'], ['agent', 'show', false, 0, ''], ['agent', 'show', false, 0, ''], ['agent', 'say', false, 0, ''], ['person', 'say', false, 0, '']]);
-    assert.deepEqual(simple.items[3].file, { path: '/work/report.html', open: 'work/report.html' }); assert.equal(simple.items[3].outside, '');
-    assert.equal(simple.items[4].text, 'secret.txt'); assert.equal(simple.items[4].outside, 'Not in a shared folder: it cannot be opened from here.');
-    assert.equal(simple.items[5].text, '<b>not markup</b>', 'kept as the text it is');
-    assert.deepEqual(simple.items.map((i) => i.mark), ['', '', '', '', '', '', 'Not read yet']);
-    assert.deepEqual(simple.status, { state: 'waiting', text: 'Waiting for you - on the cover', at: '' }, 'simple says only that it waits');
+    assert.deepEqual(simple.items.map((i) => [i.id, i.open, i.choices.length, i.label]), [['q1', false, 0, ''], ['p1', false, 0, ''], ['q2', true, 2, 'It asks you'], ['s1', false, 0, ''], ['t1', false, 0, ''], ['p2', false, 0, '']],
+        'simple: nothing the person cannot act on -- a file that cannot be opened is not there');
+    assert.deepEqual(simple.items[3].file, { path: '/work/report.html', open: 'work/report.html', name: 'report.html', shown: 'report.html' }, 'its name, not its path');
+    assert.equal(simple.items[4].text, '<b>not markup</b>', 'kept as the text it is');
+    assert.deepEqual(simple.items.map((i) => i.mark), ['', '', '', '', '', 'Not read yet'], 'said only of the last word, with nothing from the agent after it');
+    assert.equal(simple.status, null, 'it waits, and the open question already says so');
+    assert.deepEqual(view({ ...data, messages: data.messages.slice(0, 2) }, { words }).status, { state: 'waiting', text: 'Waiting for you - on the cover', when: '' });
     assert.equal(view({ ...data, status: { state: 'working', note: '' } }, { words }).status, null);
-    assert.deepEqual([simple.steps, simple.files], [[], []]);
+    assert.deepEqual([simple.steps, simple.files, simple.summary], [[], [], '']);
     const detailed = view(data, { words, view: 'detailed' });
-    assert.deepEqual(detailed.items.map((i) => i.text), simple.items.map((i) => i.text), 'the same exchange');
-    assert.equal(detailed.status.text, 'Waiting for you - on the cover'); assert.ok(detailed.status.at);
-    assert.deepEqual(detailed.steps.map((s) => s.text), ['Waiting for you - on the cover', 'Working - on the report'], 'the last first');
-    assert.deepEqual(detailed.files.map((f) => [f.name, f.open]), [['secret.txt', null], ['report.html', 'work/report.html']]);
+    assert.deepEqual(detailed.items.map((i) => i.id), ['q1', 'p1', 'q2', 's1', 's2', 't1', 'p2'], 'detailed: everything');
+    assert.equal(detailed.items[4].text, 'secret.txt'); assert.equal(detailed.items[4].outside, 'Not in a shared folder: it cannot be opened from here.');
+    assert.equal(detailed.items[3].file.shown, '/work/report.html', 'with its path');
+    assert.equal(detailed.status.text, 'Waiting for you - on the cover'); assert.ok(detailed.status.when);
+    assert.deepEqual(detailed.steps.map((s) => [s.text, s.now]), [['Working - on the report', false], ['Waiting for you - on the cover', true]], 'in the order they came; the last is now');
+    assert.deepEqual(detailed.files.map((f) => [f.name, f.open]), [['report.html', 'work/report.html'], ['secret.txt', null]]);
+    assert.equal(detailed.summary, 'Steps (2) - Files (2)');
     assert.equal(view({ messages: [] }, { words, view: 'detailed' }).status.text, 'It has not said where it is yet.');
     const french = view({ messages: [] }, { words: texts('fr', { empty: 'Rien, taratata' }) });
     assert.equal(french.empty, 'Rien, taratata');
