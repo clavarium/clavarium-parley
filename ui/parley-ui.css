@@ -13,7 +13,8 @@
 .parley p, .parley h3, .parley ol, .parley ul { margin: 0; }
 .parley-top { display: flex; align-items: center; justify-content: space-between; gap: .6em; flex-wrap: wrap; }
 .parley-top { flex-wrap: nowrap; }
-.parley-status { flex: 1; font-weight: 600; color: var(--parley-dim); min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.parley-status { flex: 1; font-weight: 600; color: var(--parley-dim); min-width: 0; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow-wrap: anywhere; }
+.parley-status[hidden] { display: none; }
 .parley-status[data-state="waiting"] { color: var(--parley-ask); }
 .parley-status::before { content: ""; display: inline-block; width: .6em; height: .6em; border-radius: 50%; margin-right: .45em; background: var(--parley-dim); vertical-align: .05em; }
 .parley-status[data-state="working"]::before { background: var(--parley-action); }
@@ -95,10 +96,14 @@
 .parley .parley-doing { display: flex; align-items: baseline; gap: .55em; width: 100%; min-height: 0; padding: .3em .1em; border: 0; border-radius: 8px; background: transparent; color: var(--parley-dim); font-style: italic; text-align: left; cursor: default; }
 .parley button.parley-doing { cursor: pointer; }
 .parley .parley-doing .parley-step { flex: 1; min-width: 0; overflow-wrap: anywhere; }
-.parley-count { font-size: .8em; font-style: normal; white-space: nowrap; padding: .05em .6em; border: 1px solid var(--parley-line); border-radius: 999px; }
+.parley-more { align-self: center; flex: none; width: .45em; height: .45em; margin: 0 .3em; border: solid currentColor; border-width: 0 1.5px 1.5px 0; transform: rotate(-135deg); }
+.parley-now[data-open="false"] .parley-more { transform: translateY(-.15em) rotate(45deg); }
+.parley-unseen { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+/* Simple: the steps that led to a message are opened by a click on it. */
+.parley-said[data-steps="true"] { cursor: pointer; }
+.parley-said[data-steps="true"]:focus-visible { outline: 2px solid var(--parley-action); outline-offset: 2px; }
 /* Simple: the line alone, without its time. */
 .parley[data-view="simple"] .parley-doing .parley-time { display: none; }
-.parley-now[data-open="true"] .parley-count { display: none; }
 .parley-quiet { font-size: .8em; font-style: normal; white-space: nowrap; }
 .parley-dots { display: inline-flex; gap: .2em; align-self: center; }
 .parley-dots i { width: .38em; height: .38em; border-radius: 50%; background: var(--parley-action); opacity: .35; }

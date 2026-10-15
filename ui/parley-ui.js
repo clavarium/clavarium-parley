@@ -20,8 +20,8 @@
  * WHILE IT WORKS, WHAT IT DOES NOW. The agent says in one line what it is
  * doing (`parley doing`); the newest line is shown under the last message,
  * moving, until its next message comes: then it goes, and the steps that led
- * there fold into one line between the two messages ("5 steps"), opened with
- * a click.
+ * there are one click away: on that message in the simple view, unfolded
+ * above it in the detailed one.
  *
  * TIMES, as a chat shows them: the day when it changes, the time when long
  * passed between two messages, and the time of each message on hover (a long
@@ -29,7 +29,8 @@
  *
  * TWO VIEWS OF ONE EXCHANGE. Simple: bubbles, the one line of what it does
  * now, the choices to answer with, the files that can be opened, times on
- * hover, steps folded -- nothing the person cannot act on. Detailed: every
+ * hover, steps folded into the message they led to (a click on it opens
+ * them) -- nothing the person cannot act on. Detailed: every
  * step unfolded between the messages with its time and state, the time of
  * every message, where the agent says it is, every file it showed with its
  * path (one that cannot be opened is said so), and a way to its terminal.
@@ -69,8 +70,10 @@ function dayText(t, now, words, locale) {
 
 /* WHAT IS SHOWN, as plain data: the page is built from this and from nothing
    else, so it can be checked without a page. `rows`, in order: `day` and
-   `gap` (a divider), `message`, `steps` (a group between two messages, open
-   or folded), `now` (what it does now, with the steps of this turn before
+   `gap` (a divider), `message` (in the simple view with `trail`: the steps
+   that led to it, folded), `steps` (a group of steps, unfolded in the
+   detailed view; in the simple one only those after its last message when
+   it stopped), `now` (what it does now, with the steps of this turn before
    it). `items`: the messages alone. */
 export function view(data, { words = {}, view: as = 'simple', now = Date.now(), locale } = {}) {
     const detailed = as === 'detailed';
@@ -112,6 +115,8 @@ export function view(data, { words = {}, view: as = 'simple', now = Date.now(), 
         return { kind: doing ? 'doing' : 'status', state: ['working', 'waiting', 'done'].includes(s.state) ? s.state : 'working',
             text: doing ? note : `${state(s.state)}${note ? ` - ${note}` : ''}`, time: clock(t, locale), when: whole(t, locale), at: t };
     };
+    /* While it works, where it is is what it does now: its newest step, when newer than the state it said. */
+    const doingNow = (st) => { const n = steps.at(-1); return st?.state === 'working' && n?.kind === 'doing' && String(n.at ?? '') >= String(st.at ?? '') ? String(n.note ?? '') : ''; };
     const count = (n) => (n === 1 ? said(words, 'step-one') : said(words, 'steps-many', { count: n }));
     const group = (list, i) => ({ type: 'steps', key: `s:${String(list[0].id ?? i)}`, label: count(list.length), open: detailed, steps: list.map(step), at: stamp(list[0].at), end: stamp(list.at(-1).at) });
     /* The steps between two messages go between them; those after the last one are this turn's. */
@@ -120,8 +125,10 @@ export function view(data, { words = {}, view: as = 'simple', now = Date.now(), 
     items.forEach((item, i) => {
         const before = [];
         while (item.at !== null && next < steps.length && (stamp(steps[next].at) ?? 0) <= item.at) before.push(steps[next++]);
-        if (before.length) rows.push(group(before, i));
-        rows.push({ ...item, end: item.at });
+        /* Simple: on the message they led to, no line of their own; detailed: unfolded above it. */
+        if (before.length && detailed) rows.push(group(before, i));
+        const trail = before.length && !detailed ? (({ type, at: a, end, ...g }) => g)(group(before, i)) : null;
+        rows.push({ ...item, trail, end: item.at });
     });
     const turn = steps.slice(next);
     const newest = turn.at(-1);
@@ -129,7 +136,7 @@ export function view(data, { words = {}, view: as = 'simple', now = Date.now(), 
         const t = stamp(newest.at);
         const fresh = t !== null && now - t < STALE_MS;
         const earlier = turn.slice(0, -1);
-        rows.push({ type: 'now', key: `n:${String(turn[0].id ?? '')}`, ...step(newest), live: fresh, quiet: fresh ? '' : said(words, 'quiet', { time: clock(t, locale) }),
+        rows.push({ type: 'now', key: `n:${String(turn[0].id ?? '')}`, ...step(newest), text: String(newest.note ?? '') || state('working'), live: fresh, quiet: fresh ? '' : said(words, 'quiet', { time: clock(t, locale) }),
             label: earlier.length ? count(earlier.length) : '', open: detailed, steps: earlier.map(step), at: stamp(turn[0].at), end: t });
     } else if (turn.length) rows.push(group(turn, items.length));
     /* The day when it changes, the time when long passed. */
@@ -147,7 +154,7 @@ export function view(data, { words = {}, view: as = 'simple', now = Date.now(), 
         view: detailed ? 'detailed' : 'simple',
         /* Simple says only what asks for the person, and not twice: that it waits, when no question already says so. */
         status: detailed
-            ? { state: status?.state ?? 'none', text: status ? `${state(status.state)}${status.note ? ` - ${status.note}` : ''}` : said(words, 'no-status'), when: status ? whole(stamp(status.at), locale) : '' }
+            ? { state: status?.state ?? 'none', text: status ? `${state(status.state)}${(doingNow(status) || status.note) ? ` - ${doingNow(status) || status.note}` : ''}` : said(words, 'no-status'), when: status ? whole(stamp(status.at), locale) : '' }
             : status?.state === 'waiting' && !asking ? { state: 'waiting', text: `${state('waiting')}${status.note ? ` - ${status.note}` : ''}`, when: '' } : null,
         empty: messages.length === 0 && rows.length === 0 ? said(words, 'empty') : null,
         rows: shown.map(({ at, end, ...row }) => row),
@@ -170,6 +177,8 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
     /* Steps the person opened or closed, by group: kept while the page is drawn again. */
     const unfolded = new Map();
     let revealed = '';
+    /* Kept at the newest, as a chat is, until the reader scrolls up; and again once back down. */
+    let sticky = true;
     root.classList.add('parley');
     const top = el('div', 'parley-top');
     const status = el('p', 'parley-status'); status.setAttribute('role', 'status');
@@ -210,11 +219,20 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
         }
         return ol;
     }
-    /* Opened or folded with one click; remembered while the page is drawn again. */
-    function folding(row, holder, opener, list) {
+    const bottom = () => { thread.scrollTop = thread.scrollHeight; };
+    /* Opened or folded with one click; remembered while the page is drawn
+       again. What was in sight stays in sight: the newest, when the reader
+       was there; else the line clicked. */
+    function folding(row, holder, opener, list, { only = () => true } = {}) {
         const set = (on) => { holder.dataset.open = String(on); opener.setAttribute('aria-expanded', String(on)); list.hidden = !on; };
         set(unfolded.has(row.key) ? unfolded.get(row.key) : row.open);
-        opener.addEventListener('click', () => { const on = holder.dataset.open !== 'true'; unfolded.set(row.key, on); set(on); });
+        const flip = () => {
+            const was = sticky;
+            const on = holder.dataset.open !== 'true'; unfolded.set(row.key, on); set(on);
+            if (was) bottom(); else opener.scrollIntoView?.({ block: 'nearest' });
+        };
+        opener.addEventListener('click', (event) => { if (only(event)) flip(); });
+        if (opener.tagName !== 'BUTTON') opener.addEventListener('keydown', (event) => { if ((event.key === 'Enter' || event.key === ' ') && event.target === opener) { event.preventDefault(); flip(); } });
     }
     function rowOf(row, v) {
         if (row.type === 'day' || row.type === 'gap') { const p = el('p', 'parley-divider'); p.dataset.kind = row.type; p.append(el('span', '', row.text)); return p; }
@@ -234,7 +252,8 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
             line.append(dots, el('span', 'parley-step', row.text));
             if (row.quiet) line.append(el('span', 'parley-quiet', row.quiet));
             else line.append(time(row.time, row.when));
-            if (row.label) line.append(el('span', 'parley-count', row.label));
+            /* What came before, one click away: said by a mark, and in words to whoever does not see it. */
+            if (row.label) { const more = el('span', 'parley-more'); more.title = row.label; more.append(el('span', 'parley-unseen', row.label)); line.append(more); }
             if (row.steps.length) { const list = trail(row.steps); holder.append(list, line); folding(row, holder, line, list); } else holder.append(line);
             return holder;
         }
@@ -263,8 +282,14 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
             }
             bubble.append(foot);
         }
-        if (item.time) bubble.append(time(item.time, item.when));
-        return bubble;
+        if (item.time) bubble.append(time(item.trail ? `${item.time} - ${item.trail.label}` : item.time, item.when));
+        if (!item.trail) return bubble;
+        /* The steps that led to it, opened by a click on it: above it, as they came. */
+        const list = trail(item.trail.steps);
+        list.dataset.for = item.id;
+        bubble.dataset.steps = 'true'; bubble.tabIndex = 0;
+        folding(item.trail, bubble, bubble, list, { only: (event) => !(event.target instanceof Element && event.target.closest('button, a')) && !String(globalThis.getSelection?.() ?? '') });
+        return [list, bubble];
     }
     function sideOf(v) {
         const files = el('section', 'parley-files');
@@ -295,9 +320,9 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
         status.hidden = !v.status;
         if (v.status) { status.dataset.state = v.status.state; status.textContent = v.status.text; status.title = [v.status.text, v.status.when].filter(Boolean).join(' - '); }
         /* The newest is shown: when something new came, and when the reader was at the bottom already. */
-        const atBottom = thread.scrollHeight - thread.scrollTop - thread.clientHeight < 40 || v.items.length > count;
+        const atBottom = sticky || v.items.length > count;
         count = v.items.length;
-        thread.replaceChildren(...v.rows.map((row) => rowOf(row, v)));
+        thread.replaceChildren(...v.rows.flatMap((row) => rowOf(row, v)));
         if (v.empty) thread.append(el('p', 'parley-empty', v.empty));
         aside.hidden = v.view !== 'detailed';
         aside.dataset.narrow = String(small);
@@ -312,8 +337,12 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
                 aside.replaceChildren(fold, ...way);
             } else aside.replaceChildren(sideOf(v), ...way);
         }
-        if (atBottom) { thread.scrollTop = thread.scrollHeight; requestAnimationFrame(() => { thread.scrollTop = thread.scrollHeight; }); }
+        if (atBottom) { bottom(); sticky = true; requestAnimationFrame(bottom); }
     }
+    thread.addEventListener('scroll', () => { sticky = thread.scrollHeight - thread.scrollTop - thread.clientHeight < 40; }, { passive: true });
+    /* The page around it settles (fonts, a keyboard, a turned phone): the newest stays in sight. */
+    const settle = typeof ResizeObserver === 'function' ? new ResizeObserver(() => { if (sticky) bottom(); }) : null;
+    settle?.observe(thread);
     async function refresh() { try { paint(await load()); } catch { /* shown again at the next look */ } }
     /* A long press on a touch screen shows a message's time, as hovering does with a mouse. */
     let pressing;
@@ -345,5 +374,5 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
     /* What it does now stops moving once it is old: looked at again now and then, data or not. */
     const timer = every > 0 ? setInterval(() => { if (!document.hidden) void refresh(); }, every) : null;
     void refresh();
-    return { refresh, get view() { return as; }, set view(v) { if (VIEWS.includes(v)) choose(v); }, destroy() { if (timer) clearInterval(timer); clearTimeout(hiding); unpress(); watch?.disconnect(); root.replaceChildren(); root.classList.remove('parley'); delete root.dataset.view; } };
+    return { refresh, get view() { return as; }, set view(v) { if (VIEWS.includes(v)) choose(v); }, destroy() { if (timer) clearInterval(timer); clearTimeout(hiding); unpress(); watch?.disconnect(); settle?.disconnect(); root.replaceChildren(); root.classList.remove('parley'); delete root.dataset.view; } };
 }

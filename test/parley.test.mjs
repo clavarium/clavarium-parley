@@ -209,12 +209,14 @@ test('what the screen shows is decided from the messages alone: two views of one
     assert.deepEqual(view({ ...data, messages: data.messages.slice(0, 2) }, { words }).status, { state: 'waiting', text: 'Waiting for you - on the cover', when: '' });
     assert.equal(view({ ...data, status: { state: 'working', note: '' } }, { words }).status, null);
     assert.deepEqual([simple.files, simple.summary], [[], '']);
-    assert.deepEqual(simple.rows.filter((r) => r.type === 'steps').map((r) => [r.label, r.open]), [['1 step', false], ['1 step', false]], 'simple: the steps folded, one line between messages');
+    assert.deepEqual(simple.rows.filter((r) => r.trail).map((r) => [r.id, r.trail.label, r.trail.open]), [['q1', '1 step', false]], 'simple: the steps folded into the message they led to, no line of their own');
+    assert.deepEqual(simple.rows.filter((r) => r.type === 'steps').map((r) => [r.label, r.open]), [['1 step', false]], 'except those after its last message, when it stopped');
     const detailed = view(data, { words, view: 'detailed', now, locale: 'en-GB' });
     assert.deepEqual(detailed.items.map((i) => i.id), ['q1', 'p1', 'q2', 's1', 's2', 't1', 'p2'], 'detailed: everything');
     assert.equal(detailed.items[4].text, 'secret.txt'); assert.equal(detailed.items[4].outside, 'Not in a shared folder: it cannot be opened from here.');
     assert.equal(detailed.items[3].file.shown, '/work/report.html', 'with its path');
     assert.equal(detailed.status.text, 'Waiting for you - on the cover'); assert.ok(detailed.status.when);
+    assert.equal(detailed.rows.some((r) => r.trail), false);
     assert.deepEqual(detailed.rows.filter((r) => r.type === 'steps').map((r) => [r.open, r.steps.map((x) => [x.text, x.time])]), [[true, [['Working - on the report', '06:00']]], [true, [['Waiting for you - on the cover', '06:50']]]],
         'detailed: every step unfolded where it came, with its state and time');
     assert.deepEqual(detailed.files.map((f) => [f.name, f.open]), [['report.html', 'work/report.html'], ['secret.txt', null]]);
@@ -245,15 +247,17 @@ test('while it works, the one line of what it does now; gone when its next messa
     assert.equal(simple.status, null, 'simple: no status line while it works');
     const detailed = view(data, { words, view: 'detailed', now: Date.parse(at(10)), locale: 'en-GB' });
     assert.equal(detailed.rows.at(-1).open, true, 'detailed: what came before, unfolded');
+    assert.equal(detailed.status.text, 'Working - reading it again', 'where it is: what it does now');
     /* Nothing new for a long while: it may have stopped; the line stays, still. */
     const quiet = view(data, { words, now: Date.parse(at(40)), locale: 'en-GB' }).rows.at(-1);
     assert.deepEqual([quiet.live, quiet.quiet], [false, 'nothing new since 06:09']);
     /* Its next message: the line is gone, its steps fold between the two messages. */
     data = { ...data, messages: [asked, { from: 'agent', id: 'a1', kind: 'say', text: 'Chapter 1 is written.', at: at(11) }] };
     simple = view(data, { words, now: Date.parse(at(12)), locale: 'en-GB' });
-    assert.deepEqual(kinds(simple), ['day', 'message', 'steps', 'message']);
-    assert.deepEqual([simple.rows[2].label, simple.rows[2].open, simple.rows[2].steps.length], ['3 steps', false, 3]);
-    assert.equal(view(data, { words, view: 'detailed', now: Date.parse(at(12)) }).rows[2].open, true);
+    assert.deepEqual(kinds(simple), ['day', 'message', 'message']);
+    assert.deepEqual([simple.rows[2].trail.label, simple.rows[2].trail.open, simple.rows[2].trail.steps.length], ['3 steps', false, 3], 'simple: on the message they led to');
+    const unfolded = view(data, { words, view: 'detailed', now: Date.parse(at(12)) });
+    assert.deepEqual([kinds(unfolded)[2], unfolded.rows[2].open], ['steps', true], 'detailed: unfolded above it');
     /* A turn that ends done or waiting is not shown as moving. */
     const ended = view({ ...data, messages: [asked], steps: [...turn, { id: 'x', kind: 'status', state: 'done', note: '', at: at(10) }] }, { words, now: Date.parse(at(11)) });
     assert.deepEqual(kinds(ended), ['day', 'message', 'steps']);

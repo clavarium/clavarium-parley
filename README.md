@@ -87,9 +87,9 @@ Two views of one exchange, and a person picks one:
 | | Simple | Detailed |
 |---|---|---|
 | Messages | bubbles; the time on hover, or a long press | bubbles, each with its time |
-| While it works | one line, moving: what it does now; gone when its next message comes | the same line, and every step of this turn above it |
-| Steps it went through | folded into one line between two messages ("5 steps"), opened with a click | unfolded between the messages, each with its time and state |
-| Where it is | only when it waits for the person | always, at the top |
+| While it works | one line, moving: what it does now; gone when its next message comes; what came before it one click away | the same line, and every step of this turn above it |
+| Steps it went through | folded into the message they led to: a click on it opens them ("5 steps" is said with its time) | unfolded between the messages, each with its time and state |
+| Where it is | only when it waits for the person | always, at the top: what it does now, or the state it said |
 | Files | the ones the person can open, by name | every one, with its path; one that cannot be opened is said so |
 | Its terminal | | a way to it |
 

@@ -80,8 +80,9 @@ folder the person can open. The screen then says so.
 
 ## What the screen makes of the steps
 
-The steps that came between two messages are put between them. Those after
-the last message are the agent's turn: while the newest of them is a `doing`
+The steps that came between two messages belong to the second one: folded
+into it in the simple view, unfolded above it in the detailed one. Those
+after the last message are the agent's turn: while the newest of them is a `doing`
 (or a `working` status), it is shown as the one line of what it does now, and
 it goes when the next message comes. Nothing came for 15 minutes: the line
 stays, still, and says since when. See the table in the README for what each
