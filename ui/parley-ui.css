@@ -34,7 +34,7 @@
 .parley-foot { margin-top: .25em; font-size: .8em; color: var(--parley-dim); }
 .parley-choices { display: flex; flex-wrap: wrap; gap: .45em; margin-top: .55em; }
 .parley button { font: inherit; min-height: 2.6em; padding: 0 1em; border-radius: 10px; border: 1px solid var(--parley-line); background: var(--parley-bg); color: var(--parley-text); cursor: pointer; }
-.parley .parley-choices button { border-color: var(--parley-action); color: var(--parley-action); font-weight: 600; }
+.parley .parley-choices button { border-color: var(--parley-action); background: var(--parley-action); color: var(--parley-on-action); font-weight: 650; }
 .parley .parley-remind { min-height: 2em; padding: 0 .7em; font-size: inherit; }
 .parley button:disabled { opacity: .5; cursor: default; }
 .parley button:focus-visible, .parley-box:focus-visible { outline: 2px solid var(--parley-action); outline-offset: 2px; }

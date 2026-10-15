@@ -146,10 +146,11 @@ test('the contract: Parley announces, the application decides; nothing is typed 
 });
 
 test('the texts an agent reads are English and say the person\'s language; the line that wakes it is the application\'s to type', () => {
-    assert.equal(WAKE, 'You have a new message: run `parley read`.');
+    assert.equal(WAKE, 'You have a new message: run "parley read".');
     const text = invitation({ lang: 'fr-FR', install: 'npm install -g /tools/clavarium-parley-0.2.0.tgz', shared: '/work' });
     for (const part of ['npm install -g /tools/clavarium-parley-0.2.0.tgz', 'parley --help', 'parley tell', 'parley ask', 'parley show', 'parley status', 'under /work', 'Write to them in French.', 'You have a new message', 'parley read']) assert.ok(text.includes(part), part);
     assert.ok(/^[\x20-\x7e]+$/.test(text), 'one line, plain ASCII');
+    for (const line of [text, WAKE]) assert.ok(!/[`'$\\]/.test(line), 'nothing a shell would run or wait on, should one listen instead of an agent');
     assert.equal(new Parley('/nowhere').invite('de'), invitation({ lang: 'de' }));
     assert.match(invitation({ lang: 'de' }), /Write to them in German\./);
     assert.deepEqual([languageName('en-GB'), languageName('it'), languageName('<b>'), languageName(undefined)], ['English', 'Italian', 'English', 'English']);

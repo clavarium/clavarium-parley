@@ -44,7 +44,7 @@ stops. When something was written to it, the application is told
 (`person-wrote`, with how many messages the agent has not read) and gets ONE
 LINE to the agent, by a way of its own, when it judges right:
 
-    You have a new message: run `parley read`.
+    You have a new message: run "parley read".
 
 What was written is never on that line. The agent runs `parley read` and
 finds it. An answer may therefore come two minutes or two days later.

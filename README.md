@@ -43,8 +43,8 @@ arrived. See [docs/protocol.md](docs/protocol.md).
 | `read()` | the exchange: messages, open questions, status, steps, files, unread |
 | `invite(lang, { install, shared })` | the text that asks an agent to use Parley, in English, saying the person's language |
 
-Parley types nothing anywhere. `WAKE` (`You have a new message: run
-\`parley read\`.`) and the invitation are texts an application uses as they
+Parley types nothing anywhere. `WAKE` (`You have a new message: run "parley
+read".`) and the invitation are texts an application uses as they
 are, changes, or does not use.
 
 ## The pieces

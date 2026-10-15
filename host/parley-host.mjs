@@ -38,8 +38,10 @@ const SERVER = fileURLToPath(new URL('../server/parley-mcp.mjs', import.meta.url
 const TEXTS = fileURLToPath(new URL('../ui/texts/', import.meta.url));
 
 /* THE TEXTS AN AGENT READS are English: models read it best, and one text is
-   one text to check. The person's language is said in it. */
-export const WAKE = 'You have a new message: run `parley read`.';
+   one text to check. The person's language is said in it. They are typed in
+   a terminal, where a shell may be listening instead of an agent: no
+   backquote, no single quote, nothing a shell would run or wait on. */
+export const WAKE = 'You have a new message: run "parley read".';
 const NAMES = { en: 'English', fr: 'French' };
 /* The name of a language, in English, for a sentence an agent reads. */
 export function languageName(lang) {
@@ -50,15 +52,16 @@ export function languageName(lang) {
     try { return new Intl.DisplayNames(['en'], { type: 'language' }).of(base) ?? 'English'; } catch { return 'English'; }
 }
 /* What an agent is asked once, to use Parley. `install`: how it gets the
-   command, when it does not have it yet (a command line); `shared`: the
-   folder whose files the person can open. */
+   command, when it does not have it yet (a command line of the
+   application's: it is put in double quotes as it is); `shared`: the folder
+   whose files the person can open. */
 export function invitation({ lang = 'en', install, shared } = {}) {
     return [
-        install ? `Install Parley, a small command to talk with the person you work for on their screen: run \`${install}\`, then read \`parley --help\`.` : 'Read `parley --help`: it is how you talk with the person you work for, on their screen.',
-        'From now on, talk with them through it, not in this terminal: `parley tell` to tell them something, `parley ask` to ask them something (with the choices when you can), `parley show` for a file you made, `parley status` to say where you are.',
+        install ? `Install Parley, a small command to talk with the person you work for on their screen: run "${install}", then read "parley --help".` : 'Read "parley --help": it is how you talk with the person you work for, on their screen.',
+        'From now on, talk with them through it, not in this terminal: "parley tell" to tell them something, "parley ask" to ask them something (with the choices when you can), "parley show" for a file you made, "parley status" to say where you are.',
         shared ? `Put any file you show under ${shared}: it is the folder they can open.` : '',
         `Write to them in ${languageName(lang)}.`,
-        'When you see "You have a new message", run `parley read`.',
+        'When you see "You have a new message", run "parley read".',
         'Start now: tell them in one line that you are ready.',
     ].filter(Boolean).join(' ');
 }
