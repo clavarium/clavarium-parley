@@ -8,7 +8,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { install, Parley, WAKE, invitation, languageName, texts, fill, LANGUAGES } from '../host/parley-host.mjs';
-import { view, KEYS } from '../ui/parley-ui.js';
+import { view, KEYS, quick, sends, joined, REPLIES_MAX, LABEL_MAX } from '../ui/parley-ui.js';
 import { run, HELP } from '../bin/parley.mjs';
 import { findFolder } from '../server/parley-mcp.mjs';
 
@@ -333,4 +333,32 @@ test('saying what it does means it works: after "done" or "waiting", a step it s
     const alone = folder(t);
     writeFileSync(join(alone, 'from-agent.jsonl'), `${line('d', 0, { kind: 'doing', text: 'started' })}\n`);
     assert.equal(new Parley(alone).read().status.state, 'working', 'a step said before any state');
+});
+
+test('the helpers of the box: the quick answers above it, what Enter does, what dictation adds', () => {
+    const at = (minute) => `2026-01-05T06:${String(minute).padStart(2, '0')}:00.000Z`;
+    const data = { messages: [
+        { from: 'agent', id: 'q1', kind: 'ask', text: 'Blue or red?', choices: ['blue', 'red'], at: at(1) },
+        { from: 'person', id: 'p1', kind: 'say', text: 'blue', answers: 'q1', at: at(2) },
+        { from: 'agent', id: 'q2', kind: 'ask', text: 'One page or two?', choices: ['one', 'two'], at: at(3) },
+        { from: 'agent', id: 'q3', kind: 'ask', text: 'Anything else?', choices: [], at: at(4) },
+    ] };
+    const replies = [{ label: ' Yes, go on ', text: 'Yes, go on.', send: true }, { label: 'Start with', text: 'Start with ' }, { label: '', text: 'no label' }, { label: 'x', text: 42 }, null, { label: 'y'.repeat(99), text: '<b>kept as text</b>' }];
+    assert.deepEqual(quick(data, replies), [
+        { kind: 'choice', label: 'one', text: 'one', send: true, answers: 'q2' },
+        { kind: 'choice', label: 'two', text: 'two', send: true, answers: 'q2' },
+        { kind: 'reply', label: 'Yes, go on', text: 'Yes, go on.', send: true },
+        { kind: 'reply', label: 'Start with', text: 'Start with ', send: false },
+        { kind: 'reply', label: 'y'.repeat(LABEL_MAX), text: '<b>kept as text</b>', send: false },
+    ], 'the choices of the question it asks now, first: never of one answered; then the ready answers that are well formed; put in the box unless they say send');
+    assert.deepEqual(quick({ messages: data.messages.slice(0, 2) }, []), [], 'answered: no choice left');
+    assert.equal(quick(undefined, Array.from({ length: 99 }, (_, i) => ({ label: `r${i}`, text: 't' }))).length, REPLIES_MAX);
+    assert.deepEqual(quick({ messages: [{ from: 'person', id: 'x', kind: 'ask', choices: ['a'] }] }), [], 'only the agent asks');
+    const key = (more) => ({ key: 'Enter', ...more });
+    assert.deepEqual([sends(key(), 'auto', true), sends(key(), 'auto', false)], [true, false], 'auto: Enter sends with a keyboard, is a new line on a touch screen');
+    assert.deepEqual([sends(key({ shiftKey: true }), 'send', true), sends(key({ ctrlKey: true }), 'newline', false), sends(key({ metaKey: true }), 'auto', false)], [false, true, true], 'Shift+Enter a new line, Ctrl+Enter sends, always');
+    assert.deepEqual([sends(key(), 'send', false), sends(key(), 'newline', true)], [true, false]);
+    assert.equal(sends(key({ isComposing: true }), 'send', true), false, 'a character being composed is not sent');
+    assert.equal(sends({ key: 'a' }, 'send', true), false);
+    assert.deepEqual([joined('', ' hello  there '), joined('Hi', 'you'), joined('Hi ', 'you'), joined('Hi', '  ')], ['hello there', 'Hi you', 'Hi you', 'Hi']);
 });

@@ -88,6 +88,16 @@ it goes when the next message comes. Nothing came for 15 minutes: the line
 stays, still, and says since when. See the table in the README for what each
 view shows.
 
+## The box
+
+Under the exchange, the box the person writes in. The application may fill
+three slots, and nothing of them is shown without it: `voice` (a dictation
+of its own, its words go into the box), `replies` (ready answers above the
+box) and `enter` (what Enter does). The choices of the question the agent
+asks now come first above the box when its message has scrolled away. The
+page never puts the cursor in the box on a touch screen: only a finger does.
+See the README for each slot.
+
 ## Words
 
 | Read by | Language | Where |

@@ -68,15 +68,16 @@ are, changes, or does not use.
         reach: (path) => (path.startsWith('/work/') ? path : null),   // what the person can open
     });
     parley.listen();
-    typeInTheAgentsTerminal(parley.invite('fr', { install: 'npm install -g /path/to/clavarium-parley-0.3.0.tgz', shared: '/work' }));
+    typeInTheAgentsTerminal(parley.invite('fr', { install: 'npm install -g /path/to/clavarium-parley-0.4.0.tgz', shared: '/work' }));
 
 and in a page:
 
     import { mount } from 'clavarium-parley/ui';
-    mount(element, { load, send, words: texts('fr', operatorsOwn), open, terminal, view: 'simple' });
+    mount(element, { load, send, words: texts('fr', operatorsOwn), open, terminal, view: 'simple',
+        voice: yourDictation, replies: yourReadyAnswers });
 
 The agent installs the command itself, from the archive `npm pack` makes:
-`npm install -g clavarium-parley-0.3.0.tgz`, then `parley --help`. It finds
+`npm install -g clavarium-parley-0.4.0.tgz`, then `parley --help`. It finds
 its folder as git finds a repository: the nearest `.parley` from where it
 stands, or `--dir`, or `$PARLEY_DIR`.
 
@@ -95,6 +96,23 @@ Two views of one exchange, and a person picks one:
 
 In both, the day is said when it changes, and the time when long passed
 between two messages, as a chat does.
+
+## The box, and the slots an application fills
+
+Parley draws the box; what it holds that Parley cannot know, the application
+gives it. Without a slot, nothing of it is shown.
+
+| Slot | The application gives | The box shows |
+|---|---|---|
+| `voice` | `{ listen(on) }`: opens a microphone, calls `on.phrase(text)`, `on.state(word)`, `on.speech()`, `on.error(message)`; resolves with a function that closes it | a button beside Send; what is said goes into the box; while it listens, a line says what it does and offers "send by itself when I stop talking"; Send pressed while a phrase is still being written sends it once written |
+| `replies` | `[{ label, text, send }]`, or later `handle.replies = [...]` | ready answers above the box: `send` sends at once, else the text is put in the box; one line, the rest behind "N more" |
+| `enter` | `'auto'`, `'send'` or `'newline'` | Enter sends with a keyboard (`auto`), is a new line on a touch screen; Shift+Enter a new line and Ctrl+Enter sends, always |
+| `touch` | true on a touch screen (default: any coarse pointer) | the box is never focused by the page, only by a finger: the keyboard never comes up by itself, and a tap on a button of the box leaves it open |
+
+When the agent asks with choices, they are answered in its message; once
+that message has scrolled away (or a keyboard took the room), the same
+choices come first above the box, never twice on the screen. Every size is
+in `em` and `rem`: the page's text size is the box's.
 
 ## Words
 
@@ -121,7 +139,10 @@ Tried for real with version 0.2 (OpenCode, on hosted open models): the
 a real page.
 
 Not tried yet with a real agent: `doing` and the line of what it does now
-(version 0.3, tested here with stand-ins); any agent but OpenCode; an answer
+(version 0.3, tested here with stand-ins); the box's slots (version 0.4:
+dictation, ready answers, the keyboard of a phone), tested in an
+application's own end-to-end runs with a recorded voice and an emulated
+phone, not yet by a person on a real phone; any agent but OpenCode; an answer
 coming hours later; a mirror between two agents.
 
 ## Licence
