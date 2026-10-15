@@ -11,7 +11,7 @@
   "no-status": "Il n'a pas encore dit où il en est.",
   "asks": "Il vous demande",
   "open": "Ouvrir",
-  "outside": "Pas dans un dossier partagé, il ne peut pas être ouvert ici : {path}",
+  "outside": "Pas dans un dossier partagé : il ne peut pas être ouvert d'ici.",
   "not-read": "Pas encore lu",
   "read": "Lu",
   "remind": "Le lui rappeler",

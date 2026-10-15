@@ -192,7 +192,7 @@ test('what the screen shows is decided from the messages alone: two views of one
     const simple = view(data, { words, view: 'simple' });
     assert.deepEqual(simple.items.map((i) => [i.from, i.kind, i.open, i.choices.length, i.label]), [['agent', 'ask', false, 0, ''], ['person', 'say', false, 0, ''], ['agent', 'ask', true, 2, 'It asks you'], ['agent', 'show', false, 0, ''], ['agent', 'show', false, 0, ''], ['agent', 'say', false, 0, ''], ['person', 'say', false, 0, '']]);
     assert.deepEqual(simple.items[3].file, { path: '/work/report.html', open: 'work/report.html' }); assert.equal(simple.items[3].outside, '');
-    assert.equal(simple.items[4].text, 'secret.txt'); assert.equal(simple.items[4].outside, 'Not in a shared folder, so it cannot be opened here: /tmp/secret.txt');
+    assert.equal(simple.items[4].text, 'secret.txt'); assert.equal(simple.items[4].outside, 'Not in a shared folder: it cannot be opened from here.');
     assert.equal(simple.items[5].text, '<b>not markup</b>', 'kept as the text it is');
     assert.deepEqual(simple.items.map((i) => i.mark), ['', '', '', '', '', '', 'Not read yet']);
     assert.deepEqual(simple.status, { state: 'waiting', text: 'Waiting for you - on the cover', at: '' }, 'simple says only that it waits');

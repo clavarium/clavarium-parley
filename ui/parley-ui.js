@@ -95,6 +95,7 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
     root.replaceChildren(top, main, form, problem);
     root.dataset.view = as;
     let shown = '';
+    let count = 0;
     const say = async (text, answers) => {
         problem.hidden = true;
         try { await send(text, answers); await refresh(); } catch (error) { problem.textContent = said(words, 'not-sent', { error: String(error?.message ?? error) }); problem.hidden = false; }
@@ -111,7 +112,9 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
         for (const b of toggles) b.setAttribute('aria-pressed', String(b.dataset.view === v.view));
         status.hidden = !v.status;
         if (v.status) { status.dataset.state = v.status.state; status.textContent = v.status.at ? `${v.status.text} (${v.status.at})` : v.status.text; }
-        const atBottom = thread.scrollHeight - thread.scrollTop - thread.clientHeight < 40;
+        /* The newest is shown: at the first paint, when something new came, and when the reader was at the bottom already. */
+        const atBottom = thread.scrollHeight - thread.scrollTop - thread.clientHeight < 40 || v.items.length > count;
+        count = v.items.length;
         thread.replaceChildren(...v.items.map((item) => {
             const bubble = el('div', 'parley-said'); bubble.dataset.from = item.from; bubble.dataset.kind = item.kind; if (item.open) bubble.dataset.open = 'true';
             if (item.label) bubble.append(el('p', 'parley-label', item.label));
@@ -160,8 +163,7 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
             }
             aside.replaceChildren(steps, files, ...(terminal ? [button(said(words, 'terminal'), 'parley-terminal', () => terminal())] : []));
         } else aside.replaceChildren();
-        if (atBottom || !thread.dataset.painted) thread.scrollTop = thread.scrollHeight;
-        thread.dataset.painted = 'true';
+        if (atBottom) { thread.scrollTop = thread.scrollHeight; requestAnimationFrame(() => { thread.scrollTop = thread.scrollHeight; }); }
     }
     async function refresh() { try { paint(await load()); } catch { /* shown again at the next look */ } }
     form.addEventListener('submit', (event) => {
