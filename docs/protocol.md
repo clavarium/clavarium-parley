@@ -9,22 +9,28 @@ Parley is three small things that agree on one folder.
 | `from-agent.jsonl` | the agent's side | what the agent posted, one JSON object per line |
 | `to-agent.jsonl` | the application's side | what was written to the agent, one JSON object per line |
 | `read.json` | the agent's side | how many lines of `to-agent.jsonl` the agent has read |
-| `server.mjs` | the application, once | the agent's side itself, put there by `install()` |
+| `server.mjs` | the application, once | the MCP server, for an agent given it that way (`install()`) |
 
 Both files only grow. Nothing is edited, nothing is deleted. There is no
 address, no port and no key: whoever can read and write the folder is a side.
 
+The command finds the folder as git finds a repository: `--dir`, else
+`$PARLEY_DIR`, else the nearest `.parley` from where the agent stands.
+
 ## What an agent can do: five verbs
 
-| Tool | Arguments | It posts | It returns |
+| Command | MCP tool | It posts | It returns |
 |---|---|---|---|
-| `tell` | `text` | `{kind:"say", text}` | at once |
-| `ask` | `question`, `choices?` | `{kind:"ask", text, choices}` | at once: it never waits for the answer |
-| `show` | `path`, `note?` | `{kind:"show", path, text}` | at once |
-| `status` | `state` (`working`, `waiting`, `done`), `note?` | `{kind:"status", state, text}` | at once |
-| `read` | none | nothing | what was written since the last `read`, answers included |
+| `parley tell TEXT` | `tell(text)` | `{kind:"say", text}` | at once |
+| `parley ask QUESTION [CHOICE ...]` | `ask(question, choices?)` | `{kind:"ask", text, choices}` | at once: it never waits for the answer |
+| `parley show PATH [NOTE]` | `show(path, note?)` | `{kind:"show", path, text}`, the path made whole | at once; refused if there is no such file |
+| `parley status STATE [NOTE]` | `status(state, note?)` | `{kind:"status", state, text}` | at once |
+| `parley read` | `read()` | nothing | what was written since the last read, answers included |
 
-Every line posted also carries `id` (unique) and `at` (the time, ISO 8601).
+`STATE` is `working`, `waiting` or `done`. Every line posted also carries
+`id` (unique) and `at` (the time, ISO 8601). A text may come from standard
+input with `-`. Exit codes of the command: 0 done, 1 refused, 2 no folder,
+64 not understood.
 
 ## What is written to an agent
 
@@ -33,34 +39,58 @@ question) and `question` (its words, so that the agent is reminded of them).
 
 ## Nothing waits
 
-A tool never blocks until a person answers. The agent posts and goes on, or
-stops. When something was written to it, the application gets ONE LINE to the
-agent, by a way of its own (typed in its terminal, most of the time):
+A verb never blocks until a person answers. The agent posts and goes on, or
+stops. When something was written to it, the application is told
+(`person-wrote`, with how many messages the agent has not read) and gets ONE
+LINE to the agent, by a way of its own, when it judges right:
 
-    A message arrived for you: call the read tool of the "parley" server and act on it.
+    You have a new message: run `parley read`.
 
-What was written is never on that line. The agent calls `read` and finds it.
-An answer may therefore come two minutes or two days later.
+What was written is never on that line. The agent runs `parley read` and
+finds it. An answer may therefore come two minutes or two days later.
 
-## The two hooks of an application
+## Parley announces, the application decides
 
-| Hook | Called | To |
+| Event | When | Carries |
 |---|---|---|
-| `toAgent(line)` | when something was written to the agent | get that one line to it |
-| `toPerson(message)` | for each thing the agent posts | alert a person, or not |
+| `person-wrote` | `say()` wrote a message | `message`, `unread` |
+| `agent-said` | the agent ran `tell` | `message` |
+| `agent-asked` | the agent ran `ask` | `message` (with `choices`) |
+| `agent-showed` | the agent ran `show` | `message` (with `path`, and `open`: the application's way to open it, or `null`) |
+| `agent-status` | the agent ran `status` | `message` (with `state`) |
 
-They are plain functions. Parley knows neither how an agent is reached nor
-how a person is alerted.
+Events of the agent are announced by `listen()`, each line once, once it is
+whole, from the moment it was started: what was posted before is in
+`read()`.
+
+| Action | Gives |
+|---|---|
+| `say(text, answers?)` | what `read()` gives, after writing |
+| `read()` | `messages` (each of the person's says `seen`), `waiting` (open questions), `status`, `steps` (every status said), `files` (every file shown), `unread` |
+| `invite(lang, {install?, shared?})` | the invitation, a text |
+| `unread()` | how many of the person's messages the agent has not read |
+
+`reach(path)`, given by the application, says how the person opens a file
+the agent showed: a reference of its own, or `null` when it is not in a
+folder the person can open. The screen then says so.
+
+## Words
+
+| Read by | Language | Where |
+|---|---|---|
+| the agent: help, MCP descriptions, invitation, wake line | English only; the invitation names the person's language | `bin/`, `server/`, `host/` |
+| the person: the screen, alerts | a dictionary per language, `en` when a word is missing; an application's own dictionary replaces any word | `ui/texts/<lang>.json`, `texts(lang, own)` |
 
 ## What each side must not trust
 
 - What the agent posts is text chosen by a program. The application's side
   bounds it and removes what a screen obeys rather than shows; the library
-  puts it on the page as text, never as markup.
+  puts it on the page as text, never as markup. The words of a dictionary,
+  too: they are shown as text, whatever they say.
 - The agent can write in its own folder: it can forge a message to itself.
   That harms nobody but itself. Nothing here gives it a right it had not.
-- It all depends on the agent's good will: it uses these tools because it was
-  asked to. What it asks in its terminal is not seen here.
+- It all depends on the agent's good will: it uses these verbs because it
+  was asked to. What it asks in its terminal is not seen here.
 
 ## A mirror
 

@@ -5,8 +5,8 @@ For whoever writes in this repository. Nothing here is needed to use Parley.
 ## 1. Everything is in English
 
 Source code, comments (plain ASCII, explaining why and not what), documents,
-commit messages, default interface strings. Another language is a label file,
-never a patch.
+commit messages, default interface strings, and everything an agent reads.
+Another language is a dictionary in `ui/texts/`, never a patch.
 
 ## 2. Nothing identifies anyone
 
@@ -53,10 +53,10 @@ reference; a change of mind changes it first.
 
 ## 6. Stay small, and stay universal
 
-One file for the agent's side, with no dependency. No framework in the
-library. Nothing here knows which agent it serves, nor which application
-shows the exchange: an application gives a folder and one function that gets
-a line to its agent.
+One file for the agent's side, and one small command on top of it, with no
+dependency. No framework in the library. Nothing here knows which agent it
+serves, nor which application shows the exchange: Parley announces what
+happened, and the application decides what to do about it.
 
 ## 7. Prove it for real
 

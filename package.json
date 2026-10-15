@@ -1,12 +1,30 @@
 {
   "name": "clavarium-parley",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "license": "MIT",
   "private": true,
   "type": "module",
-  "description": "A bridge between a command-line agent and a screen of its own: an MCP server of five verbs, and a small library that shows the exchange.",
-  "bin": { "parley-mcp": "server/parley-mcp.mjs" },
-  "exports": { "./host": "./host/parley-host.mjs", "./ui": "./ui/parley-ui.js", "./ui.css": "./ui/parley-ui.css", "./server": "./server/parley-mcp.mjs" },
+  "description": "A bridge between a command-line agent and a screen of its own: a command and an MCP server of five verbs, and a small library that shows the exchange.",
+  "bin": {
+    "parley": "bin/parley.mjs",
+    "parley-mcp": "server/parley-mcp.mjs"
+  },
+  "files": [
+    "bin/",
+    "server/",
+    "host/",
+    "ui/",
+    "docs/",
+    "README.md",
+    "LICENSE"
+  ],
+  "exports": {
+    "./host": "./host/parley-host.mjs",
+    "./ui": "./ui/parley-ui.js",
+    "./ui.css": "./ui/parley-ui.css",
+    "./ui/texts/*": "./ui/texts/*",
+    "./server": "./server/parley-mcp.mjs"
+  },
   "scripts": {
     "test": "node --test \"test/*.test.mjs\"",
     "check": "npm run check:hooks && npm run check:shapes && npm run check:names && npm run check:shell && npm test",
@@ -17,5 +35,7 @@
     "hooks": "git config core.hooksPath hooks",
     "prepare": "git config core.hooksPath hooks 2>/dev/null || true"
   },
-  "engines": { "node": ">=22" }
+  "engines": {
+    "node": ">=22"
+  }
 }
