@@ -43,5 +43,6 @@
   "replies-less": "Less",
   "attach": "Attach a file",
   "remove-file": "Remove {name}",
-  "sending-files": "Sending the files..."
+  "sending-files": "Sending the files...",
+  "attach-where": "They go to its work folder: it opens them there, and so can whoever has this chat."
 }

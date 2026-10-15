@@ -178,3 +178,10 @@
 .parley .parley-unattach { min-height: 2.1em; min-width: 2.3em; padding: 0; border: 0; border-radius: 999px; background: transparent; color: var(--parley-dim); font-size: 1.1em; }
 .parley-file[data-attached="true"] .parley-name::before { content: "\1F4CE  "; }
 .parley-problem[data-kind="sending"] { color: var(--parley-dim); }
+/* A file of the person: its name cut short before its Open button is pushed below it. */
+.parley-file[data-attached="true"] { flex-wrap: nowrap; }
+.parley-file[data-attached="true"] .parley-name { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.parley-file[data-attached="true"] .parley-open { flex: none; margin-left: auto; }
+.parley-size { flex: none; font-size: .8em; color: var(--parley-dim); white-space: nowrap; }
+.parley-pending .parley-size { margin-left: .4em; }
+.parley-where { flex-basis: 100%; font-size: .8em; color: var(--parley-dim); }

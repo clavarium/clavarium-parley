@@ -416,9 +416,9 @@ test('the person attaches files to a message: the agent is told where they are, 
     /* On the screen: by name in its bubble, opened the application's way; its whole path in the detailed view. */
     const data = host.read();
     const simple = view(data, { words: texts('en') });
-    assert.deepEqual(simple.items[0].files, [{ path: '/work/.parley/files/a1/photo.jpg', name: 'photo.jpg', open: 'work:.parley/files/a1/photo.jpg', shown: '' }, { path: '/elsewhere/x.txt', name: 'x.txt', open: null, shown: '' }]);
+    assert.deepEqual(simple.items[0].files, [{ path: '/work/.parley/files/a1/photo.jpg', name: 'photo.jpg', open: 'work:.parley/files/a1/photo.jpg', shown: '', size: '2 KB' }, { path: '/elsewhere/x.txt', name: 'x.txt', open: null, shown: '', size: '3 B' }]);
     assert.equal(view(data, { words: texts('en'), view: 'detailed' }).items[0].files[0].shown, '/work/.parley/files/a1/photo.jpg');
-    for (const key of ['attach', 'remove-file', 'sending-files']) assert.ok(KEYS.includes(key));
+    for (const key of ['attach', 'remove-file', 'sending-files', 'attach-where']) assert.ok(KEYS.includes(key));
 });
 
 test('lines of the application: said in the thread where they happened, grey, with its buttons; they take no step and hide no "not read yet"', () => {

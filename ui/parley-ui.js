@@ -91,7 +91,7 @@ export const VIEWS = Object.freeze(['simple', 'detailed']);
 export const KEYS = Object.freeze(['send', 'placeholder', 'empty', 'view', 'simple', 'detailed', 'working', 'waiting', 'done', 'no-status', 'asks', 'open', 'outside',
     'not-read', 'read', 'remind', 'reminded', 'steps', 'no-steps', 'files', 'no-files', 'terminal', 'not-sent', 'step-one', 'steps-many', 'today', 'yesterday', 'quiet',
     'mic', 'mic-stop', 'auto-send', 'voice-calibrating', 'voice-listening', 'voice-hearing', 'voice-transcribing', 'voice-wait', 'voice-off', 'replies', 'replies-more', 'replies-less',
-    'attach', 'remove-file', 'sending-files']);
+    'attach', 'remove-file', 'sending-files', 'attach-where']);
 /* Narrower than this, the detailed view folds its files into one line. */
 export const NARROW_PX = 736;
 /* Between two messages further apart than this, the time is said. */
@@ -115,6 +115,8 @@ export const ACTIONS_MAX = 4;
 const fill = (word, values = {}) => String(word ?? '').replace(/\{([a-z]+)\}/g, (all, key) => (Object.hasOwn(values, key) ? String(values[key]) : all));
 const said = (words, key, values) => fill(typeof words?.[key] === 'string' ? words[key] : key, values);
 const nameOf = (path) => String(path ?? '').split('/').pop();
+/* A size, as a person reads it. */
+export const sizeText = (n) => (!Number.isInteger(n) || n < 0 ? '' : n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` : n >= 1024 ? `${Math.round(n / 1024)} KB` : `${n} B`);
 const stamp = (at) => { const t = Date.parse(at); return Number.isNaN(t) ? null : t; };
 /* Written the device's way, or the given locale's; a locale that is not one is the device's. */
 const format = (t, locale, options) => { if (t === null) return ''; const d = new Date(t); try { return d.toLocaleString(locale, options); } catch { return d.toLocaleString(undefined, options); } };
@@ -168,7 +170,7 @@ export function view(data, { words = {}, view: as = 'simple', now = Date.now(), 
             label: open ? said(words, 'asks') : '',
             file: show ? { path: String(m.path ?? ''), open: reach, name: nameOf(m.path), shown: detailed ? String(m.path ?? '') : (m.text ? nameOf(m.path) : '') } : null,
             /* What the person attached: by name, opened the application's way; its whole path in the detailed view. */
-            files: (Array.isArray(m.files) ? m.files : []).slice(0, FILES_MAX).filter((f) => f && typeof f === 'object').map((f) => ({ path: String(f.path ?? ''), name: String(f.name || nameOf(f.path)), open: typeof f.open === 'string' ? f.open : null, shown: detailed ? String(f.path ?? '') : '' })),
+            files: (Array.isArray(m.files) ? m.files : []).slice(0, FILES_MAX).filter((f) => f && typeof f === 'object').map((f) => ({ path: String(f.path ?? ''), name: String(f.name || nameOf(f.path)), open: typeof f.open === 'string' ? f.open : null, shown: detailed ? String(f.path ?? '') : '', size: sizeText(f.size) })),
             actions: [],
             outside: show && reach === null ? said(words, 'outside', { path: String(m.path ?? '') }) : '',
             choices: open ? (m.choices ?? []).map(String) : [],
@@ -429,6 +431,7 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
         for (const f of item.files ?? []) {
             const row2 = el('div', 'parley-file'); row2.dataset.attached = 'true';
             row2.append(el('span', 'parley-name', f.name));
+            if (f.size) row2.append(el('span', 'parley-size', f.size));
             if (f.shown) row2.append(el('span', 'parley-path', f.shown));
             const b = fileButton(f); if (b) row2.append(b);
             bubble.append(row2);
@@ -551,8 +554,10 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
     const stayIn = () => { if (typing && document.activeElement !== box) box.focus({ preventScroll: true }); typing = false; };
     const paintPending = () => {
         pendingRow.hidden = pending.length === 0;
-        pendingRow.replaceChildren(...pending.map((file, i) => {
-            const chip = el('span', 'parley-pending'); chip.append(el('span', 'parley-name', file.name));
+        /* Where they go, and who opens them: said where they are chosen. */
+        const where = el('p', 'parley-where', said(words, 'attach-where'));
+        pendingRow.replaceChildren(where, ...pending.map((file, i) => {
+            const chip = el('span', 'parley-pending'); chip.append(el('span', 'parley-name', file.name), el('span', 'parley-size', sizeText(file.size)));
             const x = button('\u00d7', 'parley-unattach', () => { pending = pending.filter((_, j) => j !== i); paintPending(); stayIn(); });
             x.title = said(words, 'remove-file', { name: file.name }); x.setAttribute('aria-label', x.title);
             chip.append(x);

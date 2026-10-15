@@ -43,5 +43,6 @@
   "replies-less": "Moins",
   "attach": "Joindre un fichier",
   "remove-file": "Retirer {name}",
-  "sending-files": "Envoi des fichiers..."
+  "sending-files": "Envoi des fichiers...",
+  "attach-where": "Ils vont dans son dossier de travail : il les ouvre là, comme quiconque a ce chat."
 }
