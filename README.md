@@ -3,24 +3,25 @@
 A bridge between a command-line agent and a screen of its own.
 
 A command-line agent lives in a terminal. Whoever does not read a terminal
-cannot talk with it. Parley gives the agent five verbs, as a command and as
+cannot talk with it. Parley gives the agent six verbs, as a command and as
 an MCP server, and gives an application a small library that shows the
 exchange as a conversation, on any screen.
 
 It is part of the Clavarium family and needs nothing of Clavarium: any
 application, any agent that can run a command.
 
-## The five verbs
+## The six verbs
 
 | The agent runs | To |
 |---|---|
 | `parley tell "text"` | say where it is, what it did |
 | `parley ask "question" [choice ...]` | ask, with or without choices; it does not wait |
 | `parley show path ["note"]` | point to a file it made |
+| `parley doing "text"` | say in one line what it is doing now, at each new step |
 | `parley read` | read what was written to it, answers included |
 | `parley status working\|waiting\|done ["note"]` | say where it is |
 
-`parley --help` says all of it to the agent. The same five verbs are an MCP
+`parley --help` says all of it to the agent. The same six verbs are an MCP
 server (`parley-mcp`, or `node server/parley-mcp.mjs --dir FOLDER`) for an
 agent that is given it that way; both write the same files.
 
@@ -36,11 +37,12 @@ arrived. See [docs/protocol.md](docs/protocol.md).
 | `agent-asked` | the question and its choices | show buttons, ring a phone |
 | `agent-showed` | the path, and how to open it (`open`, or `null`) | show a link, or say it is not in a shared folder |
 | `agent-status` | `working`, `waiting` or `done`, and a note | show it; ring a phone on `waiting` |
+| `agent-doing` | one line: what it is doing now | show it while it works; nothing more |
 
 | Action | Does |
 |---|---|
 | `say(text, answers)` | writes what the person said (`answers`: the question it answers) |
-| `read()` | the exchange: messages, open questions, status, steps, files, unread |
+| `read()` | the exchange: messages, open questions, status, steps (states and what it did, in order), files, unread |
 | `invite(lang, { install, shared })` | the text that asks an agent to use Parley, in English, saying the person's language |
 
 Parley types nothing anywhere. `WAKE` (`You have a new message: run "parley
@@ -51,7 +53,7 @@ are, changes, or does not use.
 
 | Piece | File | What it is |
 |---|---|---|
-| The agent's side | `server/parley-mcp.mjs`, `bin/parley.mjs` | the five verbs, as an MCP server and as a command; no dependency |
+| The agent's side | `server/parley-mcp.mjs`, `bin/parley.mjs` | the six verbs, as an MCP server and as a command; no dependency |
 | The application's side | `host/parley-host.mjs` | reads and writes the files, cleans what the agent wrote, announces events |
 | The screen | `ui/parley-ui.js`, `ui/parley-ui.css` | the exchange in two views, simple and detailed; no framework |
 | The words | `ui/texts/en.json`, `ui/texts/fr.json` | one dictionary per language |
@@ -66,7 +68,7 @@ are, changes, or does not use.
         reach: (path) => (path.startsWith('/work/') ? path : null),   // what the person can open
     });
     parley.listen();
-    typeInTheAgentsTerminal(parley.invite('fr', { install: 'npm install -g /path/to/clavarium-parley-0.2.0.tgz', shared: '/work' }));
+    typeInTheAgentsTerminal(parley.invite('fr', { install: 'npm install -g /path/to/clavarium-parley-0.3.0.tgz', shared: '/work' }));
 
 and in a page:
 
@@ -74,9 +76,25 @@ and in a page:
     mount(element, { load, send, words: texts('fr', operatorsOwn), open, terminal, view: 'simple' });
 
 The agent installs the command itself, from the archive `npm pack` makes:
-`npm install -g clavarium-parley-0.2.0.tgz`, then `parley --help`. It finds
+`npm install -g clavarium-parley-0.3.0.tgz`, then `parley --help`. It finds
 its folder as git finds a repository: the nearest `.parley` from where it
 stands, or `--dir`, or `$PARLEY_DIR`.
+
+## The screen
+
+Two views of one exchange, and a person picks one:
+
+| | Simple | Detailed |
+|---|---|---|
+| Messages | bubbles; the time on hover, or a long press | bubbles, each with its time |
+| While it works | one line, moving: what it does now; gone when its next message comes | the same line, and every step of this turn above it |
+| Steps it went through | folded into one line between two messages ("5 steps"), opened with a click | unfolded between the messages, each with its time and state |
+| Where it is | only when it waits for the person | always, at the top |
+| Files | the ones the person can open, by name | every one, with its path; one that cannot be opened is said so |
+| Its terminal | | a way to it |
+
+In both, the day is said when it changes, and the time when long passed
+between two messages, as a chat does.
 
 ## Words
 
@@ -97,11 +115,14 @@ showing the exchange. Invited, the agent said it was ready through `tell` in
 question with two choices through `ask`; answered with one touch on the
 page, it read the answer and went on.
 
-Not tried yet with a real agent: the `parley` command installed from its
-archive (version 0.2, tested here against a real `npm install -g`); any
-agent but OpenCode; `show` and `status` (it did not use them unasked); an
-answer coming hours later; the two views in a real page with a real agent; a
-mirror between two agents.
+Tried for real with version 0.2 (OpenCode, on hosted open models): the
+`parley` command installed by the agent from its archive, `tell`, `ask`,
+`show` and `status`, an answer given ten minutes later, and the two views in
+a real page.
+
+Not tried yet with a real agent: `doing` and the line of what it does now
+(version 0.3, tested here with stand-ins); any agent but OpenCode; an answer
+coming hours later; a mirror between two agents.
 
 ## Licence
 

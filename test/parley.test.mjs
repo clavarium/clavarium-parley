@@ -1,4 +1,6 @@
 import { test } from 'node:test';
+/* Times and days are checked in one time zone, whatever the machine's. */
+process.env.TZ = 'UTC';
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
 import { mkdtempSync, rmSync, readFileSync, writeFileSync, existsSync, mkdirSync, appendFileSync, readdirSync } from 'node:fs';
@@ -34,11 +36,11 @@ const said = (reply) => reply.result.content[0].text;
 /* The command, as an agent runs it: in a folder of its own, a new process each time. */
 const parley = (cwd, args, input) => { const r = spawnSync(process.execPath, [COMMAND, ...args], { cwd, input, encoding: 'utf8', env: { ...process.env, PARLEY_DIR: '' } }); return { code: r.status, out: r.stdout, err: r.stderr }; };
 
-test('the agent\'s side speaks MCP and has five verbs, no more', async (t) => {
+test('the agent\'s side speaks MCP and has six verbs, no more', async (t) => {
     const dir = folder(t);
     const replies = await agent(dir, [{ method: 'tools/list' }, { method: 'ping' }, { method: 'resources/list' }, tool('launch')]);
     assert.equal(replies[0].result.serverInfo.name, 'parley'); assert.deepEqual(replies[0].result.capabilities, { tools: {} });
-    assert.deepEqual(replies[1].result.tools.map((x) => x.name), ['tell', 'ask', 'show', 'read', 'status']);
+    assert.deepEqual(replies[1].result.tools.map((x) => x.name), ['tell', 'ask', 'show', 'read', 'doing', 'status']);
     assert.ok(replies[1].result.tools.every((x) => x.inputSchema.type === 'object' && x.description.length > 20));
     assert.deepEqual(replies[2].result, {});
     assert.equal(replies[3].error.code, -32601);
@@ -46,7 +48,7 @@ test('the agent\'s side speaks MCP and has five verbs, no more', async (t) => {
     assert.equal(replies.length, 5, 'a notification is not answered');
 });
 
-test('the command: the same five verbs on the same files, found from where the agent stands', async (t) => {
+test('the command: the same six verbs on the same files, found from where the agent stands', async (t) => {
     const home = folder(t);
     const dir = join(home, '.parley'); install(dir);
     mkdirSync(join(home, 'deep', 'er'), { recursive: true });
@@ -55,6 +57,7 @@ test('the command: the same five verbs on the same files, found from where the a
     assert.equal(findFolder({ from: here, env: {} }), dir, 'the nearest .parley from here up');
     assert.equal(parley(here, ['status', 'working', 'on', 'the', 'report']).code, 0);
     assert.match(parley(here, ['tell', 'Half written.']).out, /Posted/);
+    assert.equal(parley(here, ['doing', 'reading', 'the  notes\n']).out, 'Noted.\n', 'what it does now: one line');
     const asked = parley(here, ['ask', 'Blue or red cover?', 'blue', 'red']);
     assert.match(asked.out, /Do not wait here.*run `parley read`/);
     assert.equal(parley(home, ['show', 'report.html', 'The draft.']).code, 0);
@@ -64,6 +67,7 @@ test('the command: the same five verbs on the same files, found from where the a
     assert.deepEqual(seen.messages.map((m) => [m.kind, m.text]), [['say', 'Half written.'], ['ask', 'Blue or red cover?'], ['show', 'The draft.'], ['say', 'It\'s "quoted",\nand on two lines.']]);
     assert.equal(seen.messages[2].path, join(home, 'report.html'), 'a relative path is posted whole');
     assert.deepEqual(seen.status, { state: 'working', note: 'on the report', at: seen.status.at });
+    assert.deepEqual(seen.steps.map((s) => [s.kind, s.state, s.note]), [['status', 'working', 'on the report'], ['doing', 'working', 'reading the notes']], 'its steps, in order: states and what it did');
     host.say('blue', seen.messages[1].id);
     host.say('Keep it short.');
     seen = host.read();
@@ -77,17 +81,19 @@ test('the command: the same five verbs on the same files, found from where the a
     assert.deepEqual(refused(['status', 'sleeping']), [1, 'Not done: the state is one of: working, waiting, done']);
     assert.deepEqual(refused(['show', 'nowhere.txt']), [1, `Not done: no such file: ${join(home, 'nowhere')}`]);
     assert.deepEqual(refused(['tell']), [1, 'Not done: the text is empty']);
+    assert.deepEqual(refused(['doing', '  ']), [1, 'Not done: the text is empty']);
     assert.equal(parley(home, ['launch']).code, 64);
     assert.equal(parley(tmpdir(), ['read']).code, 2, 'no folder, said so');
     assert.equal(parley(tmpdir(), ['read', '--dir', dir]).code, 0, 'or given');
     /* The MCP server writes the same files: one exchange, two ways in. */
-    await agent(dir, [tool('tell', { text: 'from MCP' })]);
+    await agent(dir, [tool('tell', { text: 'from MCP' }), tool('doing', { text: 'x'.repeat(300) })]);
     assert.equal(host.read().messages.at(-1).text, 'from MCP');
+    assert.equal(host.read().steps.at(-1).note, 'x'.repeat(200), 'what it does is one short line');
 });
 
 test('the help says everything an agent needs, in English, and nothing is done without a verb', (t) => {
     for (const asked of [[], ['--help'], ['-h'], ['help']]) assert.equal(run(asked, { cwd: folder(t), env: {} }).out, `${HELP}\n`);
-    for (const word of ['read', 'tell', 'ask', 'show', 'status', 'You have a new message', 'their language', 'share', '--dir', 'PARLEY_DIR']) assert.ok(HELP.includes(word), word);
+    for (const word of ['read', 'tell', 'ask', 'show', 'status', 'parley doing', 'You have a new message', 'their language', 'share', '--dir', 'PARLEY_DIR']) assert.ok(HELP.includes(word), word);
     assert.ok(/^[\x20-\x7e\n]+$/.test(HELP), 'plain ASCII');
 });
 
@@ -110,10 +116,11 @@ test('the contract: Parley announces, the application decides; nothing is typed 
     await run2([tool('tell', { text: 'before anyone listened' })]);
     const stop = host.listen({ every: 15 });
     t.after(stop);
-    await run2([tool('status', { state: 'working', note: 'on the report' }), tool('ask', { question: 'Blue or red cover?', choices: ['blue', 'red'] }), tool('show', { path: join(dir, 'made.txt') }), tool('status', { state: 'working' }), tool('status', { state: 'waiting' })]);
+    await run2([tool('status', { state: 'working', note: 'on the report' }), tool('ask', { question: 'Blue or red cover?', choices: ['blue', 'red'] }), tool('show', { path: join(dir, 'made.txt') }), tool('doing', { text: 'checking the cover' }), tool('status', { state: 'waiting' })]);
     await until('five events', () => events.length >= 5);
-    assert.deepEqual(events.map((e) => [e.type, e.message.kind, e.message.state ?? '']), [['agent-status', 'status', 'working'], ['agent-asked', 'ask', ''], ['agent-showed', 'show', ''], ['agent-status', 'status', 'working'], ['agent-status', 'status', 'waiting']],
-        'each line once, two statuses in a row included, nothing from before');
+    assert.deepEqual(events.map((e) => [e.type, e.message.kind, e.message.state ?? '']), [['agent-status', 'status', 'working'], ['agent-asked', 'ask', ''], ['agent-showed', 'show', ''], ['agent-doing', 'doing', 'working'], ['agent-status', 'status', 'waiting']],
+        'each line once, what it does included, nothing from before');
+    assert.equal(events[3].message.text, 'checking the cover');
     assert.equal(events[2].message.open, null, 'a file it cannot be opened from is said so');
     /* A line written in two pieces is announced once it is whole. */
     const half = JSON.stringify({ id: 'h', at: new Date().toISOString(), kind: 'say', text: 'héhé ' });
@@ -133,7 +140,7 @@ test('the contract: Parley announces, the application decides; nothing is typed 
     assert.throws(() => host.say('   '), /Write something/);
     /* What the screen is given: the steps it said, the files it showed. */
     const all = host.read();
-    assert.deepEqual(all.steps.map((s) => [s.state, s.note]), [['working', 'on the report'], ['working', ''], ['waiting', '']]);
+    assert.deepEqual(all.steps.map((s) => [s.kind, s.state, s.note]), [['status', 'working', 'on the report'], ['doing', 'working', 'checking the cover'], ['status', 'waiting', '']]);
     assert.deepEqual(all.files.map((f) => f.open), [null]);
     assert.equal(all.status.state, 'waiting');
     /* The agent reads: nothing is left unread. */
@@ -148,7 +155,7 @@ test('the contract: Parley announces, the application decides; nothing is typed 
 test('the texts an agent reads are English and say the person\'s language; the line that wakes it is the application\'s to type', () => {
     assert.equal(WAKE, 'You have a new message: run "parley read".');
     const text = invitation({ lang: 'fr-FR', install: 'npm install -g /tools/clavarium-parley-0.2.0.tgz', shared: '/work' });
-    for (const part of ['npm install -g /tools/clavarium-parley-0.2.0.tgz', 'parley --help', 'parley tell', 'parley ask', 'parley show', 'parley status', 'under /work', 'Write to them in French.', 'You have a new message', 'parley read']) assert.ok(text.includes(part), part);
+    for (const part of ['npm install -g /tools/clavarium-parley-0.2.0.tgz', 'parley --help', 'parley tell', 'parley ask', 'parley show', 'parley doing', 'parley status', 'under /work', 'Write to them in French.', 'You have a new message', 'parley read']) assert.ok(text.includes(part), part);
     assert.ok(/^[\x20-\x7e]+$/.test(text), 'one line, plain ASCII');
     for (const line of [text, WAKE]) assert.ok(!/[`'$\\]/.test(line), 'nothing a shell would run or wait on, should one listen instead of an agent');
     assert.equal(new Parley('/nowhere').invite('de'), invitation({ lang: 'de' }));
@@ -177,41 +184,95 @@ test('the words a person reads: a dictionary per language, English where a word 
 
 test('what the screen shows is decided from the messages alone: two views of one exchange', () => {
     const words = texts('en');
-    const data = { unread: 1, status: { state: 'waiting', note: 'on the cover', at: '2026-01-05T06:00:00.000Z' },
-        steps: [{ state: 'working', note: 'on the report', at: '2026-01-05T05:00:00.000Z' }, { state: 'waiting', note: 'on the cover', at: '2026-01-05T06:00:00.000Z' }],
-        files: [{ path: '/work/report.html', note: 'The draft.', open: 'work/report.html', at: '2026-01-05T05:30:00.000Z' }, { path: '/tmp/secret.txt', note: '', open: null, at: '2026-01-05T05:40:00.000Z' }],
+    const at = (minute) => `2026-01-05T06:${String(minute).padStart(2, '0')}:00.000Z`;
+    const data = { unread: 1, status: { state: 'waiting', note: 'on the cover', at: at(50) },
+        steps: [{ id: 'w1', kind: 'status', state: 'working', note: 'on the report', at: at(0) }, { id: 'w2', kind: 'status', state: 'waiting', note: 'on the cover', at: at(50) }],
+        files: [{ path: '/work/report.html', note: 'The draft.', open: 'work/report.html', at: at(30) }, { path: '/tmp/secret.txt', note: '', open: null, at: at(40) }],
         messages: [
-            { from: 'agent', id: 'q1', kind: 'ask', text: 'Blue or red?', choices: ['blue', 'red'] },
-            { from: 'person', id: 'p1', kind: 'say', text: 'blue', answers: 'q1', seen: false },
-            { from: 'agent', id: 'q2', kind: 'ask', text: 'One page or two?', choices: ['one', 'two'] },
-            { from: 'agent', id: 's1', kind: 'show', text: 'The draft.', path: '/work/report.html', open: 'work/report.html' },
-            { from: 'agent', id: 's2', kind: 'show', text: '', path: '/tmp/secret.txt', open: null },
-            { from: 'agent', id: 't1', kind: 'say', text: '<b>not markup</b>' },
-            { from: 'person', id: 'p2', kind: 'say', text: 'two', seen: false },
+            { from: 'agent', id: 'q1', kind: 'ask', text: 'Blue or red?', choices: ['blue', 'red'], at: at(1) },
+            { from: 'person', id: 'p1', kind: 'say', text: 'blue', answers: 'q1', seen: false, at: at(2) },
+            { from: 'agent', id: 'q2', kind: 'ask', text: 'One page or two?', choices: ['one', 'two'], at: at(3) },
+            { from: 'agent', id: 's1', kind: 'show', text: 'The draft.', path: '/work/report.html', open: 'work/report.html', at: at(30) },
+            { from: 'agent', id: 's2', kind: 'show', text: '', path: '/tmp/secret.txt', open: null, at: at(40) },
+            { from: 'agent', id: 't1', kind: 'say', text: '<b>not markup</b>', at: at(41) },
+            { from: 'person', id: 'p2', kind: 'say', text: 'two', seen: false, at: at(42) },
         ] };
-    const simple = view(data, { words, view: 'simple' });
+    const now = Date.parse('2026-01-05T09:00:00.000Z');
+    const simple = view(data, { words, view: 'simple', now, locale: 'en-GB' });
     assert.deepEqual(simple.items.map((i) => [i.id, i.open, i.choices.length, i.label]), [['q1', false, 0, ''], ['p1', false, 0, ''], ['q2', true, 2, 'It asks you'], ['s1', false, 0, ''], ['t1', false, 0, ''], ['p2', false, 0, '']],
         'simple: nothing the person cannot act on -- a file that cannot be opened is not there');
     assert.deepEqual(simple.items[3].file, { path: '/work/report.html', open: 'work/report.html', name: 'report.html', shown: 'report.html' }, 'its name, not its path');
     assert.equal(simple.items[4].text, '<b>not markup</b>', 'kept as the text it is');
     assert.deepEqual(simple.items.map((i) => i.mark), ['', '', '', '', '', 'Not read yet'], 'said only of the last word, with nothing from the agent after it');
+    assert.deepEqual([simple.items[0].time, simple.items[0].when], ['06:01', 'Monday, 5 January 2026 at 06:01'], 'each message has its time, and its whole date on hover');
     assert.equal(simple.status, null, 'it waits, and the open question already says so');
     assert.deepEqual(view({ ...data, messages: data.messages.slice(0, 2) }, { words }).status, { state: 'waiting', text: 'Waiting for you - on the cover', when: '' });
     assert.equal(view({ ...data, status: { state: 'working', note: '' } }, { words }).status, null);
-    assert.deepEqual([simple.steps, simple.files, simple.summary], [[], [], '']);
-    const detailed = view(data, { words, view: 'detailed' });
+    assert.deepEqual([simple.files, simple.summary], [[], '']);
+    assert.deepEqual(simple.rows.filter((r) => r.type === 'steps').map((r) => [r.label, r.open]), [['1 step', false], ['1 step', false]], 'simple: the steps folded, one line between messages');
+    const detailed = view(data, { words, view: 'detailed', now, locale: 'en-GB' });
     assert.deepEqual(detailed.items.map((i) => i.id), ['q1', 'p1', 'q2', 's1', 's2', 't1', 'p2'], 'detailed: everything');
     assert.equal(detailed.items[4].text, 'secret.txt'); assert.equal(detailed.items[4].outside, 'Not in a shared folder: it cannot be opened from here.');
     assert.equal(detailed.items[3].file.shown, '/work/report.html', 'with its path');
     assert.equal(detailed.status.text, 'Waiting for you - on the cover'); assert.ok(detailed.status.when);
-    assert.deepEqual(detailed.steps.map((s) => s.text), ['on the report'], 'the steps behind it; where it is now is the status line');
+    assert.deepEqual(detailed.rows.filter((r) => r.type === 'steps').map((r) => [r.open, r.steps.map((x) => [x.text, x.time])]), [[true, [['Working - on the report', '06:00']]], [true, [['Waiting for you - on the cover', '06:50']]]],
+        'detailed: every step unfolded where it came, with its state and time');
     assert.deepEqual(detailed.files.map((f) => [f.name, f.open]), [['report.html', 'work/report.html'], ['secret.txt', null]]);
-    assert.equal(detailed.summary, 'Steps (1) - Files (2)');
+    assert.equal(detailed.summary, 'Files (2)');
     assert.equal(view({ messages: [] }, { words, view: 'detailed' }).status.text, 'It has not said where it is yet.');
     const french = view({ messages: [] }, { words: texts('fr', { empty: 'Rien, taratata' }) });
     assert.equal(french.empty, 'Rien, taratata');
     assert.equal(view(undefined).items.length, 0);
     assert.equal(view({ messages: [] }, { words: {} }).empty, 'empty', 'a word missing everywhere shows its key, never nothing');
+});
+
+test('while it works, the one line of what it does now; gone when its next message comes, and what came before one click away', () => {
+    const words = texts('en');
+    const at = (minute) => new Date(Date.parse('2026-01-05T06:00:00.000Z') + minute * 60_000).toISOString();
+    const asked = { from: 'person', id: 'p1', kind: 'say', text: 'Write the story.', seen: true, at: at(0) };
+    const turn = [
+        { id: 'd1', kind: 'doing', state: 'working', note: 'listening to the 12 recordings', at: at(1) },
+        { id: 'd2', kind: 'doing', state: 'working', note: 'writing chapter 1', at: at(5) },
+        { id: 'd3', kind: 'doing', state: 'working', note: 'reading it again', at: at(9) },
+    ];
+    const kinds = (v) => v.rows.map((r) => r.type);
+    let data = { messages: [asked], steps: turn, status: { state: 'working', note: '', at: at(9) } };
+    let simple = view(data, { words, now: Date.parse(at(10)), locale: 'en-GB' });
+    assert.deepEqual(kinds(simple), ['day', 'message', 'now']);
+    const line = simple.rows.at(-1);
+    assert.deepEqual([line.text, line.live, line.time, line.label, line.open, line.steps.map((s) => s.text)], ['reading it again', true, '06:09', '2 steps', false, ['listening to the 12 recordings', 'writing chapter 1']],
+        'the newest line, moving; the two before it folded behind it');
+    assert.equal(simple.status, null, 'simple: no status line while it works');
+    const detailed = view(data, { words, view: 'detailed', now: Date.parse(at(10)), locale: 'en-GB' });
+    assert.equal(detailed.rows.at(-1).open, true, 'detailed: what came before, unfolded');
+    /* Nothing new for a long while: it may have stopped; the line stays, still. */
+    const quiet = view(data, { words, now: Date.parse(at(40)), locale: 'en-GB' }).rows.at(-1);
+    assert.deepEqual([quiet.live, quiet.quiet], [false, 'nothing new since 06:09']);
+    /* Its next message: the line is gone, its steps fold between the two messages. */
+    data = { ...data, messages: [asked, { from: 'agent', id: 'a1', kind: 'say', text: 'Chapter 1 is written.', at: at(11) }] };
+    simple = view(data, { words, now: Date.parse(at(12)), locale: 'en-GB' });
+    assert.deepEqual(kinds(simple), ['day', 'message', 'steps', 'message']);
+    assert.deepEqual([simple.rows[2].label, simple.rows[2].open, simple.rows[2].steps.length], ['3 steps', false, 3]);
+    assert.equal(view(data, { words, view: 'detailed', now: Date.parse(at(12)) }).rows[2].open, true);
+    /* A turn that ends done or waiting is not shown as moving. */
+    const ended = view({ ...data, messages: [asked], steps: [...turn, { id: 'x', kind: 'status', state: 'done', note: '', at: at(10) }] }, { words, now: Date.parse(at(11)) });
+    assert.deepEqual(kinds(ended), ['day', 'message', 'steps']);
+    assert.equal(ended.rows[2].label, '4 steps');
+    /* One step alone: a line, nothing to unfold. */
+    assert.deepEqual(view({ messages: [asked], steps: turn.slice(0, 1) }, { words, now: Date.parse(at(2)) }).rows.at(-1).label, '');
+});
+
+test('times as a chat shows them: the day when it changes, the time when long passed, in the person\'s words', () => {
+    const now = Date.parse('2026-03-10T15:00:00.000Z');
+    const m = (id, at) => ({ from: 'agent', id, kind: 'say', text: id, at });
+    const data = { messages: [m('a', '2025-12-31T09:00:00.000Z'), m('b', '2026-03-02T09:00:00.000Z'), m('c', '2026-03-09T22:00:00.000Z'), m('d', '2026-03-10T08:00:00.000Z'), m('e', '2026-03-10T08:30:00.000Z'), m('f', '2026-03-10T11:00:00.000Z')] };
+    const rows = view(data, { words: texts('en'), now, locale: 'en-GB' }).rows.filter((r) => r.type !== 'message').map((r) => [r.type, r.text]);
+    assert.deepEqual(rows, [['day', 'Wednesday, 31 December 2025'], ['day', 'Monday 2 March'], ['day', 'Yesterday'], ['day', 'Today'], ['gap', '11:00']],
+        'a new day, the year when it is not this one; within a day, the time after a long silence only');
+    const fr = view(data, { words: texts('fr'), now, locale: 'fr' }).rows.filter((r) => r.type !== 'message').map((r) => r.text);
+    assert.deepEqual(fr, ['mercredi 31 décembre 2025', 'lundi 2 mars', 'Hier', "Aujourd'hui", '11:00']);
+    assert.equal(view({ messages: [m('x', 'not a date')] }, { words: texts('en') }).rows.map((r) => r.type).join(), 'message', 'no time, no divider');
+    assert.equal(view({ messages: [m('x', '2026-03-10T08:00:00.000Z')] }, { words: texts('en'), locale: '<b>' }).items[0].time.length > 0, true, 'a locale that is not one is the device\'s');
 });
 
 test('the package an agent installs: one archive, the command and the MCP server in it, and it runs', { timeout: 120_000 }, (t) => {
@@ -249,4 +310,23 @@ test('what the agent posts is text chosen by a program: bounded, cleaned, never 
     assert.equal(messages[2].choices.length, 8); assert.equal(messages[2].choices[0], 'c0');
     assert.deepEqual([messages[3].path, messages[3].open], ['/etc/passwd[2J', null], 'a reach that fails opens nothing');
     assert.equal(status.state, 'working', 'a state it does not know is not passed on');
+});
+
+test('saying what it does means it works: after "done" or "waiting", a step it starts makes it "working" again', (t) => {
+    const dir = folder(t);
+    install(dir);
+    const line = (id, minute, rest) => JSON.stringify({ id, at: `2026-01-05T06:0${minute}:00.000Z`, ...rest });
+    writeFileSync(join(dir, 'from-agent.jsonl'), `${[
+        line('a', 0, { kind: 'doing', text: 'first\nline\u001b[2J ' + 'y'.repeat(300) }),
+        line('b', 1, { kind: 'status', state: 'done', text: 'all done' }),
+    ].join('\n')}\n`);
+    const host = new Parley(dir);
+    assert.equal(host.read().steps[0].note, `first line[2J ${'y'.repeat(300)}`.slice(0, 200), 'one line, cleaned, bounded');
+    assert.equal(host.read().status.state, 'done');
+    appendFileSync(join(dir, 'from-agent.jsonl'), `${line('c', 2, { kind: 'doing', text: 'one more thing' })}\n`);
+    assert.deepEqual(host.read().status, { state: 'working', note: '', at: '2026-01-05T06:02:00.000Z' });
+    assert.equal(host.read().messages.length, 0, 'steps are not messages');
+    const alone = folder(t);
+    writeFileSync(join(alone, 'from-agent.jsonl'), `${line('d', 0, { kind: 'doing', text: 'started' })}\n`);
+    assert.equal(new Parley(alone).read().status.state, 'working', 'a step said before any state');
 });

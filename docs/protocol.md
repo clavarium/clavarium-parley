@@ -17,7 +17,7 @@ address, no port and no key: whoever can read and write the folder is a side.
 The command finds the folder as git finds a repository: `--dir`, else
 `$PARLEY_DIR`, else the nearest `.parley` from where the agent stands.
 
-## What an agent can do: five verbs
+## What an agent can do: six verbs
 
 | Command | MCP tool | It posts | It returns |
 |---|---|---|---|
@@ -25,9 +25,12 @@ The command finds the folder as git finds a repository: `--dir`, else
 | `parley ask QUESTION [CHOICE ...]` | `ask(question, choices?)` | `{kind:"ask", text, choices}` | at once: it never waits for the answer |
 | `parley show PATH [NOTE]` | `show(path, note?)` | `{kind:"show", path, text}`, the path made whole | at once; refused if there is no such file |
 | `parley status STATE [NOTE]` | `status(state, note?)` | `{kind:"status", state, text}` | at once |
+| `parley doing TEXT` | `doing(text)` | `{kind:"doing", text}`, one line of 200 characters at most | at once |
 | `parley read` | `read()` | nothing | what was written since the last read, answers included |
 
-`STATE` is `working`, `waiting` or `done`. Every line posted also carries
+`STATE` is `working`, `waiting` or `done`. `doing` says what the agent is
+doing now, at each new step; it means it works: a `doing` after `done` or
+`waiting` makes its status `working` again. Every line posted also carries
 `id` (unique) and `at` (the time, ISO 8601). A text may come from standard
 input with `-`. Exit codes of the command: 0 done, 1 refused, 2 no folder,
 64 not understood.
@@ -58,6 +61,7 @@ finds it. An answer may therefore come two minutes or two days later.
 | `agent-asked` | the agent ran `ask` | `message` (with `choices`) |
 | `agent-showed` | the agent ran `show` | `message` (with `path`, and `open`: the application's way to open it, or `null`) |
 | `agent-status` | the agent ran `status` | `message` (with `state`) |
+| `agent-doing` | the agent ran `doing` | `message` (its `text`: one line) |
 
 Events of the agent are announced by `listen()`, each line once, once it is
 whole, from the moment it was started: what was posted before is in
@@ -66,13 +70,22 @@ whole, from the moment it was started: what was posted before is in
 | Action | Gives |
 |---|---|
 | `say(text, answers?)` | what `read()` gives, after writing |
-| `read()` | `messages` (each of the person's says `seen`), `waiting` (open questions), `status`, `steps` (every status said), `files` (every file shown), `unread` |
+| `read()` | `messages` (each of the person's says `seen`), `waiting` (open questions), `status`, `steps` (every `status` and `doing`, in order: `{id, kind, state, note, at}`), `files` (every file shown), `unread` |
 | `invite(lang, {install?, shared?})` | the invitation, a text |
 | `unread()` | how many of the person's messages the agent has not read |
 
 `reach(path)`, given by the application, says how the person opens a file
 the agent showed: a reference of its own, or `null` when it is not in a
 folder the person can open. The screen then says so.
+
+## What the screen makes of the steps
+
+The steps that came between two messages are put between them. Those after
+the last message are the agent's turn: while the newest of them is a `doing`
+(or a `working` status), it is shown as the one line of what it does now, and
+it goes when the next message comes. Nothing came for 15 minutes: the line
+stays, still, and says since when. See the table in the README for what each
+view shows.
 
 ## Words
 
