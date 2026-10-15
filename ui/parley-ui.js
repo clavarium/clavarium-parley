@@ -78,10 +78,10 @@ export function view(data, { words = {}, view: as = 'simple' } = {}) {
             };
         }),
         unread: Number(data?.unread) || 0,
-        /* In the order they came: the last one is where it is now. */
-        steps: detailed ? steps.map((s, i) => ({ state: s.state, text: `${state(s.state)}${s.note ? ` - ${s.note}` : ''}`, when: when(s.at), now: i === steps.length - 1 })) : [],
+        /* The steps behind it, in the order they came: where it is now is the status line, not said twice. */
+        steps: detailed ? steps.slice(0, -1).map((s) => ({ state: s.state, text: s.note || state(s.state), when: when(s.at) })) : [],
         files: detailed ? files.map((f) => ({ path: String(f.path ?? ''), name: nameOf(f.path), note: String(f.note ?? ''), open: typeof f.open === 'string' ? f.open : null, when: when(f.at) })) : [],
-        summary: detailed ? `${said(words, 'steps')} (${steps.length}) - ${said(words, 'files')} (${files.length})` : '',
+        summary: detailed ? `${said(words, 'steps')} (${Math.max(0, steps.length - 1)}) - ${said(words, 'files')} (${files.length})` : '',
     };
 }
 
@@ -127,7 +127,7 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
         const steps = el('section', 'parley-steps');
         steps.append(el('h3', '', said(words, 'steps')));
         if (v.steps.length === 0) steps.append(el('p', 'parley-empty', said(words, 'no-steps')));
-        else { const list = el('ul'); for (const s of v.steps) { const li = el('li', '', s.text); li.dataset.state = s.state; if (s.now) li.dataset.now = 'true'; if (s.when) li.title = s.when; list.append(li); } steps.append(list); }
+        else { const list = el('ul'); for (const s of v.steps) { const li = el('li', '', s.text); li.dataset.state = s.state; if (s.when) li.title = s.when; list.append(li); } steps.append(list); }
         const files = el('section', 'parley-files');
         files.append(el('h3', '', said(words, 'files')));
         if (v.files.length === 0) files.append(el('p', 'parley-empty', said(words, 'no-files')));
@@ -154,7 +154,7 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
         shown = mark;
         for (const b of toggles) b.setAttribute('aria-pressed', String(b.dataset.view === v.view));
         status.hidden = !v.status;
-        if (v.status) { status.dataset.state = v.status.state; status.textContent = v.status.text; status.title = v.status.when; }
+        if (v.status) { status.dataset.state = v.status.state; status.textContent = v.status.text; status.title = [v.status.text, v.status.when].filter(Boolean).join(' - '); }
         /* The newest is shown: when something new came, and when the reader was at the bottom already. */
         const atBottom = thread.scrollHeight - thread.scrollTop - thread.clientHeight < 40 || v.items.length > count;
         count = v.items.length;

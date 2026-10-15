@@ -204,9 +204,9 @@ test('what the screen shows is decided from the messages alone: two views of one
     assert.equal(detailed.items[4].text, 'secret.txt'); assert.equal(detailed.items[4].outside, 'Not in a shared folder: it cannot be opened from here.');
     assert.equal(detailed.items[3].file.shown, '/work/report.html', 'with its path');
     assert.equal(detailed.status.text, 'Waiting for you - on the cover'); assert.ok(detailed.status.when);
-    assert.deepEqual(detailed.steps.map((s) => [s.text, s.now]), [['Working - on the report', false], ['Waiting for you - on the cover', true]], 'in the order they came; the last is now');
+    assert.deepEqual(detailed.steps.map((s) => s.text), ['on the report'], 'the steps behind it; where it is now is the status line');
     assert.deepEqual(detailed.files.map((f) => [f.name, f.open]), [['report.html', 'work/report.html'], ['secret.txt', null]]);
-    assert.equal(detailed.summary, 'Steps (2) - Files (2)');
+    assert.equal(detailed.summary, 'Steps (1) - Files (2)');
     assert.equal(view({ messages: [] }, { words, view: 'detailed' }).status.text, 'It has not said where it is yet.');
     const french = view({ messages: [] }, { words: texts('fr', { empty: 'Rien, taratata' }) });
     assert.equal(french.empty, 'Rien, taratata');
