@@ -4,6 +4,13 @@ What is decided but not built yet. What is built is described in README.md.
 
 ## Several agents in one thread
 
+In this order: (1) a native identity on every message (`from`: the agent's
+handle), the base of everything below; (2) several agents in one thread;
+(3) later, one agent in several threads, each thread given to it as an
+application gives a folder, so that it stays visible and decided by the
+person (an agent in two threads can carry what it read from one to the
+other).
+
 One thread where more than one agent and the person talk. Each agent keeps
 its own bridge (its own two files); the application joins the bridges into
 one thread. Nothing changes for a thread with a single agent.
