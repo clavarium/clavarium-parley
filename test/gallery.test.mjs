@@ -121,12 +121,15 @@ test('on the screen: a gallery with titles, a reaction chosen and taken back, wh
     const picker = c.$('.parley-react');
     assert.equal(picker.hidden, false);
     const choices = c.$$('.parley-react-choice');
-    assert.deepEqual(choices.map((b) => b.textContent), ['Agree', 'Go ahead', 'Disagree', 'Not clear', 'Stop', 'Another way', 'Later', 'Love it']);
-    assert.match(choices[4].title, /Stop now/);
-    choices[4].click();
+    /* "Go ahead" first, "Stop" last: never side by side. */
+    assert.deepEqual(choices.map((b) => b.textContent), ['Go ahead', 'Agree', 'Not clear', 'Love it', 'Later', 'Another way', 'Disagree', 'Stop']);
+    assert.match(choices[7].title, /Stop now/);
+    assert.equal(c.$('.parley-said[data-id="a"]').dataset.reacting, 'true', 'the message it is about is marked');
+    choices[7].click();
     await settle();
     assert.deepEqual(c.reacted, [['a', 'stop']]);
     assert.equal(picker.hidden, true);
+    assert.equal(c.$('.parley-said[data-id="a"]').dataset.reacting, undefined);
     /* Shown under the message once the host says so; pressed again it is taken back. */
     c.set({ messages: [{ ...first.messages[0], reaction: { id: 'stop', at: at(2) } }, first.messages[1]] });
     await c.handle.refresh();
@@ -149,6 +152,35 @@ test('on the screen: a gallery with titles, a reaction chosen and taken back, wh
     c.$('.parley-media-open').click();
     assert.equal(c.$('.parley-media').hidden, false);
     assert.deepEqual(c.$('.parley-media').querySelectorAll('figcaption').map((x) => x.textContent), ['Page one', 'B']);
+});
+
+test('a decision it waits for on a message: Go ahead and Disagree under it, until the person reacts or writes', async (t) => {
+    const said2 = { from: 'agent', id: 'p', at: at(0), kind: 'say', text: 'I propose to merge the branch.' };
+    const waiting = { state: 'waiting', at: at(1), note: 'your decision' };
+    const c = chat(t, { messages: [said2], status: waiting });
+    await settle(); await settle();
+    const row = c.$('.parley-said[data-id="p"]').querySelector('.parley-decide');
+    assert.ok(row, 'offered under the message');
+    const two = row.querySelectorAll('.parley-decide-choice');
+    assert.deepEqual(two.map((b) => b.textContent), ['Go ahead', 'Disagree']);
+    two[0].click();
+    await settle();
+    assert.deepEqual(c.reacted, [['p', 'go']]);
+    /* Reacted: gone, its reaction shown instead. */
+    c.set({ messages: [{ ...said2, reaction: { id: 'go', at: at(2) } }], status: waiting });
+    await c.handle.refresh();
+    assert.equal(c.$('.parley-decide'), null);
+    /* The person wrote after it waited: nothing offered. */
+    c.set({ messages: [said2, { from: 'person', id: 'q', at: at(2), text: 'Wait' }], status: waiting });
+    await c.handle.refresh();
+    assert.equal(c.$('.parley-decide'), null);
+    /* A question with choices has its own buttons; a message while it works asks nothing. */
+    c.set({ messages: [{ from: 'agent', id: 'k', at: at(0), kind: 'ask', text: 'Which?', choices: ['A', 'B'] }], status: waiting });
+    await c.handle.refresh();
+    assert.equal(c.$('.parley-decide'), null);
+    c.set({ messages: [said2], status: { state: 'working', at: at(1) } });
+    await c.handle.refresh();
+    assert.equal(c.$('.parley-decide'), null);
 });
 
 test('dictated: what the microphone wrote goes with "via: voice", once', async (t) => {
