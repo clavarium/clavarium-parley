@@ -51,8 +51,10 @@ test('dictating grows nothing: what the microphone does is said inside the box, 
     await settle();
     const idle = room(root);
     const form = $('.parley-form');
-    assert.equal(root.children.at(-1).className, 'parley-problem', 'under the box, only the line that says a message was not sent');
-    assert.deepEqual(root.children.slice(root.children.indexOf(form) + 1).filter((c) => !c.hidden), [], 'nothing shown under the box');
+    const composer = $('.parley-composer');
+    assert.equal(root.children.at(-1), composer, 'the box and what goes with it, last, set apart from the thread');
+    assert.equal(composer.children.at(-1).className, 'parley-problem', 'under the box, only the line that says a message was not sent');
+    assert.deepEqual(composer.children.slice(composer.children.indexOf(form) + 1).filter((c) => !c.hidden), [], 'nothing shown under the box');
     for (const name of ['parley-voice', 'parley-voice-said', 'parley-prefs-menu', 'parley-mic-auto']) assert.ok(floating(name), `${name} floats: it takes no room`);
     assert.equal(root.querySelectorAll('.parley-auto').length, 1);
     assert.ok(!form.contains($('.parley-auto')), 'no "send when I stop" by the box');

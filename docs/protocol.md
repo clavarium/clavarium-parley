@@ -25,6 +25,7 @@ The command finds the folder as git finds a repository: `--dir`, else
 | `parley ask [--short TITLE] QUESTION [CHOICE ...]` | `ask(question, choices?, short?)` | `{kind:"ask", text, choices, short?}` | at once: it never waits for the answer |
 | `parley close ID ANSWER` | `close(id, answer)` | `{kind:"close", answers, text}` | at once; ID is the question's, or its first 8 characters or more |
 | `parley show PATH [NOTE]` | `show(path, note?)` | `{kind:"show", path, text}`, the path made whole | at once; refused if there is no such file |
+| `parley show A="title" B="title" [NOTE]` | `show({files: [{path, title}], note?})` (or `paths`) | `{kind:"show", path, text, files: [{path, title?}]}`, twelve at most, `path` the first | at once: one gallery, each with its title |
 | `parley status STATE [NOTE]` | `status(state, note?)` | `{kind:"status", state, text}` | at once |
 | `parley doing TEXT` | `doing(text)` | `{kind:"doing", text}`, one line of 200 characters at most | at once |
 | `parley read` | `read()` | nothing | what was written since the last read, answers and attached files included, then the questions still open with their ids |
@@ -41,7 +42,21 @@ input with `-`. Exit codes of the command: 0 done, 1 refused, 2 no folder,
 
 `{id, at, text}`, and when it answers a question: `answers` (the id of that
 question) and `question` (its words, so that the agent is reminded of them).
-When it answers a question by text typed in reply, the same. When the person attached files: `files`, `[{path, name, size}]`, ten at most,
+When it answers a question by text typed in reply, the same. When it replies
+to another message of the agent: `re` (its id) and `quote` (its words). When
+the person dictated part of it: `via: "voice"`, and `parley read` says it may
+hold recognition mistakes.
+
+A REACTION of the person to a message of the agent is a line of its own:
+`{id, at, text: "", reaction, to, quote, toAt}` (`to`: the message, `quote`
+and `toAt`: its words and its time, so that the agent knows which one;
+`removed: true` when taken back). `parley read` gives its meaning: the
+default set is `agree` (noted; it authorizes NOTHING), `go` (do what that
+message proposes; several proposals: ask which), `disagree` (ask what is
+wrong), `unclear` (explain more simply, without acting), `stop` (stop now,
+do nothing more), `redo` (another way), `later` (nothing for now), `love`
+(noted). An application may offer another set: an unknown one is given by
+its name. When the person attached files: `files`, `[{path, name, size}]`, ten at most,
 `path` as the agent sees it; the text may then be empty. Where the files are
 put is the application's business: it puts them where the agent can open
 them, and gives Parley their paths. `parley read` gives each path.
@@ -73,6 +88,7 @@ finds it. An answer may therefore come two minutes or two days later.
 | `agent-status` | the agent ran `status` | `message` (with `state`) |
 | `agent-doing` | the agent ran `doing` | `message` (its `text`: one line) |
 | `agent-closed` | the agent ran `close` | `message` (`answers`: the question; `text`: the answer it understood) |
+| `person-reacted` | `react()` wrote a reaction | `message` (the line), `reaction` (null: taken back), `wakes` (`false`, `true` or `'now'`: the set's hint), `unread` |
 
 Events of the agent are announced by `listen()`, each line once, once it is
 whole, from the moment it was started: what was posted before is in
@@ -80,8 +96,9 @@ whole, from the moment it was started: what was posted before is in
 
 | Action | Gives |
 |---|---|
-| `say(text, answers?, files?)` | what `read()` gives, after writing |
-| `read()` | `messages` (each of the person's says `seen`, and `seenAt` when known; each of the agent's may carry `short`, and `refs`: the paths it cites that `reach` opens; a question it closed, `closed: {text, at}`), `waiting` (questions neither answered nor closed), `status`, `steps` (every `status` and `doing`, in order: `{id, kind, state, note, at}`), `files` (every file shown, and every one cited that can be opened, `cited: true`), `unread` |
+| `say(text, answers?, files?, {via?})` | what `read()` gives, after writing; `answers` may be any message of the agent (a question is answered, another replied to) |
+| `react(to, reaction)` | a reaction of the set (`REACTIONS`) on a message of the agent, or `null` to take it back; what `read()` gives |
+| `read()` | `messages` (each of the person's says `seen`, and `seenAt` when known, `via` when dictated; each of the agent's may carry `short`, `reaction` (`{id, at, seen}`, the one standing), `files` for a gallery (`[{path, title, open}]`), and `refs`: the paths it cites that `reach` opens; a question it closed, `closed: {text, at}`), `waiting` (questions neither answered nor closed), `status`, `steps` (every `status` and `doing`, in order: `{id, kind, state, note, at}`), `files` (every file shown, and every one cited that can be opened, `cited: true`), `unread` |
 | `invite(lang, {install?, shared?})` | the invitation, a text |
 | `unread()` | how many of the person's messages the agent has not read |
 
@@ -109,6 +126,14 @@ line across, with its time and its buttons (four at most); a button calls the
 application's `act(id, line)`. A line of
 the application takes no step and does not hide that the person's last
 message is not read yet.
+
+## What the screen makes of the states
+
+`waiting` and `done` are no steps. Each is said once, at the end of the
+thread: waiting until the person writes; done ("Done: ..."), quietly, while it
+is the last thing that happened -- a message of either side or a step after
+it, and it is gone. The detailed view says the state at the top only when the
+end does not.
 
 ## What the screen makes of the steps
 
@@ -154,7 +179,26 @@ never from anywhere else. A ```mermaid block is drawn by the application's
 shows its code. A code block is coloured from the token tree of the
 application's `highlight(code, lang)`, spans made here. A long message is
 folded in the simple view (after its short version, or after about twelve
-lines), its `> [!IMPORTANT]` boxes kept in sight; a question never.
+lines), its `> [!IMPORTANT]` boxes kept in sight; a question never, nor
+the newest message of the agent (nothing seems left below it). The text in
+brackets of a picture is its title, under it. Files shown at once are one
+gallery, each its title under it (no title: the name of the file without its
+extension and dashes); the name of the file on hover and in the detailed view.
+
+## Reactions, the media, the viewer
+
+A message of the agent takes a reaction: a button on hover, a right click, or
+a long press opens the set, each icon with its word under it and its meaning
+on hover, and Reply. The icons are Lucide's (`ui/parley-icons.js`, copied with
+its version and licence, nothing loaded). "Media and files", in the menu of
+settings, shows every picture of the thread as a grid (the newest first) and
+the other files as a list; a picture goes large among all of them; "See in
+the thread" finds where it came. A picture large grows out of its thumbnail,
+zooms up to eight times, goes to the previous or next (arrows, a swipe, a
+strip of small pictures), and closes with a tap on it (not zoomed) or beside
+it, a swipe down, or Escape. What arrives while the thread is open comes in
+softly and is marked a moment; movement only for whoever did not ask for
+less.
 
 ## What each side must not trust
 

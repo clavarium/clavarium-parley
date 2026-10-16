@@ -14,13 +14,14 @@ const at = (m) => new Date(Date.UTC(2030, 0, 1, 9, m)).toISOString();
 const elements = (node) => node.children.flatMap((c) => [c, ...elements(c)]);
 const pages = new WeakMap();
 /* Mounts the screen on a fake page with one message of the agent. */
-async function shown(t, text, { refs = [], picture, diagram, highlight, short, open = () => {} } = {}) {
+async function shown(t, text, { refs = [], picture, diagram, highlight, short, open = () => {}, after = false } = {}) {
     /* One page per test, taken away after every chat on it. */
     if (!pages.has(t)) { const leave = fakePage(); pages.set(t, []); t.after(() => { for (const h of pages.get(t)) h.destroy(); leave(); }); }
     const root = document.createElement('div');
     document.body.append(root);
     const opened = [];
-    const handle = mount(root, { load: async () => ({ messages: [{ from: 'agent', id: 'm', at: at(0), kind: 'say', text, refs, ...(short ? { short } : {}) }] }), send: async () => {}, words: texts('en'), every: 0, touch: false,
+    /* `after`: a later message of the agent, so that this one is not the newest (the newest is never folded). */
+    const handle = mount(root, { load: async () => ({ messages: [{ from: 'agent', id: 'm', at: at(0), kind: 'say', text, refs, ...(short ? { short } : {}) }, ...(after ? [{ from: 'agent', id: 'n', at: at(1), kind: 'say', text: 'Next.' }] : [])] }), send: async () => {}, words: texts('en'), every: 0, touch: false,
         markdown: true, picture, diagram, highlight, open: (f) => { opened.push(f); open(f); } });
     pages.get(t).push(handle);
     await settle(); await settle();
@@ -112,7 +113,11 @@ test('a mermaid drawing is shown as a picture, never as markup; a failure shows 
 
 test('two versions of a message: the short one first, the rest on demand, its IMPORTANT box always in sight', async (t) => {
     const long = `Intro.\n\n${Array.from({ length: 30 }, (_, i) => `- point ${i}`).join('\n')}\n\n> [!IMPORTANT]\n> Decide by Friday.`;
-    const { said, root } = await shown(t, long, { short: 'Disk full: 3 things to do' });
+    /* The newest message of the agent is never folded: nothing seems left below it. */
+    const newest = await shown(t, long, { short: 'Disk full: 3 things to do' });
+    assert.match(newest.said.textContent, /point 12/); assert.equal(newest.said.querySelector('.parley-unfold'), null);
+    assert.equal((await shown(t, long)).said.querySelector('[data-clip]'), null, 'nor cut short with a fade');
+    const { said, root } = await shown(t, long, { short: 'Disk full: 3 things to do', after: true });
     assert.equal(said.querySelector('.parley-short').textContent, 'Disk full: 3 things to do');
     assert.match(said.textContent, /Decide by Friday/, 'its IMPORTANT box, folded or not');
     assert.doesNotMatch(said.textContent, /point 12/);
@@ -122,7 +127,7 @@ test('two versions of a message: the short one first, the rest on demand, its IM
     /* Without a short version, a long one is folded, its box below the fold still shown. */
     const v = view({ messages: [{ from: 'agent', id: 'a', at: at(0), kind: 'say', text: long }] }, { words: texts('en') });
     assert.equal(v.items[0].short, '');
-    const other = await shown(t, long);
+    const other = await shown(t, long, { after: true });
     assert.equal(other.said.querySelector('.parley-md').dataset.clip, 'true');
     assert.equal(other.said.querySelectorAll('.parley-callout').length, 2, 'in the folded text, and in sight below it');
     /* A question is never folded. */

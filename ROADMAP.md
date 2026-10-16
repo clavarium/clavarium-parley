@@ -45,3 +45,7 @@ one thread. Nothing changes for a thread with a single agent.
   `to` (handles). `parley read` gives an agent what is for it; `parley read
   --all` the whole thread with who said what. Events and actions gain the
   handle. Old single-agent bridges are read as they are.
+
+What is built already keeps this possible: the name above the agent's
+messages is the application's (one per thread today, one per handle then),
+and a reaction names the message it is about by its id, whoever wrote it.

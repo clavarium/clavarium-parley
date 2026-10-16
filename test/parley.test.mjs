@@ -229,10 +229,19 @@ test('what the screen shows is decided from the messages alone: two views of one
         'detailed: every step unfolded where it came, with its state and time');
     assert.deepEqual(detailed.files.map((f) => [f.name, f.open]), [['report.html', 'work/report.html'], ['secret.txt', null]]);
     assert.equal(detailed.summary, 'Files (2)');
-    /* Done: said at the top of the detailed view, and not again at the end. */
-    const done = view({ ...data, status: { state: 'done', note: 'all set', at: at(55) }, steps: [...data.steps, { id: 'd1', kind: 'status', state: 'done', note: 'all set', at: at(55) }] }, { words, view: 'detailed' });
-    assert.equal(done.status.text, 'Done - all set');
-    assert.equal(JSON.stringify(done.rows).split('all set').length - 1, 0, 'not repeated as a step');
+    /* Done: no step; said once, at the end, quietly, while it is the last thing that happened. */
+    const doneData = { ...data, status: { state: 'done', note: 'all set', at: at(55) }, steps: [...data.steps, { id: 'd1', kind: 'status', state: 'done', note: 'all set', at: at(55) }] };
+    for (const as of ['simple', 'detailed']) {
+        const done = view(doneData, { words, view: as, locale: 'en-GB' });
+        assert.deepEqual(done.rows.at(-1), { type: 'done', key: 'D', text: 'Done: all set', time: '06:55', when: 'Monday, 5 January 2026 at 06:55' }, `${as}: at the end`);
+        assert.equal(JSON.stringify(done.rows).split('all set').length - 1, 1, `${as}: said once, never as a step`);
+        assert.equal(done.status, null, `${as}: not at the top as well`);
+    }
+    /* Anything after it, from either side: gone; the detailed view still says it at the top. */
+    const later = { ...doneData, messages: [...data.messages, { from: 'agent', id: 't9', kind: 'say', text: 'one more thing', at: at(56) }] };
+    assert.equal(view(later, { words }).rows.some((r) => r.type === 'done'), false, 'gone once it said something else');
+    assert.equal(view({ ...doneData, messages: [...data.messages, { from: 'person', id: 'p9', kind: 'say', text: 'thanks', at: at(57) }] }, { words }).rows.some((r) => r.type === 'done'), false, 'gone once the person wrote');
+    assert.equal(view(later, { words, view: 'detailed' }).status.text, 'Done - all set');
     assert.equal(view({ messages: [] }, { words, view: 'detailed' }).status.text, 'It has not said where it is yet.');
     const french = view({ messages: [] }, { words: texts('fr', { empty: 'Rien, taratata' }) });
     assert.equal(french.empty, 'Rien, taratata');
@@ -271,9 +280,9 @@ test('while it works, the one line of what it does now; gone when its next messa
     const unfolded = view(data, { words, view: 'detailed', now: Date.parse(at(12)) });
     assert.deepEqual([kinds(unfolded)[2], unfolded.rows[2].open], ['steps', true], 'detailed: unfolded above it');
     /* A turn that ends done or waiting is not shown as moving. */
-    const ended = view({ ...data, messages: [asked], steps: [...turn, { id: 'x', kind: 'status', state: 'done', note: '', at: at(10) }] }, { words, now: Date.parse(at(11)) });
-    assert.deepEqual(kinds(ended), ['day', 'message', 'steps']);
-    assert.equal(ended.rows[2].label, '4 steps');
+    const ended = view({ ...data, messages: [asked], status: { state: 'done', note: '', at: at(10) }, steps: [...turn, { id: 'x', kind: 'status', state: 'done', note: '', at: at(10) }] }, { words, now: Date.parse(at(11)) });
+    assert.deepEqual(kinds(ended), ['day', 'message', 'steps', 'done'], 'done is no step: said after them, once');
+    assert.equal(ended.rows[2].label, '3 steps');
     /* One step alone: a line, nothing to unfold. */
     assert.deepEqual(view({ messages: [asked], steps: turn.slice(0, 1) }, { words, now: Date.parse(at(2)) }).rows.at(-1).label, '');
 });
