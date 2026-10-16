@@ -106,7 +106,8 @@ gives it. Without a slot, nothing of it is shown.
 
 | Slot | The application gives | The box shows |
 |---|---|---|
-| `voice` | `{ listen(on) }`: opens a microphone, calls `on.phrase(text)`, `on.state(word)`, `on.speech()`, `on.error(message)`; resolves with a function that closes it | a button beside Send; what is said goes into the box; while it listens, a line says what it does and offers "send by itself when I stop talking"; Send pressed while a phrase is still being written sends it once written |
+| `voice` | `{ listen(on) }`: opens a microphone, calls `on.phrase(text)`, `on.state(word)`, `on.speech()`, `on.error(message)`; resolves with a function that closes it | a button beside Send; what is said goes into the box; while it listens, the box itself says what it does (its placeholder, and a small label on its frame), so that nothing on the screen moves; Send pressed while a phrase is still being written sends it once written |
+| `autoSend`, `onAutoSend(on)` | the device's choice, kept by the application | "send by itself when I stop talking", in the small menu of settings beside the view (only with `voice`); while it is on, the microphone button wears a dot |
 | `replies` | `[{ label, text, send }]`, or later `handle.replies = [...]` | ready answers above the box: `send` sends at once, else the text is put in the box; one line, the rest behind "N more" |
 | `enter` | `'auto'`, `'send'` or `'newline'` | Enter sends with a keyboard (`auto`), is a new line on a touch screen; Shift+Enter a new line and Ctrl+Enter sends, always |
 | `touch` | true on a touch screen (default: any coarse pointer) | the box is never focused by the page, only by a finger: the keyboard never comes up by itself, and a tap on a button of the box leaves it open |
