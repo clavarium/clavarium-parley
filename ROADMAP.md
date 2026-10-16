@@ -24,10 +24,12 @@ one thread. Nothing changes for a thread with a single agent.
   The application may turn on exchanges between agents; then an agent can
   write to another with `@handle` (`parley tell "@arth please review"`), and
   the other is woken as it is by the person.
-- **Bounds, always on when exchanges are on.** A maximum number of messages
-  agents may send each other without a message of the person in between
-  (default 6), after which they wait and the person is told; a "Stop them"
-  action for the person; every exchange shown in the thread, never hidden.
+- **Bounds when exchanges are on.** A maximum number of messages agents may
+  send each other without a message of the person in between: 6 by default,
+  set by the person, and it can be turned off (no maximum) for those who
+  want agents to go on by themselves. When it is reached, they wait and the
+  person is told. Whatever this setting, a "Stop them" action is always
+  there, and every exchange is shown in the thread, never hidden.
 - **On the screen.** Each agent its name and a colour of its own (from a
   fixed palette readable in light and dark); the person on the right as
   today; "to Arthur" above a targeted message; the detailed view shows each
