@@ -3,26 +3,27 @@
 A bridge between a command-line agent and a screen of its own.
 
 A command-line agent lives in a terminal. Whoever does not read a terminal
-cannot talk with it. Parley gives the agent six verbs, as a command and as
+cannot talk with it. Parley gives the agent seven verbs, as a command and as
 an MCP server, and gives an application a small library that shows the
 exchange as a conversation, on any screen.
 
 It is part of the Clavarium family and needs nothing of Clavarium: any
 application, any agent that can run a command.
 
-## The six verbs
+## The seven verbs
 
 | The agent runs | To |
 |---|---|
-| `parley tell "text"` | say where it is, what it did |
+| `parley tell [--short "title"] "text"` | say where it is, what it did, in Markdown; a long text with its short version |
 | `parley ask "question" [choice ...]` | ask, with or without choices; it does not wait |
 | `parley show path ["note"]` | point to a file it made |
 | `parley doing "text"` | say in one line what it is doing now, at each new step |
-| `parley read` | read what was written to it, answers and attached files included |
+| `parley read` | read what was written to it, answers and attached files included, and its questions still open |
+| `parley close ID "answer"` | close a question the person answered another way |
 | `parley read --all` | the whole exchange, both sides: to pick up the thread after a restart |
 | `parley status working\|waiting\|done ["note"]` | say where it is |
 
-`parley --help` says all of it to the agent. The same six verbs are an MCP
+`parley --help` says all of it to the agent. The same seven verbs are an MCP
 server (`parley-mcp`, or `node server/parley-mcp.mjs --dir FOLDER`) for an
 agent that is given it that way; both write the same files.
 
@@ -54,7 +55,7 @@ are, changes, or does not use.
 
 | Piece | File | What it is |
 |---|---|---|
-| The agent's side | `server/parley-mcp.mjs`, `bin/parley.mjs` | the six verbs, as an MCP server and as a command; no dependency |
+| The agent's side | `server/parley-mcp.mjs`, `bin/parley.mjs` | the seven verbs, as an MCP server and as a command; no dependency |
 | The application's side | `host/parley-host.mjs` | reads and writes the files, cleans what the agent wrote, announces events |
 | The screen | `ui/parley-ui.js`, `ui/parley-ui.css` | the exchange in two views, simple and detailed; no framework |
 | The words | `ui/texts/en.json`, `ui/texts/fr.json` | one dictionary per language |
@@ -69,7 +70,7 @@ are, changes, or does not use.
         reach: (path) => (path.startsWith('/work/') ? path : null),   // what the person can open
     });
     parley.listen();
-    typeInTheAgentsTerminal(parley.invite('fr', { install: 'npm install -g /path/to/clavarium-parley-0.6.0.tgz', shared: '/work' }));
+    typeInTheAgentsTerminal(parley.invite('fr', { install: 'npm install -g /path/to/clavarium-parley-0.7.0.tgz', shared: '/work' }));
 
 and in a page:
 
@@ -78,7 +79,7 @@ and in a page:
         voice: yourDictation, replies: yourReadyAnswers });
 
 The command is installed from the archive `npm pack` makes, by the
-application or by the agent: `npm install -g clavarium-parley-0.6.0.tgz`,
+application or by the agent: `npm install -g clavarium-parley-0.7.0.tgz`,
 then `parley --help`. Installing it runs no script of its own. It finds
 its folder as git finds a repository: the nearest `.parley` from where it
 stands, or `--dir`, or `$PARLEY_DIR`.
@@ -89,10 +90,11 @@ Two views of one exchange, and a person picks one:
 
 | | Simple | Detailed |
 |---|---|---|
-| Messages | bubbles; the time on hover, or a long press | bubbles, each with its time |
+| Messages | the agent's across a reading column, rendered from Markdown; the person's in bubbles on the right, each with a sign of where it is (sent, read, worked on; handled: no sign); the time on hover, or a long press | the same, each with its time, every sign |
+| Long messages | the short version first, or folded after about twelve lines; its IMPORTANT box in sight | unfolded |
 | While it works | one line, moving: what it does now; gone when its next message comes; what came before it one click away | the same line, and every step of this turn above it |
 | Steps it went through | folded into the message they led to: a click on it opens them ("5 steps" is said with its time) | unfolded between the messages, each with its time and state |
-| Where it is | only when it waits for the person | always, at the top: what it does now, or the state it said |
+| Where it is | when it waits for the person: once, at the end of the thread, until they write | the same; at the top, what it does now, or the state it said |
 | Files | the ones the person can open, by name | every one, with its path; one that cannot be opened is said so |
 | Its terminal | | a way to it |
 
@@ -147,7 +149,7 @@ Tried for real with version 0.2 (OpenCode, on hosted open models): the
 `show` and `status`, an answer given ten minutes later, and the two views in
 a real page.
 
-Not tried yet with a real agent: `doing` and the line of what it does now
+Not tried yet with a real agent: Markdown, short versions, `close` and the signs of each message (version 0.7, tested here and in an application's own end-to-end runs, the screen checked on a real thread replayed); `doing` and the line of what it does now
 (version 0.3, tested here with stand-ins); the box's slots (version 0.4:
 dictation, ready answers, the keyboard of a phone), tested in an
 application's own end-to-end runs with a recorded voice and an emulated

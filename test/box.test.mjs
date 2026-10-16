@@ -123,7 +123,8 @@ test('"send when I stop" is a choice of the device, beside the view; the microph
     assert.equal(mic.dataset.auto, 'false'); assert.equal(mic.title, words.mic);
     open.click();
     assert.equal(menu.hidden, false); assert.equal(open.getAttribute('aria-expanded'), 'true');
-    assert.equal(auto.textContent, words['auto-send']);
+    assert.equal(auto.querySelector('.parley-auto-word').textContent, words['auto-send']);
+    assert.equal(auto.querySelector('.parley-auto-off').textContent, words['auto-send-off'], 'what off means, said under it');
     assert.equal(auto.getAttribute('aria-pressed'), 'false');
     const before = room(root);
     auto.click();
@@ -158,9 +159,10 @@ test('"send when I stop" is a choice of the device, beside the view; the microph
     await settle();
     assert.deepEqual(sent, ['first part and the rest']);
     assert.equal($('.parley-box').value, 'kept in the box');
-    /* Without a voice, no such choice. */
+    /* Without a voice, no such choice: the menu keeps the view and the search. */
     handle.voice = null;
-    assert.equal(prefs.hidden, true); assert.equal(menu.hidden, true); assert.equal(mic.hidden, true);
+    assert.equal($('.parley-dictation').hidden, true); assert.equal(mic.hidden, true);
+    assert.equal(prefs.hidden, false);
 });
 
 test('"send when I stop" starts as the application kept it', (t) => {
@@ -172,6 +174,8 @@ test('"send when I stop" starts as the application kept it', (t) => {
 
 test('without a voice, neither a microphone nor its choice', (t) => {
     const other = chat(t, { voice: undefined });
-    assert.equal(other.$('.parley-prefs').hidden, true);
+    assert.equal(other.$('.parley-dictation').hidden, true);
+    assert.equal(other.$('.parley-prefs').hidden, false, 'the one button of settings stays: the view, the search');
+    assert.ok(other.$('.parley-prefs-menu').contains(other.$('.parley-views')), 'the view is chosen in it');
     assert.equal(other.$('.parley-mic').hidden, true);
 });

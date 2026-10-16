@@ -25,10 +25,11 @@ class FakeNode {
         }
     }
     removeChild(node) { this.childNodes = this.childNodes.filter((n) => n !== node); node.parentNode = null; }
+    replaceWith(...nodes) { const parent = this.parentNode; if (!parent) return; const at = parent.childNodes.indexOf(this); const made = nodes.map((n) => (typeof n === 'string' ? new FakeText(n) : n)); for (const n of made) { n.parentNode?.removeChild(n); n.parentNode = parent; } parent.childNodes.splice(at, 1, ...made); this.parentNode = null; }
     replaceChildren(...nodes) { for (const n of this.childNodes) n.parentNode = null; this.childNodes = []; this.append(...nodes); }
 }
 class FakeText extends FakeNode {
-    constructor(text) { super(); this.data = text; }
+    constructor(text) { super(); this.data = text; this.nodeType = 3; }
     get textContent() { return this.data; }
     set textContent(text) { this.data = String(text); }
 }
@@ -49,6 +50,7 @@ function matches(element, selector) {
 class FakeElement extends FakeNode {
     constructor(tag) {
         super();
+        this.nodeType = 1;
         this.tagName = tag.toUpperCase(); this.attributes = new Map(); this.style = {}; this.hidden = false; this.disabled = false;
         this.value = ''; this.scrollTop = 0; this.scrollHeight = 0; this.clientWidth = 0; this.clientHeight = 0; this.title = ''; this.placeholder = '';
         const element = this;

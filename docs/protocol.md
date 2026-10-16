@@ -8,7 +8,7 @@ Parley is three small things that agree on one folder.
 |---|---|---|
 | `from-agent.jsonl` | the agent's side | what the agent posted, one JSON object per line |
 | `to-agent.jsonl` | the application's side | what was written to the agent, one JSON object per line |
-| `read.json` | the agent's side | how many lines of `to-agent.jsonl` the agent has read |
+| `read.json` | the agent's side | how many lines of `to-agent.jsonl` the agent has read (`lines`), and when it read (`reads`: `[{lines, at}]`, the last 200) |
 | `server.mjs` | the application, once | the MCP server, for an agent given it that way (`install()`) |
 
 Both files only grow. Nothing is edited, nothing is deleted. There is no
@@ -17,19 +17,20 @@ address, no port and no key: whoever can read and write the folder is a side.
 The command finds the folder as git finds a repository: `--dir`, else
 `$PARLEY_DIR`, else the nearest `.parley` from where the agent stands.
 
-## What an agent can do: six verbs
+## What an agent can do: seven verbs
 
 | Command | MCP tool | It posts | It returns |
 |---|---|---|---|
-| `parley tell TEXT` | `tell(text)` | `{kind:"say", text}` | at once |
-| `parley ask QUESTION [CHOICE ...]` | `ask(question, choices?)` | `{kind:"ask", text, choices}` | at once: it never waits for the answer |
+| `parley tell [--short TITLE] TEXT` | `tell(text, short?)` | `{kind:"say", text, short?}` | at once |
+| `parley ask [--short TITLE] QUESTION [CHOICE ...]` | `ask(question, choices?, short?)` | `{kind:"ask", text, choices, short?}` | at once: it never waits for the answer |
+| `parley close ID ANSWER` | `close(id, answer)` | `{kind:"close", answers, text}` | at once; ID is the question's, or its first 8 characters or more |
 | `parley show PATH [NOTE]` | `show(path, note?)` | `{kind:"show", path, text}`, the path made whole | at once; refused if there is no such file |
 | `parley status STATE [NOTE]` | `status(state, note?)` | `{kind:"status", state, text}` | at once |
 | `parley doing TEXT` | `doing(text)` | `{kind:"doing", text}`, one line of 200 characters at most | at once |
-| `parley read` | `read()` | nothing | what was written since the last read, answers and attached files included |
+| `parley read` | `read()` | nothing | what was written since the last read, answers and attached files included, then the questions still open with their ids |
 | `parley read --all` | `read({all: true})` | nothing | the whole exchange, both sides, oldest first (the newest 200 entries): to pick up the thread after a restart |
 
-`STATE` is `working`, `waiting` or `done`. `doing` says what the agent is
+`TEXT` is Markdown, 16,000 characters at most; `short` is its short version, a title of one or two lines (200 characters), which a screen shows first: whatever asks the person for an action or a decision, or says the agent is blocked, belongs in it. A question is closed (`close`) when the person answered it another way (a message typed later): the screen says the answer the agent understood, and the person may still answer with the question's buttons. `STATE` is `working`, `waiting` or `done`. `doing` says what the agent is
 doing now, at each new step; it means it works: a `doing` after `done` or
 `waiting` makes its status `working` again. Every line posted also carries
 `id` (unique) and `at` (the time, ISO 8601). A text may come from standard
@@ -40,7 +41,7 @@ input with `-`. Exit codes of the command: 0 done, 1 refused, 2 no folder,
 
 `{id, at, text}`, and when it answers a question: `answers` (the id of that
 question) and `question` (its words, so that the agent is reminded of them).
-When the person attached files: `files`, `[{path, name, size}]`, ten at most,
+When it answers a question by text typed in reply, the same. When the person attached files: `files`, `[{path, name, size}]`, ten at most,
 `path` as the agent sees it; the text may then be empty. Where the files are
 put is the application's business: it puts them where the agent can open
 them, and gives Parley their paths. `parley read` gives each path.
@@ -71,6 +72,7 @@ finds it. An answer may therefore come two minutes or two days later.
 | `agent-showed` | the agent ran `show` | `message` (with `path`, and `open`: the application's way to open it, or `null`) |
 | `agent-status` | the agent ran `status` | `message` (with `state`) |
 | `agent-doing` | the agent ran `doing` | `message` (its `text`: one line) |
+| `agent-closed` | the agent ran `close` | `message` (`answers`: the question; `text`: the answer it understood) |
 
 Events of the agent are announced by `listen()`, each line once, once it is
 whole, from the moment it was started: what was posted before is in
@@ -79,7 +81,7 @@ whole, from the moment it was started: what was posted before is in
 | Action | Gives |
 |---|---|
 | `say(text, answers?, files?)` | what `read()` gives, after writing |
-| `read()` | `messages` (each of the person's says `seen`), `waiting` (open questions), `status`, `steps` (every `status` and `doing`, in order: `{id, kind, state, note, at}`), `files` (every file shown), `unread` |
+| `read()` | `messages` (each of the person's says `seen`, and `seenAt` when known; each of the agent's may carry `short`, and `refs`: the paths it cites that `reach` opens; a question it closed, `closed: {text, at}`), `waiting` (questions neither answered nor closed), `status`, `steps` (every `status` and `doing`, in order: `{id, kind, state, note, at}`), `files` (every file shown, and every one cited that can be opened, `cited: true`), `unread` |
 | `invite(lang, {install?, shared?})` | the invitation, a text |
 | `unread()` | how many of the person's messages the agent has not read |
 
@@ -95,10 +97,16 @@ belongs in the thread, where it happened. The application keeps such lines
 itself (never in the folder: the agent writes there) and adds them to the
 messages it gives the screen:
 
-    {from: "system", id, at, text, level: "info"|"warn"|"bad", actions: [{id, label}]}
+    {from: "system", id, at, text, level: "needs-you"|"news"|"trace", tone?: "warn"|"bad",
+     topic?, brief?, actions: [{id, label}]}
 
-The screen shows each as a grey line across, with its time and its buttons
-(four at most); a button calls the application's `act(id, line)`. A line of
+The application gives each line a neutral level, and nothing else is decided
+here: `needs-you` is shown in both views; `news` in both, as a compact line in
+the simple one, where lines of one `topic` that follow each other are one line
+(`{topic} ({count}): {briefs}`); `trace` in the detailed view only. (`warn` and
+`bad` are read as needs-you, `info` as news.) The screen shows each as a grey
+line across, with its time and its buttons (four at most); a button calls the
+application's `act(id, line)`. A line of
 the application takes no step and does not hide that the person's last
 message is not read yet.
 
@@ -131,6 +139,22 @@ See the README for each slot.
 |---|---|---|
 | the agent: help, MCP descriptions, invitation, wake line | English only; the invitation names the person's language | `bin/`, `server/`, `host/` |
 | the person: the screen, alerts | a dictionary per language, `en` when a word is missing; an application's own dictionary replaces any word | `ui/texts/<lang>.json`, `texts(lang, own)` |
+
+## What the agent writes, on the screen
+
+With `markdown: true`, the library reads the agent's Markdown into plain data
+(headings, lists, tasks, emphasis, `==highlight==`, tables, quotes, the alerts
+of GitHub `> [!NOTE|TIP|IMPORTANT|WARNING|CAUTION]`, badges `[ok] [todo]
+[blocked] [warn]`, code blocks) and builds the page from that data element by
+element. A link is followed only when it is http or https (a new tab,
+`rel="noopener noreferrer"`), or when it is a path the application opens. A
+picture is shown only from a path the application opens (`picture(file)`):
+never from anywhere else. A ```mermaid block is drawn by the application's
+`diagram(code)` and shown as a picture, never inserted as markup; a failure
+shows its code. A code block is coloured from the token tree of the
+application's `highlight(code, lang)`, spans made here. A long message is
+folded in the simple view (after its short version, or after about twelve
+lines), its `> [!IMPORTANT]` boxes kept in sight; a question never.
 
 ## What each side must not trust
 
