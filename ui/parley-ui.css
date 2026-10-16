@@ -44,7 +44,7 @@
 .parley-said[data-from="person"] { align-self: flex-end; max-width: min(36em, 85%); border-radius: 14px 14px 4px 14px; padding: .55em .8em; background: var(--parley-person); }
 .parley-who { display: flex; align-items: baseline; gap: .6em; font-size: .8em; color: var(--parley-dim); margin-bottom: .15em; }
 .parley-who .parley-name { font-weight: 650; color: var(--parley-text); }
-.parley-who-person { font-size: .75em; color: var(--parley-dim); text-align: right; margin-bottom: .1em; }
+.parley-who-person { font-size: .8em; color: var(--parley-dim); font-weight: 600; text-align: right; margin-bottom: .1em; }
 .parley-row[data-from="person"] { align-items: flex-end; }
 /* An open question: outlined, whether the steps that led to it are folded or not. */
 .parley-said[data-asking="true"] { box-shadow: inset 0 0 0 2px var(--parley-ask); }
@@ -235,12 +235,12 @@
 .parley-md code, .parley-pathlink code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .9em; padding: .05em .3em; border-radius: 4px; background: var(--parley-code-bg); border: 1px solid var(--parley-line); }
 .parley-md mark { background: var(--parley-mark); color: inherit; border-radius: 3px; padding: 0 .15em; }
 .parley-md a.parley-link { color: var(--parley-action); text-decoration: underline; text-underline-offset: 2px; }
-.parley .parley-pathlink { display: inline; min-height: 0; padding: 0; border: 0; border-radius: 0; background: none; color: var(--parley-action); text-decoration: underline dotted; text-underline-offset: 3px; font: inherit; cursor: pointer; overflow-wrap: anywhere; text-align: left; }
+.parley .parley-pathlink { display: inline; min-height: 0; padding: 0; border: 0; border-radius: 0; background: none; color: var(--parley-action); text-decoration: underline; text-underline-offset: 3px; font: inherit; cursor: pointer; overflow-wrap: anywhere; text-align: left; }
 .parley-short { font-weight: 650; }
 .parley-said[data-from="agent"] .parley-short + .parley-md { margin-top: .5em; }
 /* Folded after about twelve lines: what is below fades. */
 .parley-md[data-clip="true"] { max-height: calc(1.45em * 12); overflow: hidden; -webkit-mask-image: linear-gradient(to bottom, #000 70%, transparent); mask-image: linear-gradient(to bottom, #000 70%, transparent); }
-.parley .parley-unfold { min-height: 2.1em; margin-top: .35em; padding: 0 .8em; border-radius: 999px; font-size: .9em; color: var(--parley-action); border-color: var(--parley-line); background: transparent; }
+.parley .parley-unfold { min-height: 2.6em; margin-top: .45em; padding: 0 1.1em; border-radius: 999px; font-size: .95em; font-weight: 600; color: var(--parley-text); border-color: var(--parley-line); background: var(--parley-agent); }
 .parley-md + .parley-md { margin-top: .5em; }
 /* Badges: a word with its meaning, in its colour, readable in both themes. */
 .parley-badge { display: inline-block; padding: 0 .5em; border-radius: 999px; font-size: .8em; font-weight: 650; line-height: 1.5; vertical-align: .05em; border: 1px solid currentColor; white-space: nowrap; }
@@ -303,15 +303,15 @@
 .parley-card-about .parley-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .parley-card .parley-open { flex: none; margin-left: .3em; }
 /* ---- a question, a reply, a closed question ---- */
-.parley .parley-reply-to { min-height: 2em; margin-top: .45em; padding: 0 .8em; border-radius: 999px; font-size: .9em; color: var(--parley-action); background: transparent; }
+.parley .parley-reply-to { min-height: 2.6em; margin-top: .5em; padding: 0 1.1em; border-radius: 999px; font-size: .95em; font-weight: 600; color: var(--parley-text); background: var(--parley-agent); }
 .parley-inreply { font-size: .8em; color: var(--parley-dim); border-left: 2px solid var(--parley-line); padding-left: .5em; margin-bottom: .25em; }
 .parley-inreply::before { content: "\21b3  "; }
 .parley-closed { font-size: .9em; color: var(--parley-tip); font-weight: 600; }
 .parley-said[data-closed="true"] .parley-choices button { opacity: .55; }
-.parley-replying { display: flex; align-items: center; gap: .3em; max-width: 100%; align-self: flex-start; padding: 0 0 0 .8em; border: 1px solid var(--parley-line); border-left: 3px solid var(--parley-ask); border-radius: 8px; font-size: .85em; color: var(--parley-dim); margin-bottom: calc(var(--parley-gap) * -.4); }
+.parley-replying { display: flex; align-items: center; gap: .3em; max-width: 100%; align-self: flex-start; padding: 0 0 0 .8em; border: 1px solid var(--parley-line); border-left: 3px solid var(--parley-ask); border-radius: 8px; font-size: .9em; color: var(--parley-text); margin-bottom: calc(var(--parley-gap) * -.4); }
 .parley-replying[hidden] { display: none; }
 .parley-replying-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
-.parley .parley-unreply { min-height: 2em; min-width: 2.2em; padding: 0; border: 0; background: transparent; color: var(--parley-dim); font-size: 1.1em; }
+.parley .parley-unreply { min-height: 2.6em; min-width: 2.6em; padding: 0; border: 0; background: transparent; color: var(--parley-dim); font-size: 1.1em; }
 /* ---- where each message of the person is: a small sign in its corner ---- */
 .parley-said[data-from="person"] { padding-right: 2em; }
 .parley-sign-state { position: absolute; right: .45em; bottom: .35em; display: inline-flex; color: var(--parley-dim); }
