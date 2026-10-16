@@ -162,6 +162,9 @@ test('the texts an agent reads are English and say the person\'s language; the l
     for (const line of [text, WAKE, REREAD]) assert.ok(!/[`'$\\]/.test(line), 'nothing a shell would run or wait on, should one listen instead of an agent');
     assert.equal(new Parley('/nowhere').invite('de'), invitation({ lang: 'de' }));
     assert.match(invitation({ lang: 'de' }), /Write to them in German\./);
+    /* Installed by the application: the agent is not asked to install anything. */
+    assert.match(invitation({ lang: 'de' }), /^Parley is installed: run "parley --help"\./);
+    assert.ok(!/install -g|npm/.test(invitation({ lang: 'de' })));
     assert.deepEqual([languageName('en-GB'), languageName('it'), languageName('<b>'), languageName(undefined)], ['English', 'Italian', 'English', 'English']);
 });
 

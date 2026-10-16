@@ -69,7 +69,7 @@ are, changes, or does not use.
         reach: (path) => (path.startsWith('/work/') ? path : null),   // what the person can open
     });
     parley.listen();
-    typeInTheAgentsTerminal(parley.invite('fr', { install: 'npm install -g /path/to/clavarium-parley-0.5.0.tgz', shared: '/work' }));
+    typeInTheAgentsTerminal(parley.invite('fr', { install: 'npm install -g /path/to/clavarium-parley-0.6.0.tgz', shared: '/work' }));
 
 and in a page:
 
@@ -77,8 +77,9 @@ and in a page:
     mount(element, { load, send, words: texts('fr', operatorsOwn), open, terminal, view: 'simple',
         voice: yourDictation, replies: yourReadyAnswers });
 
-The agent installs the command itself, from the archive `npm pack` makes:
-`npm install -g clavarium-parley-0.5.0.tgz`, then `parley --help`. It finds
+The command is installed from the archive `npm pack` makes, by the
+application or by the agent: `npm install -g clavarium-parley-0.6.0.tgz`,
+then `parley --help`. Installing it runs no script of its own. It finds
 its folder as git finds a repository: the nearest `.parley` from where it
 stands, or `--dir`, or `$PARLEY_DIR`.
 
@@ -157,3 +158,10 @@ coming hours later; a mirror between two agents.
 ## Licence
 
 MIT. See `LICENSE`.
+
+## Working on Parley
+
+After cloning, wire the repository's hooks once: `npm run hooks` (it sets
+`core.hooksPath` to `hooks` in this clone). It is a script of its own, never
+run by an install: installing the package changes no git configuration.
+`npm run check` fails while the hooks are not wired.
