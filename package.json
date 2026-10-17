@@ -2,7 +2,6 @@
   "name": "clavarium-parley",
   "version": "0.9.0",
   "license": "MIT",
-  "private": true,
   "type": "module",
   "description": "A bridge between a command-line agent and a screen of its own: a command and an MCP server of five verbs, and a small library that shows the exchange.",
   "bin": {
@@ -36,5 +35,16 @@
   },
   "engines": {
     "node": ">=22"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/clavarium/clavarium-parley.git"
+  },
+  "homepage": "https://github.com/clavarium/clavarium-parley#readme",
+  "bugs": {
+    "url": "https://github.com/clavarium/clavarium-parley/issues"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

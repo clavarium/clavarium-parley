@@ -1,0 +1,79 @@
+# publish.yml -- the npm package, released with no stored token.
+#
+# HOW A RELEASE HAPPENS: change "version" in package.json, run `npm run check`,
+# commit, push to main. On every push this looks at the declared version and
+# asks the registry whether it is online already. If it is (almost every push),
+# nothing is published and the run is green. If it is not, the whole suite runs
+# and then that version is published, by trusted publishing (OIDC): npm trusts
+# this repository and this file name, no token exists anywhere, and the
+# provenance attestation is made by npm on its own.
+#
+# A version carrying a "-" (0.10.0-rc.1) goes out under the "next" tag, so that
+# `latest`, what everybody installs, never moves to a candidate.
+#
+# Set up once on npmjs.com: package > Settings > Trusted publishing > GitHub
+# Actions, organisation "clavarium", this repository, workflow "publish.yml"
+# (the exact file name: renaming this file breaks publication).
+name: publish
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: publish
+  cancel-in-progress: false
+
+jobs:
+  gate:
+    name: the whole suite
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+      # The hooks check wants the hooks wired; in CI (CI=true) the local leak guard is not asked.
+      - run: git config core.hooksPath hooks
+      - run: npm run check
+
+  publish:
+    needs: gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
+          package-manager-cache: false
+      - name: Trusted publishing needs npm 11.5.1 or later
+        run: |
+          set -eu
+          at_least() { [ "$(printf '%s\n%s\n' "$2" "$1" | sort -V | head -n 1)" = "$2" ]; }
+          v="$(npm -v)"; at_least "$v" 11.5.1 || npm install -g npm@11
+          npm -v
+      - name: Is this version online already?
+        id: target
+        run: |
+          set -eu
+          name="$(node -p "require('./package.json').name")"
+          version="$(node -p "require('./package.json').version")"
+          status=0; out="$(npm view "${name}@${version}" version 2>&1)" || status=$?
+          if [ "$status" -eq 0 ] && [ -n "$out" ]; then echo "publish=no" >> "$GITHUB_OUTPUT"; echo "::notice::${name}@${version} is online already"
+          elif printf '%s' "$out" | grep -q E404; then echo "publish=yes" >> "$GITHUB_OUTPUT"; echo "::notice::publishing ${name}@${version}"
+          else echo "::error::the registry did not answer: $out"; exit 1; fi
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+      - name: Publish
+        if: steps.target.outputs.publish == 'yes'
+        run: |
+          set -eu
+          case "${{ steps.target.outputs.version }}" in
+            *-*) npm publish --tag next ;;
+            *)   npm publish ;;
+          esac
