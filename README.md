@@ -158,7 +158,7 @@ Tried for real with version 0.2 (OpenCode, on hosted open models): the
 `show` and `status`, an answer given ten minutes later, and the two views in
 a real page.
 
-Not tried yet with a real agent: version 0.8 -- several files shown at once with their titles, reactions, dictated messages, done said once, the media of a thread, the viewer, the side of the detailed view (tested here and in an application's own end-to-end runs, the screen checked on a real thread replayed); Markdown, short versions, `close` and the signs of each message (version 0.7, tested here and in an application's own end-to-end runs, the screen checked on a real thread replayed); `doing` and the line of what it does now
+Not tried yet with a real agent: version 0.10 -- "Received, thinking..." and "No answer yet" (tested here); version 0.8 -- several files shown at once with their titles, reactions, dictated messages, done said once, the media of a thread, the viewer, the side of the detailed view (tested here and in an application's own end-to-end runs, the screen checked on a real thread replayed); Markdown, short versions, `close` and the signs of each message (version 0.7, tested here and in an application's own end-to-end runs, the screen checked on a real thread replayed); `doing` and the line of what it does now
 (version 0.3, tested here with stand-ins); the box's slots (version 0.4:
 dictation, ready answers, the keyboard of a phone), tested in an
 application's own end-to-end runs with a recorded voice and an emulated
