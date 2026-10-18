@@ -116,6 +116,7 @@ gives it. Without a slot, nothing of it is shown.
 |---|---|---|
 | `react` | `(to, reaction)`: puts a reaction on a message of the agent (`null`: taken back); `reactions` replaces the set (`[{ id, icon }]`) | the reactions on its messages |
 | `agentName`, `agentTool` | the name said above its messages (default: the dictionary's neutral word), the tool, small, in the detailed view | |
+| `receivedAfter`, `noAnswerAfter` | milliseconds: once the agent read the person's newest message and posted nothing since, "Received, thinking..." after the first (default `0`, at once; `null`: never), "No answer yet" after the second (default five minutes); its first status or message replaces it | |
 | `voice` | `{ listen(on) }`: opens a microphone, calls `on.phrase(text)`, `on.state(word)`, `on.speech()`, `on.error(message)`; resolves with a function that closes it | a button beside Send; what is said goes into the box; while it listens, the box itself says what it does (its placeholder, and a small label on its frame), so that nothing on the screen moves; Send pressed while a phrase is still being written sends it once written |
 | `autoSend`, `onAutoSend(on)` | the device's choice, kept by the application | "send by itself when I stop talking", in the small menu of settings beside the view (only with `voice`); while it is on, the microphone button wears a dot |
 | `replies` | `[{ label, text, send }]`, or later `handle.replies = [...]` | ready answers above the box: `send` sends at once, else the text is put in the box; one line, the rest behind "N more" |

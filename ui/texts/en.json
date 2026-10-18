@@ -64,6 +64,8 @@
   "badge-warn": "warning",
   "waits-you": "Waiting for you",
   "waits-you-note": "Waiting for you: {note}",
+  "received": "Received, thinking…",
+  "no-answer": "No answer yet (read at {time})",
   "busy": "Busy: {doing} - your messages wait for it",
   "state-sent": "Sent, not read yet",
   "state-read": "Read",

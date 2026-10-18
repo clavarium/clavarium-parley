@@ -142,7 +142,11 @@ into it in the simple view, unfolded above it in the detailed one. Those
 after the last message are the agent's turn: while the newest of them is a `doing`
 (or a `working` status), it is shown as the one line of what it does now, and
 it goes when the next message comes. Nothing came for 15 minutes: the line
-stays, still, and says since when. See the table in the README for what each
+stays, still, and says since when. The agent read the person's newest message and posted
+nothing since, not even a step: the screen says "Received, thinking..." (at
+once, or after a delay the application sets), and "No answer yet" after five
+minutes. It says the message was received, never what the agent does; its
+first status or message replaces it. See the table in the README for what each
 view shows.
 
 ## The box

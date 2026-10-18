@@ -327,6 +327,9 @@
 @media (prefers-reduced-motion: reduce) { .parley-sign-state .parley-sign, .parley-sign-state .parley-hand { animation: none !important; } }
 .parley-said[data-from="person"] .parley-remind { display: block; margin-top: .35em; }
 /* ---- it waits for the person; it is busy ---- */
+/* Received and nothing yet from the agent: quiet, it claims nothing. */
+.parley-received { align-self: flex-start; padding: .3em .8em; font-size: .92em; font-style: italic; opacity: .75; }
+.parley-received[data-long="true"] { font-style: normal; }
 .parley-waits { align-self: flex-start; padding: .3em .8em; border-radius: 999px; font-weight: 600; font-size: .92em; color: var(--parley-ask); border: 1px solid color-mix(in srgb, var(--parley-ask) 45%, transparent); }
 .parley-now[data-busy="true"] .parley-doing { color: var(--parley-ask); }
 /* ---- lines of the application, by level ---- */
@@ -402,7 +405,7 @@ mark.parley-found[data-now="true"] { outline: 2px solid var(--parley-ask); }
 /* ---- room between the thread and the box; the box set apart by a line ---- */
 .parley-composer { display: flex; flex-direction: column; gap: var(--parley-gap); padding-top: .75rem; border-top: 1px solid var(--parley-line); box-shadow: 0 -10px 16px -14px rgba(0, 0, 0, .25); }
 /* The line of what it does, and its states, with room of their own. */
-.parley-row[data-type="now"], .parley-row[data-type="waits"], .parley-row[data-type="done"] { margin-top: .35rem; }
+.parley-row[data-type="now"], .parley-row[data-type="received"], .parley-row[data-type="waits"], .parley-row[data-type="done"] { margin-top: .35rem; }
 /* ---- a wide screen: the column grows, running text keeps a reading measure; tables, code, drawings and galleries take the width ---- */
 .parley-md > p, .parley-md > ul, .parley-md > ol, .parley-md > blockquote, .parley-md > .parley-h, .parley-short, .parley-said[data-from="agent"] > .parley-text, .parley-md > .parley-callout { max-width: var(--parley-measure); }
 .parley-md > p.parley-pictures { max-width: none; }

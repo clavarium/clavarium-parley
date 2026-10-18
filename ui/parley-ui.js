@@ -189,6 +189,10 @@ export const GAP_MS = 60 * 60 * 1000;
 export const STALE_MS = 15 * 60 * 1000;
 /* "Remind it" is offered only for a message not read this long, when the agent did nothing for as long. */
 export const IDLE_MS = 2 * 60 * 1000;
+/* The agent read the person's message and said nothing yet: "Received, thinking..." after this long (at once by default),
+   and "No answer yet" after the second. Parley says it was received, never what the agent does. */
+export const RECEIVED_MS = 0;
+export const NO_ANSWER_MS = 5 * 60 * 1000;
 /* A press this long on a touch screen shows a message's time. */
 export const PRESS_MS = 450;
 /* Dictating with "send when I stop": sent this long after the last phrase was written, unless the person speaks again. */
@@ -434,7 +438,7 @@ const openQuestion = (m, answered) => m.kind === 'ask' && m.from !== 'person' &&
    it stopped), `group` (lines of the application of one topic, in the simple
    view), `now` (what it does now, with the steps of this turn before it),
    `waits` (it waits for the person). `items`: the messages alone. */
-export function view(data, { words = {}, view: as = 'simple', now = Date.now(), locale, agentName, agentTool } = {}) {
+export function view(data, { words = {}, view: as = 'simple', now = Date.now(), locale, agentName, agentTool, receivedAfter = RECEIVED_MS, noAnswerAfter = NO_ANSWER_MS } = {}) {
     const detailed = as === 'detailed';
     const all = Array.isArray(data?.messages) ? data.messages.filter((m) => m && typeof m === 'object') : [];
     const answered = new Set(all.filter((m) => m.from === 'person').map((m) => m.answers).filter(Boolean));
@@ -572,6 +576,16 @@ export function view(data, { words = {}, view: as = 'simple', now = Date.now(), 
     if (waitsAt !== null && !all.some((m) => m.from === 'person' && (stamp(m.at) ?? 0) >= waitsAt) && !(lastSaid?.open)) {
         const note = String(status.note ?? '').trim();
         rows.push({ type: 'waits', key: 'w', text: note ? said(words, 'waits-you-note', { note }) : said(words, 'waits-you'), time: clock(waitsAt, locale), when: whole(waitsAt, locale), at: null, end: null });
+    }
+    /* Its newest message was read and the agent posted nothing since, not even a step: received, and nothing more is claimed.
+       The first status or message of the agent replaces it. Null for receivedAfter: never said. */
+    const lastWord = all.filter((m) => m.from !== 'system').at(-1);
+    const readAt = lastWord?.from === 'person' && lastWord.seen === true ? stamp(lastWord.seenAt) ?? stamp(lastWord.at) : null;
+    const after = Number.isFinite(receivedAfter) ? Math.max(0, receivedAfter) : null;
+    if (readAt !== null && after !== null && !live && now - readAt >= after
+        && ![...replies, ...allSteps.map((s) => stamp(s.at))].some((x) => x !== null && x >= readAt)) {
+        const long = now - readAt >= (Number.isFinite(noAnswerAfter) ? noAnswerAfter : NO_ANSWER_MS);
+        rows.push({ type: 'received', key: 'r', long, text: long ? said(words, 'no-answer', { time: clock(readAt, locale) }) : said(words, 'received'), time: clock(readAt, locale), when: whole(readAt, locale), at: null, end: null });
     }
     if (doneEnd) {
         const note = String(status.note ?? '').trim();
@@ -1109,7 +1123,8 @@ function card(file, words, open, size, title) {
 
 export function mount(root, { load, send, words = {}, open, terminal, remind, view: first = 'simple', onView, every = 3000, locale,
     voice: speaking, autoSend = false, onAutoSend, replies: ready = [], enter = 'auto', touch, attach, act,
-    markdown: rich = false, picture, diagram, highlight, agentName, agentTool, react, reactions: offered = REACTIONS } = {}) {
+    markdown: rich = false, picture, diagram, highlight, agentName, agentTool, react, reactions: offered = REACTIONS,
+    receivedAfter = RECEIVED_MS, noAnswerAfter = NO_ANSWER_MS } = {}) {
     /* The set of reactions offered: well formed, each with an icon this file has. */
     const reactions = (Array.isArray(offered) ? offered : REACTIONS).filter((r) => r && /^[a-z][a-z0-9-]{0,29}$/.test(r.id) && typeof r.icon === 'string').slice(0, 12);
     let as = VIEWS.includes(first) ? first : 'simple';
@@ -1319,6 +1334,7 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
             folding(row, holder, chip, list);
             return holder;
         }
+        if (row.type === 'received') { const p = el('p', 'parley-received', row.text); p.title = row.when; p.dataset.long = String(row.long); p.setAttribute('role', 'status'); return p; }
         if (row.type === 'waits') { const p = el('p', 'parley-waits', row.text); p.title = row.when; p.setAttribute('role', 'status'); return p; }
         /* Done: said once, quietly, at the end. */
         if (row.type === 'done') { const p = el('p', 'parley-done', row.text); p.title = row.when; p.setAttribute('role', 'status'); return p; }
@@ -1646,7 +1662,7 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
     function paint(data) {
         latest = data;
         paintQuick();
-        const v = view(data, { words, view: as, locale, agentName, agentTool });
+        const v = view(data, { words, view: as, locale, agentName, agentTool, receivedAfter, noAnswerAfter });
         paintReply(v);
         const small = narrow();
         const mark = JSON.stringify([v, small, [...expanded], searching ? query.value : '']);
@@ -1696,7 +1712,7 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
     thread.addEventListener('load', () => { if (sticky) bottom(); }, true);
     async function refresh() { try { paint(await load()); } catch { /* shown again at the next look */ } }
     /* The messages as last drawn. */
-    const latestItems = () => (latest ? view(latest, { words, view: as, locale, agentName, agentTool }).items : []);
+    const latestItems = () => (latest ? view(latest, { words, view: as, locale, agentName, agentTool, receivedAfter, noAnswerAfter }).items : []);
     /* ---- the search ---- */
     let searching = false;
     let moveToLast = false;

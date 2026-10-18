@@ -249,6 +249,27 @@ test('what the screen shows is decided from the messages alone: two views of one
     assert.equal(view({ messages: [] }, { words: {} }).empty, 'empty', 'a word missing everywhere shows its key, never nothing');
 });
 
+test('read and nothing yet from the agent: Parley says received, then, long after, that no answer came; its first word replaces it', () => {
+    const words = texts('en');
+    const at = (minute) => new Date(Date.parse('2026-01-05T06:00:00.000Z') + minute * 60_000).toISOString();
+    const last = (v) => v.rows.at(-1);
+    const sent = { from: 'person', id: 'p1', kind: 'say', text: 'Rent a car.', seen: false, at: at(0) };
+    assert.notEqual(last(view({ messages: [sent] }, { words, now: Date.parse(at(1)) })).type, 'received', 'not read: nothing is claimed');
+    const read = { ...sent, seen: true, seenAt: at(1) };
+    let v = view({ messages: [read] }, { words, now: Date.parse(at(1)), locale: 'en-GB' });
+    assert.deepEqual([last(v).type, last(v).text, last(v).long], ['received', 'Received, thinking…', false]);
+    v = view({ messages: [read] }, { words, now: Date.parse(at(7)), locale: 'en-GB' });
+    assert.deepEqual([last(v).text, last(v).long], ['No answer yet (read at 06:01)', true]);
+    assert.notEqual(last(view({ messages: [read] }, { words, now: Date.parse(at(1)) + 2000, receivedAfter: 10_000 })).type, 'received', 'a delay: not yet');
+    assert.equal(last(view({ messages: [read] }, { words, now: Date.parse(at(1)) + 11_000, receivedAfter: 10_000 })).type, 'received');
+    assert.notEqual(last(view({ messages: [read] }, { words, now: Date.parse(at(9)), receivedAfter: null })).type, 'received', 'null: never said');
+    const step = { id: 's1', kind: 'status', state: 'working', note: 'thinking', at: at(2) };
+    assert.equal(last(view({ messages: [read], steps: [step] }, { words, now: Date.parse(at(3)) })).type, 'now', 'its first status replaces it');
+    const reply = { from: 'agent', id: 'a1', kind: 'tell', text: 'Which dates?', at: at(2) };
+    assert.ok(!view({ messages: [read, reply] }, { words, now: Date.parse(at(3)) }).rows.some((r) => r.type === 'received'), 'its first message replaces it');
+    assert.equal(texts('fr').received, 'Reçu, réflexion…', 'a word of the dictionary');
+});
+
 test('while it works, the one line of what it does now; gone when its next message comes, and what came before one click away', () => {
     const words = texts('en');
     const at = (minute) => new Date(Date.parse('2026-01-05T06:00:00.000Z') + minute * 60_000).toISOString();

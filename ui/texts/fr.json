@@ -64,6 +64,8 @@
   "badge-warn": "attention",
   "waits-you": "En attente de vous",
   "waits-you-note": "En attente de vous : {note}",
+  "received": "Reçu, réflexion…",
+  "no-answer": "Pas encore de réponse (lu à {time})",
   "busy": "Occupé : {doing} - vos messages l'attendent",
   "state-sent": "Envoyé, pas encore lu",
   "state-read": "Lu",
