@@ -10,7 +10,7 @@ import { fileURLToPath } from 'node:url';
 import { install, Parley, WAKE, REREAD, invitation, languageName, texts, fill, LANGUAGES } from '../host/parley-host.mjs';
 import { view, KEYS, quick, sends, joined, REPLIES_MAX, LABEL_MAX } from '../ui/parley-ui.js';
 import { run, HELP } from '../bin/parley.mjs';
-import { findFolder } from '../server/parley-mcp.mjs';
+import { findFolder, VERSION } from '../server/parley-mcp.mjs';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const SERVER = join(ROOT, 'server', 'parley-mcp.mjs');
@@ -479,4 +479,8 @@ test('lines of the application: said in the thread where they happened, grey, wi
     assert.equal(v.items.find((i) => i.id === 'p').state, 'sent', 'the person\'s last word is still said not read');
     assert.equal(v.rows.at(-1).type, 'now', 'what it does now stays the agent\'s turn');
     assert.equal(view({ messages: [{ from: 'system', id: 'z', at: at(0), text: 'Restarted.', level: 'nonsense' }] }).items[0].level, 'news');
+});
+
+test('the version the agent is told ("parley --version", MCP) is the version of the package', () => {
+    assert.equal(VERSION, JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version);
 });
