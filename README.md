@@ -74,7 +74,7 @@ are, changes, or does not use.
         reach: (path) => (path.startsWith('/work/') ? path : null),   // what the person can open
     });
     parley.listen();
-    typeInTheAgentsTerminal(parley.invite('fr', { install: 'npm install -g /path/to/clavarium-parley-0.9.0.tgz', shared: '/work' }));
+    typeInTheAgentsTerminal(parley.invite('fr', { install: 'npm install -g /path/to/clavarium-parley-0.10.0.tgz', shared: '/work' }));
 
 and in a page:
 
@@ -83,7 +83,7 @@ and in a page:
         voice: yourDictation, replies: yourReadyAnswers });
 
 The command is installed from the archive `npm pack` makes, by the
-application or by the agent: `npm install -g clavarium-parley-0.9.0.tgz`,
+application or by the agent: `npm install -g clavarium-parley-0.10.0.tgz`,
 then `parley --help`. Installing it runs no script of its own. It finds
 its folder as git finds a repository: the nearest `.parley` from where it
 stands, or `--dir`, or `$PARLEY_DIR`.
