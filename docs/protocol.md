@@ -30,6 +30,10 @@ The command finds the folder as git finds a repository: `--dir`, else
 | `parley doing TEXT` | `doing(text)` | `{kind:"doing", text}`, one line of 200 characters at most | at once |
 | `parley read` | `read()` | nothing | what was written since the last read, answers and attached files included, then the questions still open with their ids |
 | `parley read --all` | `read({all: true})` | nothing | the whole exchange, both sides, oldest first (the newest 200 entries): to pick up the thread after a restart |
+| `parley guide` | none | nothing | how to work with the person, in a few lines: for an agent that forgot |
+
+The command ends a read that found something (not an empty poll) with one
+line, `Forgot how to work with them? parley guide`.
 
 `TEXT` is Markdown, 16,000 characters at most; `short` is its short version, a title of one or two lines (200 characters), which a screen shows first: whatever asks the person for an action or a decision, or says the agent is blocked, belongs in it. A question is closed (`close`) when the person answered it another way (a message typed later): the screen says the answer the agent understood, and the person may still answer with the question's buttons. `STATE` is `working`, `waiting` or `done`. `doing` says what the agent is
 doing now, at each new step; it means it works: a `doing` after `done` or
@@ -73,7 +77,7 @@ LINE to the agent, by a way of its own, when it judges right:
 What was written is never on that line. After the agent lost its memory (its
 machine restarted, a new session), the application may type, once:
 
-    Your chat with the person is kept: run "parley read --all" before going on.
+    Your chat with the person is kept: run "parley read --all" before going on. Forgot how to work with them? parley guide
  The agent runs `parley read` and
 finds it. An answer may therefore come two minutes or two days later.
 

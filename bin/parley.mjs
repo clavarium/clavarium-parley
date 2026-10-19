@@ -2,7 +2,7 @@
 /* THE COMMAND: the seven verbs for any agent that can run a command. It writes
  * the same files as the MCP server, through the same code (server/).
  *
- *   parley read [--all] | tell | ask | show | close | doing | status | --help
+ *   parley read [--all] | tell | ask | show | close | doing | status | guide | --help
  *
  * Exit codes: 0 done; 1 refused (said on standard error); 2 no folder found;
  * 64 not understood. */
@@ -10,6 +10,34 @@ import { readFileSync, realpathSync, existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { bridge, findFolder, STATES, VERSION, FOLDER, WRITING, SHORTER, GALLERY } from '../server/parley-mcp.mjs';
+
+/* How to work with the person, in a few lines: what an agent comes back to
+   when it forgot. Its words are accepted as they are. */
+export const GUIDE = `How to work with the person through Parley
+
+1. When you read a new message, first say you have it:
+   parley status working "reading your message"
+   (Parley already shows "Received, thinking..." until you do.)
+
+2. Keep your state up to date, every time it changes:
+   parley doing "running the tests"   what you do now
+   parley status waiting "need your choice"
+   parley status done                 task finished
+
+3. Tell, don't wait to be asked:
+   parley tell  -> progress and results
+   parley ask   -> a decision (give the choices)
+
+4. Anything that needs their action or decision
+   goes in the short version (--short), first line.
+
+5. After a restart: parley read --all
+
+6. Forgot how? parley guide.
+   Every command: parley --help`;
+
+/* The line that ends a read with something in it: not every empty poll. */
+export const REMINDER = 'Forgot how to work with them? parley guide';
 
 export const HELP = `parley: talk with the person you work for. They read and answer on their own screen, not in this terminal.
 
@@ -30,6 +58,7 @@ export const HELP = `parley: talk with the person you work for. They read and an
   parley status ${STATES.join('|')} ["note"]
                                        say where you are: working when you start, waiting when you
                                        need them, done when the task is finished
+  parley guide                         how to work with them, in a few lines: when you forgot
 
 ${wrap(WRITING)}
 
@@ -97,6 +126,7 @@ export function run(argv, { env = process.env, cwd = process.cwd(), stdin = () =
     const [verb, ...rest] = args;
     if (verb === undefined || verb === '--help' || verb === '-h' || verb === 'help') return { code: 0, out: `${HELP}\n`, err: '' };
     if (verb === '--version') return { code: 0, out: `${VERSION}\n`, err: '' };
+    if (verb === 'guide') return { code: 0, out: `${GUIDE}\n`, err: '' };
     if (!['read', 'tell', 'ask', 'show', 'close', 'doing', 'status'].includes(verb)) return { code: 64, out: '', err: `Unknown: ${verb}. Run "parley --help".\n` };
     const folder = findFolder({ dir, env, from: cwd });
     if (!folder) return { code: 2, out: '', err: `No ${FOLDER} folder here or above. Run it from your work folder, or give --dir FOLDER.\n` };
@@ -104,7 +134,7 @@ export function run(argv, { env = process.env, cwd = process.cwd(), stdin = () =
     const verbs = bridge(folder);
     try {
         let said;
-        if (verb === 'read') { if (rest.some((a) => a !== '--all')) return { code: 64, out: '', err: 'read takes nothing, or --all.\n' }; said = verbs.read({ all: rest.includes('--all') }); }
+        if (verb === 'read') { if (rest.some((a) => a !== '--all')) return { code: 64, out: '', err: 'read takes nothing, or --all.\n' }; said = verbs.read({ all: rest.includes('--all') }); if (!/^(No new message|Nothing was written yet)/.test(said)) said = `${said}\n${REMINDER}`; }
         else if (verb === 'tell' || verb === 'ask') {
             /* --short "title", anywhere among the words. */
             const at2 = rest.indexOf('--short');

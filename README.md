@@ -22,6 +22,7 @@ application, any agent that can run a command.
 | `parley close ID "answer"` | close a question the person answered another way |
 | `parley read --all` | the whole exchange, both sides: to pick up the thread after a restart |
 | `parley status working\|waiting\|done ["note"]` | say where it is |
+| `parley guide` | how to work with the person, in a few lines, for an agent that forgot |
 
 `parley --help` says all of it to the agent. The same seven verbs are an MCP
 server (`parley-mcp`, or `node server/parley-mcp.mjs --dir FOLDER`) for an

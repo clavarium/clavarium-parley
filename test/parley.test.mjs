@@ -9,7 +9,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { install, Parley, WAKE, REREAD, invitation, languageName, texts, fill, LANGUAGES } from '../host/parley-host.mjs';
 import { view, KEYS, quick, sends, joined, REPLIES_MAX, LABEL_MAX } from '../ui/parley-ui.js';
-import { run, HELP } from '../bin/parley.mjs';
+import { run, HELP, GUIDE, REMINDER } from '../bin/parley.mjs';
 import { findFolder, VERSION } from '../server/parley-mcp.mjs';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
@@ -72,8 +72,8 @@ test('the command: the same six verbs on the same files, found from where the ag
     host.say('Keep it short.');
     seen = host.read();
     assert.equal(seen.unread, 2); assert.deepEqual(seen.messages.filter((m) => m.from === 'person').map((m) => m.seen), [false, false]);
-    assert.equal(parley(here, ['read']).out, 'Answer to your question "Blue or red cover?": blue\nMessage: Keep it short.\n');
-    assert.equal(parley(here, ['read']).out, 'No new message.\n');
+    assert.equal(parley(here, ['read']).out, 'Answer to your question "Blue or red cover?": blue\nMessage: Keep it short.\nForgot how to work with them? parley guide\n', 'a read with something in it ends with the reminder');
+    assert.equal(parley(here, ['read']).out, 'No new message.\n', 'an empty poll does not');
     seen = host.read();
     assert.equal(seen.unread, 0); assert.deepEqual(seen.messages.filter((m) => m.from === 'person').map((m) => m.seen), [true, true]);
     /* What it is refused, and said why, on standard error. */
@@ -157,7 +157,8 @@ test('the texts an agent reads are English and say the person\'s language; the l
     const text = invitation({ lang: 'fr-FR', install: 'npm install -g /tools/clavarium-parley-0.2.0.tgz', shared: '/work' });
     for (const part of ['npm install -g /tools/clavarium-parley-0.2.0.tgz', 'parley --help', 'parley tell', 'parley ask', 'parley show', 'parley doing', 'parley status', 'under /work', 'Write to them in French.', 'You have a new message', 'parley read']) assert.ok(text.includes(part), part);
     assert.ok(/^[\x20-\x7e]+$/.test(text), 'one line, plain ASCII');
-    assert.equal(REREAD, 'Your chat with the person is kept: run "parley read --all" before going on.');
+    assert.equal(REREAD, 'Your chat with the person is kept: run "parley read --all" before going on. Forgot how to work with them? parley guide');
+    assert.ok(text.endsWith('Forgot how to work with them? parley guide Start now: tell them in one line that you are ready.'), 'the startup line points to the guide');
     assert.ok(/^[\x20-\x7e]+$/.test(REREAD));
     for (const line of [text, WAKE, REREAD]) assert.ok(!/[`'$\\]/.test(line), 'nothing a shell would run or wait on, should one listen instead of an agent');
     assert.equal(new Parley('/nowhere').invite('de'), invitation({ lang: 'de' }));
@@ -409,14 +410,14 @@ test('after a restart the agent picks up the thread: "read --all" gives the whol
     const home = folder(t);
     const dir = join(home, '.parley'); install(dir);
     const host = new Parley(dir);
-    assert.equal(parley(home, ['read', '--all']).out, 'Nothing was written yet, on either side.\n');
+    assert.equal(parley(home, ['read', '--all']).out, 'Nothing was written yet, on either side.\n', 'nothing read, no reminder');
     host.say('Write the family story.');
     writeFileSync(join(home, 'chapter.html'), 'x');
     assert.equal(parley(home, ['tell', 'Starting with the farm.']).code, 0);
     assert.equal(parley(home, ['doing', 'reading']).code, 0);
     assert.equal(parley(home, ['ask', 'His voice, or about him?', 'his voice', 'about him']).code, 0);
     assert.equal(parley(home, ['show', 'chapter.html', 'Chapter 1']).code, 0);
-    assert.match(parley(home, ['read']).out, /^Message: Write the family story\.\nOpen questions \(one they answered another way: close it with parley close ID "the answer you understood"\):\n {2}\[[0-9a-f]{8}\] His voice, or about him\?\n$/, 'with the questions still open');
+    assert.match(parley(home, ['read']).out, /^Message: Write the family story\.\nOpen questions \(one they answered another way: close it with parley close ID "the answer you understood"\):\n {2}\[[0-9a-f]{8}\] His voice, or about him\?\nForgot how to work with them\? parley guide\n$/, 'with the questions still open');
     host.say('his voice', host.read().messages.find((m) => m.kind === 'ask').id);
     const all = parley(home, ['read', '--all']).out.split('\n');
     assert.match(all[0], /^The whole exchange with the person, oldest first \(5\):$/);
@@ -428,6 +429,7 @@ test('after a restart the agent picks up the thread: "read --all" gives the whol
         'They answered your question "His voice, or about him?": his voice (new)',
     ], 'what it did not read yet is marked; what it was doing is not part of the exchange');
     assert.equal(all[6], 'End of the exchange: everything is read now.');
+    assert.equal(all[7], 'Forgot how to work with them? parley guide');
     assert.equal(host.unread(), 0);
     assert.equal(parley(home, ['read']).out, 'No new message.\n');
     assert.equal(parley(home, ['read', '--every']).code, 64);
@@ -452,7 +454,7 @@ test('the person attaches files to a message: the agent is told where they are, 
     assert.throws(() => host.say('x', undefined, [{ path: 'relative.txt' }]), /whole path/);
     assert.throws(() => host.say('x', undefined, Array.from({ length: 11 }, (_, i) => ({ path: `/f${i}` }))), /10 files at most/);
     assert.throws(() => host.say('  ', undefined, []), /Write something/);
-    assert.equal(parley(home, ['read']).out, 'Message: Here is the photo.\n  Attached file: /work/.parley/files/a1/photo.jpg (2 KB)\n  Attached file: /elsewhere/x.txt (3 bytes)\nMessage: \n  Attached file: /work/.parley/files/b2/plan.pdf (3.0 MB)\n');
+    assert.equal(parley(home, ['read']).out, 'Message: Here is the photo.\n  Attached file: /work/.parley/files/a1/photo.jpg (2 KB)\n  Attached file: /elsewhere/x.txt (3 bytes)\nMessage: \n  Attached file: /work/.parley/files/b2/plan.pdf (3.0 MB)\nForgot how to work with them? parley guide\n');
     /* On the screen: by name in its bubble, opened the application's way; its whole path in the detailed view. */
     const data = host.read();
     const simple = view(data, { words: texts('en') });
@@ -483,4 +485,18 @@ test('lines of the application: said in the thread where they happened, grey, wi
 
 test('the version the agent is told ("parley --version", MCP) is the version of the package', () => {
     assert.equal(VERSION, JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version);
+});
+
+test('"parley guide" says how to work with the person, word for word, and the help lists it', (t) => {
+    const said = run(['guide'], { cwd: folder(t), env: {} });
+    assert.equal(said.code, 0);
+    assert.equal(said.out, `${GUIDE}\n`);
+    assert.ok(GUIDE.startsWith('How to work with the person through Parley\n\n1. When you read a new message, first say you have it:\n   parley status working "reading your message"\n'));
+    for (const part of ['(Parley already shows "Received, thinking..." until you do.)', 'parley doing "running the tests"   what you do now', 'parley status waiting "need your choice"', 'parley status done                 task finished',
+        '3. Tell, don\'t wait to be asked:', 'parley tell  -> progress and results', 'parley ask   -> a decision (give the choices)', '4. Anything that needs their action or decision\n   goes in the short version (--short), first line.',
+        '5. After a restart: parley read --all', '6. Forgot how? parley guide.\n   Every command: parley --help']) assert.ok(GUIDE.includes(part), part);
+    assert.ok(/^[\x20-\x7e\n]+$/.test(GUIDE), 'plain ASCII');
+    assert.match(HELP, /\n {2}parley guide {2,}how to work with them/);
+    assert.equal(REMINDER, 'Forgot how to work with them? parley guide');
+    assert.equal(run(['guide'], { cwd: tmpdir(), env: {} }).code, 0, 'no folder needed');
 });

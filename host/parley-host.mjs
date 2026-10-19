@@ -68,7 +68,7 @@ const TEXTS = fileURLToPath(new URL('../ui/texts/', import.meta.url));
 export const WAKE = 'You have a new message: run "parley read".';
 /* What an application may type after the agent lost its memory (its machine
    restarted, a new session): the exchange is still there to be read whole. */
-export const REREAD = 'Your chat with the person is kept: run "parley read --all" before going on.';
+export const REREAD = 'Your chat with the person is kept: run "parley read --all" before going on. Forgot how to work with them? parley guide';
 const NAMES = { en: 'English', fr: 'French' };
 /* The name of a language, in English, for a sentence an agent reads. */
 export function languageName(lang) {
@@ -90,6 +90,7 @@ export function invitation({ lang = 'en', install, shared } = {}) {
         shared ? `Put any file you show under ${shared}: it is the folder they can open.` : '',
         `Write to them in ${languageName(lang)}.`,
         'When you see "You have a new message", run "parley read".',
+        'Forgot how to work with them? parley guide',
         'Start now: tell them in one line that you are ready.',
     ].filter(Boolean).join(' ');
 }
