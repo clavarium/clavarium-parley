@@ -3,7 +3,7 @@
  *   import { mount } from './parley-ui.js';
  *   mount(element, { load, send, words, open, terminal, remind, view, onView, locale,
  *                    voice, autoSend, onAutoSend, replies, enter, touch, attach, act,
- *                    markdown, picture, diagram, highlight, agentName, agentTool, react, reactions });
+ *                    markdown, picture, diagram, highlight, agentName, agentTool, react, reactions, back });
  *
  *   load()                 resolves with what parley-host.mjs read() gives;
  *                          the application may add lines of its own to its
@@ -24,6 +24,17 @@
  *   terminal()             optional: shows the agent's terminal
  *   remind()               optional: tells the agent again that a message waits
  *   view                   'simple' or 'detailed'; onView(view) when changed
+ *   back                   what Back does to what Parley opens over the
+ *                          thread (the large picture, the media, the
+ *                          reactions, the search, the menu of settings):
+ *                          true (the default): each one opened takes a step
+ *                          of the page's history, and Back closes the one on
+ *                          top; closed by its own button or Escape, its step
+ *                          is taken back. false: the history is not touched.
+ *                          Or the page's own steps, { open(name, close) =>
+ *                          token, closed(token) }: open() when one shows
+ *                          (close() closes it), closed() when it closed by
+ *                          itself
  *   locale                 optional: how times and days are written (the
  *                          device's own way when not given)
  *   agentName              optional: the agent's name, said above its messages
@@ -206,6 +217,8 @@ export const TEXT_MAX = 4000;
 /* Files attached to one message, at most; buttons on a line of the application. */
 export const FILES_MAX = 10;
 export const ACTIONS_MAX = 4;
+/* Words of a line of the application that are buttons (a commit it names). */
+export const LINKS_MAX = 8;
 /* A message without a short version is folded beyond about so many lines (simple view). */
 export const FOLD_LINES = 12;
 /* Read no deeper than this: quotes in lists in quotes... */
@@ -473,7 +486,8 @@ export function view(data, { words = {}, view: as = 'simple', now = Date.now(), 
             return { type: 'message', key: `y:${String(m.id ?? '')}`, id: String(m.id ?? ''), from: 'system', kind: 'system', level: levelOf(m.level), tone: ['warn', 'bad'].includes(m.tone) ? m.tone : ['warn', 'bad'].includes(m.level) ? m.level : '',
                 topic: cut(m.topic, 40), brief: cut(m.brief, 60),
                 text: String(m.text ?? ''), time: clock(t, locale), when: whole(t, locale), at: t, label: '', file: null, files: [], outside: '', choices: [], open: false, mark: '',
-                actions: (Array.isArray(m.actions) ? m.actions : []).filter((a) => a && typeof a.id === 'string' && typeof a.label === 'string' && a.label.trim()).slice(0, ACTIONS_MAX).map((a) => ({ id: a.id, label: a.label.trim().slice(0, LABEL_MAX) })) };
+                actions: (Array.isArray(m.actions) ? m.actions : []).filter((a) => a && typeof a.id === 'string' && typeof a.label === 'string' && a.label.trim()).slice(0, ACTIONS_MAX).map((a) => ({ id: a.id, label: a.label.trim().slice(0, LABEL_MAX) })),
+                links: (Array.isArray(m.links) ? m.links : []).filter((a) => a && typeof a.id === 'string' && typeof a.text === 'string' && a.text && a.text.length <= 80).slice(0, LINKS_MAX).map((a) => ({ id: a.id, text: a.text })) };
         }
         const show = m.kind === 'show';
         const open = openQuestion(m, answered);
@@ -926,8 +940,51 @@ function painter(ctx) {
    page is zoomed all the same while it is open, the viewer is sized back
    to the screen (visualViewport), its bars keeping their size. */
 const ZOOM_MAX = 8;
+/* WHAT IS OPEN OVER THE THREAD, AND BACK. Each layer says when it opens and
+   when it closes; the steps are the page's history (the default), the page's
+   own (an object), or none. A layer closed and another opened at once (the
+   menu, then the search) share one step: the step is given back a moment
+   later only if nothing took it. */
+export function stepper(back = true) {
+    const host = back && typeof back === 'object' && typeof back.open === 'function' ? back : null;
+    const own = !host && back !== false && typeof history !== 'undefined' && typeof addEventListener === 'function';
+    const open = [];
+    let owed = 0; let ignore = 0; let later = null;
+    const level = () => { const v = history.state?.parley; return Number.isInteger(v) && v > 0 ? v : 0; };
+    const steps = () => open.filter((x) => x.step).length;
+    const giveBack = () => { later = null; const n = owed; owed = 0; if (n > 0) { ignore += 1; history.go(-n); } };
+    const popped = () => {
+        if (ignore > 0) { ignore -= 1; return; }
+        const at = level();
+        while (steps() > at) { const i = open.findLastIndex((x) => x.step); const [x] = open.splice(i, 1); try { x.close(); } catch { /* gone */ } }
+    };
+    if (own) addEventListener('popstate', popped);
+    return {
+        opened(name, close) {
+            const there = open.find((x) => x.name === name);
+            if (there) { there.close = close; return; }
+            const x = { name, close, step: false, token: undefined };
+            open.push(x);
+            if (host) { try { x.token = host.open(name, () => { const i = open.indexOf(x); if (i >= 0) open.splice(i, 1); close(); }); } catch { /* the page's business */ } }
+            else if (own) {
+                x.step = true;
+                if (owed > 0) owed -= 1;
+                else { try { history.pushState({ ...(history.state ?? {}), parley: steps() }, '', location.href); } catch { x.step = false; } }
+            }
+        },
+        closed(name) {
+            const i = open.findIndex((x) => x.name === name);
+            if (i < 0) return;
+            const [x] = open.splice(i, 1);
+            if (host) { try { host.closed?.(x.token); } catch { /* the page's business */ } }
+            else if (x.step) { owed += 1; later ??= setTimeout(giveBack, 0); }
+        },
+        get open() { return open.map((x) => x.name); },
+        destroy() { if (own) removeEventListener('popstate', popped); clearTimeout(later); later = null; open.length = 0; },
+    };
+}
 const OPEN_MS = 220;
-function zoomer(root, words) {
+function zoomer(root, words, steps) {
     const box = el('div', 'parley-zoom'); box.hidden = true; box.setAttribute('role', 'dialog'); box.setAttribute('aria-modal', 'true'); box.tabIndex = -1;
     const bar = el('div', 'parley-zoom-bar');
     const title = el('span', 'parley-zoom-name');
@@ -1033,7 +1090,7 @@ function zoomer(root, words) {
         if (!box.hidden && img.naturalWidth) { if (s <= fit * 1.01) fitIn(); else { clamp(); apply(); } }
     };
     const watch = (on) => { const v = view(); if (!v) return; for (const type of ['resize', 'scroll']) (on ? v.addEventListener : v.removeEventListener).call(v, type, keep); };
-    function close() { clearTimeout(tapping); watch(false); box.hidden = true; keep(); box.style.opacity = ''; img.removeAttribute('src'); try { back?.focus?.({ preventScroll: true }); } catch { /* gone */ } }
+    function close() { steps?.closed('zoom'); clearTimeout(tapping); watch(false); box.hidden = true; keep(); box.style.opacity = ''; img.removeAttribute('src'); try { back?.focus?.({ preventScroll: true }); } catch { /* gone */ } }
     box.addEventListener('keydown', (event) => {
         if (event.key === 'Escape') { event.preventDefault(); close(); }
         else if (event.key === 'ArrowLeft') go(-1);
@@ -1100,6 +1157,7 @@ function zoomer(root, words) {
             back = document.activeElement; list = all; at = Math.max(0, Math.min(all.length - 1, index));
             try { from = thumb?.getBoundingClientRect?.() ?? null; } catch { from = null; }
             box.hidden = false; watch(true); keep(); load(); box.focus?.({ preventScroll: true });
+            steps?.opened('zoom', close);
         },
         get open() { return !box.hidden; },
         close,
@@ -1124,7 +1182,8 @@ function card(file, words, open, size, title) {
 export function mount(root, { load, send, words = {}, open, terminal, remind, view: first = 'simple', onView, every = 3000, locale,
     voice: speaking, autoSend = false, onAutoSend, replies: ready = [], enter = 'auto', touch, attach, act,
     markdown: rich = false, picture, diagram, highlight, agentName, agentTool, react, reactions: offered = REACTIONS,
-    receivedAfter = RECEIVED_MS, noAnswerAfter = NO_ANSWER_MS } = {}) {
+    receivedAfter = RECEIVED_MS, noAnswerAfter = NO_ANSWER_MS, back = true } = {}) {
+    const steps = stepper(back);
     /* The set of reactions offered: well formed, each with an icon this file has. */
     const reactions = (Array.isArray(offered) ? offered : REACTIONS).filter((r) => r && /^[a-z][a-z0-9-]{0,29}$/.test(r.id) && typeof r.icon === 'string').slice(0, 12);
     let as = VIEWS.includes(first) ? first : 'simple';
@@ -1151,7 +1210,9 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
     const prefsButton = el('button', 'parley-prefs-open'); prefsButton.type = 'button'; prefsButton.title = said(words, 'settings'); prefsButton.setAttribute('aria-label', prefsButton.title);
     prefsButton.setAttribute('aria-expanded', 'false'); prefsButton.setAttribute('aria-haspopup', 'true'); prefsButton.append(sign('prefs'));
     const prefsMenu = el('div', 'parley-prefs-menu'); prefsMenu.hidden = true; prefsMenu.setAttribute('role', 'group'); prefsMenu.setAttribute('aria-label', said(words, 'settings'));
-    const showPrefs = (on) => { prefsMenu.hidden = !on; prefsButton.setAttribute('aria-expanded', String(on)); };
+    const showPrefs = (on) => {
+        if (on && prefsMenu.hidden) steps.opened('prefs', () => showPrefs(false)); else if (!on && !prefsMenu.hidden) steps.closed('prefs');
+        prefsMenu.hidden = !on; prefsButton.setAttribute('aria-expanded', String(on)); };
     const switcher = el('div', 'parley-views'); switcher.setAttribute('role', 'group'); switcher.setAttribute('aria-label', said(words, 'view'));
     const choose = (v) => { if (v === as) return; as = v; root.dataset.view = as; unfolded.clear(); seenKeys = null; try { onView?.(as); } catch { /* the page's business */ } repaint(); void refresh(); };
     const toggles = VIEWS.map((v) => { const b = button(said(words, v), '', () => { choose(v); showPrefs(false); }); b.dataset.view = v; return b; });
@@ -1169,7 +1230,7 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
     prefsMenu.append(switcher, searchButton, mediaButton, dictation);
     prefs.append(prefsButton, prefsMenu);
     prefsButton.addEventListener('click', () => showPrefs(prefsMenu.hidden));
-    prefs.addEventListener('keydown', (event) => { if (event.key === 'Escape' && !prefsMenu.hidden) { showPrefs(false); prefsButton.focus(); } });
+    prefs.addEventListener('keydown', (event) => { if (event.key === 'Escape' && !prefsMenu.hidden) { event.preventDefault(); showPrefs(false); prefsButton.focus(); } });
     const away = (event) => { if (!prefsMenu.hidden && !(event.target instanceof Node && prefs.contains(event.target))) showPrefs(false); };
     document.addEventListener('pointerdown', away);
     top.append(status, prefs);
@@ -1225,7 +1286,7 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
     const problem = el('p', 'parley-problem'); problem.hidden = true; problem.setAttribute('role', 'alert');
     form.append(field, clip, mic, go, picker);
     const dropZone = el('div', 'parley-drop', said(words, 'drop')); dropZone.hidden = true;
-    const zoom = zoomer(root, words);
+    const zoom = zoomer(root, words, steps);
     /* What floats over the chat first; then the chat, top to bottom. */
     /* The box and what goes with it: apart from the thread, by a line and some room. */
     const composer = el('div', 'parley-composer');
@@ -1316,7 +1377,18 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
     function systemLine(row) {
         const line = el('div', 'parley-system'); line.dataset.from = 'system'; line.dataset.level = row.level; if (row.tone) line.dataset.tone = row.tone; line.dataset.id = row.id;
         if (row.when) line.title = row.when;
-        line.append(el('p', 'parley-system-text', row.text), time(row.time, row.when));
+        const text = el('p', 'parley-system-text');
+        /* Its words that are buttons, each where it first stands in the text; the rest stays text. */
+        let rest = row.text;
+        for (const a of act ? row.links : []) {
+            const at = rest.indexOf(a.text);
+            if (at < 0) continue;
+            text.append(rest.slice(0, at), button(a.text, 'parley-ref', () => { try { act(a.id, { id: row.id, text: row.text }); } catch { /* the application's business */ } }));
+            text.lastChild.dataset.act = a.id;
+            rest = rest.slice(at + a.text.length);
+        }
+        text.append(rest);
+        line.append(text, time(row.time, row.when));
         if (row.actions.length && act) {
             const buttons = el('div', 'parley-system-actions');
             for (const a of row.actions) { const b = button(a.label, 'parley-act', () => { try { act(a.id, { id: row.id, text: row.text }); } catch { /* the application's business */ } }); b.dataset.act = a.id; buttons.append(b); }
@@ -1492,6 +1564,7 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
         let target = null;
         let marked = null;
         const close = () => {
+            steps.closed('react');
             box.hidden = true; target = null;
             if (marked) { delete marked.dataset.reacting; marked = null; }
             if (box.dataset.sheet === 'true') { thread.style.paddingBottom = ''; delete box.dataset.sheet; }
@@ -1529,6 +1602,7 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
                 const sheet = root.getBoundingClientRect().width < SHEET_PX;
                 if (sheet) box.dataset.sheet = 'true'; else delete box.dataset.sheet;
                 box.hidden = false;
+                steps.opened('react', close);
                 if (sheet) {
                     /* Where it ends up, not where its rising starts. */
                     const top2 = root.getBoundingClientRect().bottom - box.offsetHeight; const area2 = thread.getBoundingClientRect();
@@ -1549,6 +1623,7 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
                 box.focus?.({ preventScroll: true });
             },
             close,
+            close,
             get open2() { return !box.hidden; },
         };
     }
@@ -1567,7 +1642,7 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
         const body2 = el('div', 'parley-media-body');
         box.append(head, body2);
         let on = 'media-pictures';
-        const close = () => { box.hidden = true; };
+        const close = () => { steps.closed('media'); box.hidden = true; };
         const find = (id) => {
             close();
             const row = [...thread.querySelectorAll('.parley-said')].find((b) => b.dataset.id === id);
@@ -1613,7 +1688,7 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
         tFiles.addEventListener('click', () => { on = 'media-files'; paint3(); });
         shut.addEventListener('click', close);
         box.addEventListener('keydown', (event) => { if (event.key === 'Escape' && !zoom.open) { event.preventDefault(); close(); } });
-        return { box, show() { box.hidden = false; paint3(); box.focus?.({ preventScroll: true }); }, close, get open() { return !box.hidden; } };
+        return { box, show() { box.hidden = false; steps.opened('media', close); paint3(); box.focus?.({ preventScroll: true }); }, close, get open() { return !box.hidden; } };
     }
     /* The side of the detailed view: what it does now with the steps of this turn, its machine as the application says, its files. */
     function sideNow(v) {
@@ -1744,8 +1819,8 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
         matches[current]?.scrollIntoView?.({ block: 'center' });
     }
     const step = (n) => { if (!matches.length) return; matches[current].dataset.now = 'false'; current = (current + n + matches.length) % matches.length; matches[current].dataset.now = 'true'; found.textContent = said(words, 'found', { n: current + 1, m: matches.length }); matches[current].scrollIntoView?.({ block: 'center' }); };
-    function openSearch() { searching = true; finder.hidden = false; showPrefs(false); query.focus(); query.select?.(); repaint(); }
-    function closeSearch() { searching = false; finder.hidden = true; query.value = ''; matches = []; repaint(); sticky = true; bottom(); paintJump(); }
+    function openSearch() { steps.opened('search', closeSearch); searching = true; finder.hidden = false; showPrefs(false); query.focus(); query.select?.(); repaint(); }
+    function closeSearch() { steps.closed('search'); searching = false; finder.hidden = true; query.value = ''; matches = []; repaint(); sticky = true; bottom(); paintJump(); }
     searchButton.addEventListener('click', openSearch);
     mediaButton.addEventListener('click', () => { showPrefs(false); shelf.show(); });
     /* A right click on a message of the agent: its reactions. */
@@ -1762,7 +1837,7 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
     query.addEventListener('keydown', (event) => { if (event.key === 'Escape') { event.preventDefault(); closeSearch(); } else if (event.key === 'Enter') { event.preventDefault(); step(event.shiftKey ? -1 : 1); } });
     root.addEventListener('keydown', (event) => {
         if ((event.ctrlKey || event.metaKey) && !event.altKey && String(event.key).toLowerCase() === 'f') { event.preventDefault(); openSearch(); }
-        else if (event.key === 'Escape' && searching && !zoom.open) closeSearch();
+        else if (event.key === 'Escape' && searching && !zoom.open) { event.preventDefault(); closeSearch(); }
     });
     /* A long press on a touch screen shows a message's time, as hovering does with a mouse. */
     let pressing;
@@ -2069,6 +2144,9 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
         get replies() { return replies; }, set replies(list) { replies = Array.isArray(list) ? list : []; paintQuick(); },
         get listening() { return Boolean(stopping); },
         get attach() { return attach; }, set attach(a) { attach = a?.upload ? a : undefined; clip.hidden = !attach; if (!attach) { pending = []; paintPending(); } },
-        destroy() { gone = true; quiet(); letGo([]); for (const u of urls) try { URL.revokeObjectURL(u); } catch { /* gone */ } document.removeEventListener('pointerdown', away); clearTimeout(hush); if (timer) clearInterval(timer); clearTimeout(hiding); unpress(); watch?.disconnect(); settle?.disconnect(); watchQuick?.disconnect(); seeing?.disconnect(); root.replaceChildren(); root.classList.remove('parley'); delete root.dataset.view; },
+        /* What is open over the thread, closed (the page shows something else now). */
+        closeLayers() { for (const name of steps.open.reverse()) { if (name === 'zoom') zoom.close(); else if (name === 'media') shelf.close(); else if (name === 'react') reacting.close?.(); else if (name === 'search') closeSearch(); else if (name === 'prefs') showPrefs(false); } },
+        get layers() { return steps.open; },
+        destroy() { steps.destroy(); gone = true; quiet(); letGo([]); for (const u of urls) try { URL.revokeObjectURL(u); } catch { /* gone */ } document.removeEventListener('pointerdown', away); clearTimeout(hush); if (timer) clearInterval(timer); clearTimeout(hiding); unpress(); watch?.disconnect(); settle?.disconnect(); watchQuick?.disconnect(); seeing?.disconnect(); root.replaceChildren(); root.classList.remove('parley'); delete root.dataset.view; },
     };
 }

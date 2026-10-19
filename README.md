@@ -122,12 +122,14 @@ gives it. Without a slot, nothing of it is shown.
 | `replies` | `[{ label, text, send }]`, or later `handle.replies = [...]` | ready answers above the box: `send` sends at once, else the text is put in the box; one line, the rest behind "N more" |
 | `enter` | `'auto'`, `'send'` or `'newline'` | Enter sends with a keyboard (`auto`), is a new line on a touch screen; Shift+Enter a new line and Ctrl+Enter sends, always |
 | `touch` | true on a touch screen (default: any coarse pointer) | the box is never focused by the page, only by a finger: the keyboard never comes up by itself, and a tap on a button of the box leaves it open |
+| `back` | `true` (the default), `false`, or `{ open(name, close), closed(token) }`: the page's own steps | what opens over the thread (the large picture, the media, the reactions, the search, the menu) takes a step of the history, and Back closes the one on top, as on a phone; `false` leaves the history alone; an object hands each step to the page, so that one Back works for the whole page |
 | `attach` | `{ upload(file, name) }`, resolving with `{ path, name, size }`: where the agent finds the file | a button beside the box picks files; they are shown above it until sent; on Send each is uploaded, then the message goes with them (files alone are a message); in the thread, by name in the person's bubble |
 
 Lines of the application -- what happened around the agent, such as its
 machine short of memory -- are given with the messages (`from: "system"`) and
 shown as grey lines across the thread with their time and buttons, which call
-the application's `act(id, line)`. See the protocol.
+the application's `act(id, line)`; words of its text may be buttons too
+(`links`, a commit it names). See the protocol.
 
 When the agent asks with choices, they are answered in its message; once
 that message has scrolled away (or a keyboard took the room), the same
@@ -158,7 +160,7 @@ Tried for real with version 0.2 (OpenCode, on hosted open models): the
 `show` and `status`, an answer given ten minutes later, and the two views in
 a real page.
 
-Not tried yet with a real agent: version 0.10 -- "Received, thinking..." and "No answer yet" (tested here); version 0.8 -- several files shown at once with their titles, reactions, dictated messages, done said once, the media of a thread, the viewer, the side of the detailed view (tested here and in an application's own end-to-end runs, the screen checked on a real thread replayed); Markdown, short versions, `close` and the signs of each message (version 0.7, tested here and in an application's own end-to-end runs, the screen checked on a real thread replayed); `doing` and the line of what it does now
+Not tried yet with a real agent: version 0.10 -- Back closing what is open over the thread (tested here, and in an application's own end-to-end runs); "Received, thinking..." and "No answer yet" (tested here); version 0.8 -- several files shown at once with their titles, reactions, dictated messages, done said once, the media of a thread, the viewer, the side of the detailed view (tested here and in an application's own end-to-end runs, the screen checked on a real thread replayed); Markdown, short versions, `close` and the signs of each message (version 0.7, tested here and in an application's own end-to-end runs, the screen checked on a real thread replayed); `doing` and the line of what it does now
 (version 0.3, tested here with stand-ins); the box's slots (version 0.4:
 dictation, ready answers, the keyboard of a phone), tested in an
 application's own end-to-end runs with a recorded voice and an emulated

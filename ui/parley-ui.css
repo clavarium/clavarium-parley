@@ -522,3 +522,6 @@ mark.parley-found[data-now="true"] { outline: 2px solid var(--parley-ask); }
 .parley .parley-decide-choice[data-reaction="go"] { border-color: var(--parley-react-go); }
 .parley-decide-choice .parley-sign { width: 1.15em; height: 1.15em; }
 .parley-decide-choice[data-reaction="go"] .parley-sign { color: var(--parley-react-go); }
+/* A word of a line of the application that is a button (a commit it names): read as a link. */
+.parley .parley-ref { font: inherit; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 0.95em; color: var(--parley-action); background: none; border: 0; padding: 0 0.1em; margin: 0; text-decoration: underline; text-underline-offset: 2px; cursor: pointer; min-height: 0; }
+.parley .parley-ref:focus-visible { outline: 2px solid var(--parley-action); outline-offset: 1px; border-radius: 3px; }

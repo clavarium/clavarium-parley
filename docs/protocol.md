@@ -115,7 +115,7 @@ itself (never in the folder: the agent writes there) and adds them to the
 messages it gives the screen:
 
     {from: "system", id, at, text, level: "needs-you"|"news"|"trace", tone?: "warn"|"bad",
-     topic?, brief?, actions: [{id, label}]}
+     topic?, brief?, actions: [{id, label}], links?: [{text, id}]}
 
 The application gives each line a neutral level, and nothing else is decided
 here: `needs-you` is shown in both views; `news` in both, as a compact line in
@@ -123,7 +123,9 @@ the simple one, where lines of one `topic` that follow each other are one line
 (`{topic} ({count}): {briefs}`); `trace` in the detailed view only. (`warn` and
 `bad` are read as needs-you, `info` as news.) The screen shows each as a grey
 line across, with its time and its buttons (four at most); a button calls the
-application's `act(id, line)`. A line of
+application's `act(id, line)`. `links` are words of its own text that are
+buttons too (a commit it names): each, where it first stands in the text,
+calls `act(id, line)`; the rest stays text. A line of
 the application takes no step and does not hide that the person's last
 message is not read yet.
 
