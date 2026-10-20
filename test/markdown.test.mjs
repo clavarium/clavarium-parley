@@ -111,6 +111,20 @@ test('a mermaid drawing is shown as a picture, never as markup; a failure shows 
     assert.equal(notSvg.said.querySelector('img'), null, 'what is not a drawing is not shown as one');
 });
 
+test('a short version longer than a title: folded, it is cut at a word with "…"; opened, it is all there; none of it is lost on the way', async (t) => {
+    const long = `Intro.\n\n${Array.from({ length: 30 }, (_, i) => `- point ${i}`).join('\n')}`;
+    const short = `Done: a pre-push hook is in place in both repositories. It runs the check and blocks only on a new failure. Nothing is versioned, the hooks already there are kept. The automatic sending still waits for the next commit to go.`;
+    assert.ok(short.length > 200);
+    const { said, root } = await shown(t, long, { short, after: true });
+    const folded = said.querySelector('.parley-short').textContent;
+    assert.ok(folded.endsWith('…') && folded.length <= 200, folded);
+    assert.ok(short.startsWith(folded.slice(0, -1)), 'its beginning, as written');
+    assert.match(folded, /\S…$/); assert.ok(/[\s]/.test(short[folded.length - 1] ?? ' '), 'cut at the end of a word, not inside one');
+    said.querySelector('.parley-unfold').click();
+    await settle();
+    assert.equal(root.querySelector('.parley-short').textContent, short, 'opened: all of it');
+});
+
 test('two versions of a message: the short one first, the rest on demand, its IMPORTANT box always in sight', async (t) => {
     const long = `Intro.\n\n${Array.from({ length: 30 }, (_, i) => `- point ${i}`).join('\n')}\n\n> [!IMPORTANT]\n> Decide by Friday.`;
     /* The newest message of the agent is never folded: nothing seems left below it. */

@@ -32,8 +32,11 @@ import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 
 export const TEXT_MAX = 16000;
-/* The short version of a message: a title of one or two lines. */
+/* The short version of a message: a title of one or two lines, shown cut beyond SHORT_MAX
+   (at a word, with "…"). Kept whole up to SHORT_KEPT: an agent that wrote more than a title
+   loses none of it -- the screen shows it all once the message is opened. */
 export const SHORT_MAX = 200;
+export const SHORT_KEPT = 1000;
 /* Paths a message cites, looked up for the screen, at most. */
 export const REFS_MAX = 20;
 export const SHOWN_MAX = 200;
@@ -181,7 +184,7 @@ export class Parley {
     #fromAgent(m) {
         const kind = KINDS.includes(m.kind) ? m.kind : 'say';
         const entry = { from: 'agent', id: String(m.id ?? ''), at: String(m.at ?? ''), kind, text: clean(m.text), choices: kind === 'ask' && Array.isArray(m.choices) ? m.choices.slice(0, 8).map((x) => oneLine(x, 200)).filter(Boolean) : [] };
-        if ((kind === 'say' || kind === 'ask') && typeof m.short === 'string' && oneLine(m.short, SHORT_MAX)) entry.short = oneLine(m.short, SHORT_MAX);
+        if ((kind === 'say' || kind === 'ask') && typeof m.short === 'string' && oneLine(m.short, SHORT_KEPT)) entry.short = oneLine(m.short, SHORT_KEPT);
         if (kind === 'say' || kind === 'ask') {
             /* The paths it cites that the person can open: a link, or a picture, on the screen. */
             const refs = cited(`${entry.text}\n${entry.short ?? ''}`).map((path) => ({ path, open: this.#open(path) })).filter((r) => r.open !== null);

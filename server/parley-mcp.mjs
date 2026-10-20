@@ -37,6 +37,8 @@ export const VERSION = '0.10.0';
 export const TEXT_MAX = 16000;
 /* Its short version: a title of one or two lines. */
 export const SHORT_MAX = 200;
+/* Kept whole up to this (see SHORT_KEPT in the host): the screen cuts it, never the agent's words. */
+export const SHORT_KEPT = 1000;
 /* What it is doing now is one short line: a screen shows it while it works. */
 export const DOING_MAX = 200;
 export const CHOICES_MAX = 8;
@@ -77,7 +79,7 @@ const reacted = (m) => {
     if (m.removed === true) return `They took back their reaction "${name}" to ${target}.`;
     return `Reaction to ${target}: ${REACTION_MEANINGS[name] ?? `"${name}"`}`;
 };
-const brief = (short) => { const line = plain(short, SHORT_MAX * 2).replace(/\s+/g, ' ').trim().slice(0, SHORT_MAX); return line ? { short: line } : {}; };
+const brief = (short) => { const line = plain(short, SHORT_KEPT * 2).replace(/\s+/g, ' ').trim().slice(0, SHORT_KEPT); return line ? { short: line } : {}; };
 /* So many characters of a question's id are shown, and enough to close it. */
 export const ID_SHOWN = 8;
 /* How many reads are remembered, with their time: the screen says when each message was read. */

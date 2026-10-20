@@ -119,3 +119,12 @@ test('alone, on a page: lines of the application by their neutral level; a run o
     assert.equal(as, 'detailed');
     assert.deepEqual(root.querySelectorAll('.parley-system').map((l) => l.dataset.level), ['news', 'news', 'trace', 'needs-you']);
 });
+
+test('alone: a short version longer than a title is kept whole, for the screen to cut', (t) => {
+    const home = mkdtempSync(join(tmpdir(), 'parley-short-'));
+    t.after(() => rmSync(home, { recursive: true, force: true }));
+    install(join(home, '.parley'));
+    const short = `${'word '.repeat(80)}end`.trim();
+    assert.equal(parley(home, ['tell', '--short', short, 'Long text.']).code, 0);
+    assert.equal(new Parley(join(home, '.parley')).read().messages.at(-1).short, short);
+});

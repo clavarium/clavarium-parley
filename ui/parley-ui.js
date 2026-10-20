@@ -247,7 +247,15 @@ function dayText(t, now, words, locale) {
     if (dayKey(t) === dayKey(before.getTime())) return said(words, 'yesterday');
     return format(t, locale, new Date(t).getFullYear() === new Date(now).getFullYear() ? { weekday: 'long', day: 'numeric', month: 'long' } : { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
 }
-const cut = (text, n) => { const one = String(text ?? '').replace(/\s+/g, ' ').trim(); return one.length > n ? `${one.slice(0, n - 1)}…` : one; };
+/* One line of at most n characters: cut at the end of a word (never inside one, unless it is
+   the only word), and "…" says that more follows. */
+const cut = (text, n) => {
+    const one = String(text ?? '').replace(/\s+/g, ' ').trim();
+    if (one.length <= n) return one;
+    const head = one.slice(0, n - 1);
+    const space = head.lastIndexOf(' ');
+    return `${(space > n / 2 ? head.slice(0, space) : head).replace(/[\s,;:.\-–—]+$/, '')}…`;
+};
 
 /* ---- MARKDOWN, READ INTO PLAIN DATA ----
    Blocks: { t: 'p'|'h'|'hr'|'code'|'quote'|'alert'|'list'|'table', ... }.
@@ -497,7 +505,9 @@ export function view(data, { words = {}, view: as = 'simple', now = Date.now(), 
             type: 'message', key: `m:${String(m.id ?? '')}`,
             id: String(m.id ?? ''), from: person ? 'person' : 'agent', kind: String(m.kind ?? 'say'),
             text: show ? String(m.text || nameOf(m.path)) : String(m.text ?? ''),
-            short: !person && typeof m.short === 'string' ? cut(m.short, 200) : '',
+            /* Whole, as the agent wrote it; `shortCut` is what a folded message shows. */
+            short: !person && typeof m.short === 'string' ? String(m.short).replace(/\s+/g, ' ').trim() : '',
+            shortCut: !person && typeof m.short === 'string' ? cut(m.short, 200) : '',
             refs: (Array.isArray(m.refs) ? m.refs : []).filter((r) => r && typeof r.path === 'string' && typeof r.open === 'string').slice(0, 20).map((r) => ({ path: r.path, open: r.open })),
             time: clock(t, locale), when: whole(t, locale), at: t,
             label: open ? said(words, 'asks') : '',
@@ -1347,7 +1357,8 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
         const paint2 = painter({ words, refs, open, picture: picture ? pictureUrl : null, pictureUrl, diagram, highlight, cache, urls, zoom: zoomFrom });
         const blocks = markdown(item.text);
         const whole2 = () => paint2.blocks(blocks, el('div', 'parley-md'));
-        const shortLine = () => paint2.inlines(inline(item.short), el('p', 'parley-short'));
+        /* Folded: the short version cut to a title; opened: all of it, nothing lost. */
+        const shortLine = (all = true) => paint2.inlines(inline(all ? item.short : item.shortCut || item.short), el('p', 'parley-short'));
         const important = (list) => list.filter((b) => b.t === 'alert' && b.kind === 'important');
         const more = (key, open2) => { const b = button(said(words, open2 ? 'see-less' : key), 'parley-unfold', () => { if (open2) expanded.delete(item.id); else expanded.add(item.id); repaint(); }); b.setAttribute('aria-expanded', String(open2)); return b; };
         /* A question is never folded; the detailed view and a search unfold everything. */
@@ -1356,7 +1367,7 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
         const isOpen = expanded.has(item.id);
         if (item.short) {
             if (isOpen) return [shortLine(), whole2(), more('see-details', true)];
-            return [shortLine(), ...important(blocks).map((b) => paint2.blocks([b], el('div', 'parley-md'))), more('see-details', false)];
+            return [shortLine(false), ...important(blocks).map((b) => paint2.blocks([b], el('div', 'parley-md'))), more('see-details', false)];
         }
         if (linesOf(item.text) > FOLD_LINES + 2) {
             if (isOpen) return [whole2(), more('see-more', true)];
