@@ -1942,13 +1942,30 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
     /* Files from the button, pasted, or dropped: the same way, the same limits. */
     const add = (files) => { if (!attach?.upload) return; const list = [...files].filter((f) => f && typeof f.name === 'string'); if (!list.length) return; pending = [...pending, ...list].slice(0, FILES_MAX); paintPending(); };
     let uploading = false;
+    /* Emptied once sent. A keyboard's own dictation (a tablet's, a phone's) may still be composing the words when
+       Send is touched: it puts them back as it ends. What comes back within a moment and is what was sent (or
+       begins with it) is taken out again -- once; anything typed after it stays. */
+    const clearBox = (text) => {
+        box.value = ''; grow();
+        const until = Date.now() + 1500;
+        const off = () => { box.removeEventListener('input', again); box.removeEventListener('compositionend', again); };
+        function again() {
+            if (Date.now() > until) { off(); return; }
+            const now = box.value.trim();
+            if (!now) return;
+            if (now === text || text.startsWith(now)) { box.value = ''; grow(); off(); }
+            else if (now.startsWith(text)) { box.value = now.slice(text.length).trimStart(); grow(); off(); }
+        }
+        box.addEventListener('input', again); box.addEventListener('compositionend', again);
+        setTimeout(off, 1600);
+    };
     const sendBox = async () => {
         const text = box.value.trim();
         if ((!text && pending.length === 0) || uploading) return;
         const answers = replyTo?.id;
         const answered = () => { if (replyTo && replyTo.id === answers) { dismissed.add(answers); replyTo = null; paintReply(); } };
         const via = dictatedNow ? 'voice' : undefined;
-        if (pending.length === 0) { box.value = ''; grow(); dictatedNow = false; if (await say(text, answers, undefined, via)) answered(); else dictatedNow = Boolean(via); return; }
+        if (pending.length === 0) { clearBox(text); dictatedNow = false; if (await say(text, answers, undefined, via)) answered(); else dictatedNow = Boolean(via); return; }
         /* The files go first, one after the other; the message only once they all went. */
         uploading = true; go.disabled = clip.disabled = true;
         problem.hidden = false; problem.dataset.kind = 'sending'; problem.textContent = said(words, 'sending-files');
@@ -1964,7 +1981,7 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
         const sent = await say(text, answers, files, via);
         if (sent) dictatedNow = false;
         uploading = false; go.disabled = clip.disabled = false;
-        if (sent) { answered(); pending = []; paintPending(); if (box.value.trim() === text) { box.value = ''; grow(); } }
+        if (sent) { answered(); pending = []; paintPending(); if (box.value.trim() === text) clearBox(text); }
     };
     clip.addEventListener('click', () => { if (attach?.upload) picker.click(); });
     picker.addEventListener('change', () => { add(picker.files); picker.value = ''; });
