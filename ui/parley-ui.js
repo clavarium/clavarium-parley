@@ -1118,7 +1118,6 @@ function zoomer(root, words, steps) {
     /* Fingers and a mouse: one moves (or swipes), two pinch, a double tap zooms, one tap closes. */
     const pointers = new Map();
     let pinch = null; let start = null; let lastTap = 0; let tapping;
-    const onPicture = (x, y) => { const r = img.getBoundingClientRect(); return x >= r.left && x <= r.right && y >= r.top && y <= r.bottom; };
     stage.addEventListener('pointerdown', (event) => {
         stage.setPointerCapture?.(event.pointerId);
         pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
@@ -1154,9 +1153,9 @@ function zoomer(root, words, steps) {
             return;
         }
         lastTap = now;
-        /* One tap: on the ground, or on the picture not zoomed, it closes -- once it is sure no second tap follows. */
-        const ground = !onPicture(event.clientX, event.clientY);
-        if (ground || s <= fit * 1.01) { clearTimeout(tapping); tapping = setTimeout(() => { if (!box.hidden) close(); }, 330); }
+        /* One tap closes it, zoomed in or not, on the picture or beside it -- once it is sure no second tap
+           follows (two zoom). What moves it (a finger or the mouse dragged, two fingers) never closes it. */
+        clearTimeout(tapping); tapping = setTimeout(() => { if (!box.hidden) close(); }, 330);
     };
     stage.addEventListener('pointerup', up); stage.addEventListener('pointercancel', (event) => { pointers.delete(event.pointerId); start = null; pinch = null; delete box.dataset.dragging; box.style.opacity = ''; apply(); });
     return {
