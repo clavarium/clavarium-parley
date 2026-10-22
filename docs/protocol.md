@@ -57,11 +57,26 @@ announced, nor is an MCP tool: they are meant for the hooks of a tool (with
 Claude Code, `PreToolUse` and `UserPromptSubmit` run `parley pulse`, `Stop` and
 `Notification` run `parley pulse --end`). No folder: exit code 2, and nothing is said.
 
+**Before it stops** (Claude Code's `Stop` hook runs `parley pulse --end
+--stop-check`, the hook's input on standard input): while its chat still says it
+works (its newest step a `doing` or a `working` status, with no question asked
+after it), the command answers in that hook's words, `{"decision": "block",
+"reason": "Before you stop: ... say where you are: parley status done ... or
+waiting ..."}`, and its pulse stays busy: the agent says where it is, then
+stops. Once only: when the hook says it is the second time (`stop_hook_active`),
+it stops, and its pulse ends.
+
+**What it reads and tells say it too:** `parley read` that found a message ends
+with how to say it starts on it (`parley doing`) and finishes (`parley status
+done`), unless its chat says it works already; `tell` and `read`, when its chat
+has said it works for 10 minutes with nothing new, say so, with how to update it.
+
 `read()` gives it as `pulse` (`{busy, at}`, or null). The screen reads it as a
 sign of life only: while it is busy and its last sign is less than 20 minutes
 old, the end of the thread says "Working…" where it would say nothing,
 "Received, thinking…" or "No answer yet", and what it does now does not go
-still. Older, or ended: as if there were none.
+still. Older: as if there were none. Ended after what it said it does: that
+line stops at once, "stopped at 14:32", whatever it forgot to say.
 
 ## What is written to an agent
 

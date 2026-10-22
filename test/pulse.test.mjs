@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Parley, texts } from '../host/parley-host.mjs';
 import { view, PULSE_MS } from '../ui/parley-ui.js';
-import { run, HELP } from '../bin/parley.mjs';
+import { run, HELP, STOP_CHECK } from '../bin/parley.mjs';
 import { bridge, PULSE_EVERY_MS } from '../server/parley-mcp.mjs';
 
 const folder = (t) => { const dir = mkdtempSync(join(tmpdir(), 'parley-')); t.after(() => rmSync(dir, { recursive: true, force: true })); return dir; };
@@ -28,7 +28,7 @@ test('"parley pulse": for the hooks of the agent\'s tool; one small file rewritt
     const elsewhere = folder(t);
     assert.deepEqual(run(['pulse'], { env, cwd: elsewhere }), { code: 2, out: '', err: '' }, 'no chat here: nothing said, nothing made');
     assert.equal(existsSync(join(elsewhere, '.parley')), false);
-    assert.match(HELP, /parley pulse \[--end\]/);
+    assert.match(HELP, /parley pulse \[--end \[--stop-check\]\]/);
 });
 
 test('a pulse that says the same is written again only after a while: a tool may pulse at every action', (t) => {
@@ -96,4 +96,51 @@ test('what it does now does not go still while its tool beats; steps after its l
     const said = { from: 'agent', id: 'a1', kind: 'say', text: 'Started.', at: at(2) };
     const v = view({ messages: [asked, said], steps: [waited, { id: 's2', kind: 'status', state: 'waiting', note: '', at: at(3) }], status: { state: 'working', note: '', at: at(3) }, pulse: { busy: true, at: at(9) } }, { words, now: Date.parse(at(10)) });
     assert.equal(v.rows.filter((r) => r.type === 'now').length, 1, 'one line, never two');
+});
+
+test('its turn ended: what it said it does stops there at once, said so, even if it forgot to say done', () => {
+    const asked = { from: 'person', id: 'p1', kind: 'say', text: 'Write the story.', seen: true, at: at(0) };
+    const doing = { id: 'd1', kind: 'doing', state: 'working', note: 'running the tests', at: at(1) };
+    let line = view({ messages: [asked], steps: [doing], pulse: { busy: false, at: at(3) } }, { words, now: Date.parse(at(4)), locale: 'en-GB' }).rows.at(-1);
+    assert.deepEqual([line.text, line.live, line.quiet], ['running the tests', false, 'stopped at 06:03']);
+    line = view({ messages: [asked], steps: [doing], pulse: { busy: false, at: at(0) } }, { words, now: Date.parse(at(4)), locale: 'en-GB' }).rows.at(-1);
+    assert.equal(line.live, true, 'a turn that ended before it said what it does: not this one');
+    assert.equal(texts('fr').stopped, 'arrêté à {time}');
+});
+
+test('the Stop hook of Claude Code: asked once to say where it is while its chat says it works; stopping again, it stops', (t) => {
+    const work = folder(t); const chat = join(work, '.parley'); mkdirSync(chat);
+    const env = { PARLEY_DIR: '' };
+    const say = (...args) => run(args, { env, cwd: work });
+    const stop = (hook) => run(['pulse', '--end', '--stop-check'], { env, cwd: work, stdin: () => JSON.stringify(hook) });
+    assert.deepEqual(stop({ stop_hook_active: false }), { code: 0, out: '', err: '' }, 'it never said it works: nothing to ask');
+    assert.equal(JSON.parse(readFileSync(join(chat, 'pulse.json'), 'utf8')).busy, false);
+    say('doing', 'writing chapter 2');
+    const asked = stop({ stop_hook_active: false });
+    assert.equal(asked.code, 0);
+    assert.deepEqual(JSON.parse(asked.out), { decision: 'block', reason: `${STOP_CHECK} (it says: "writing chapter 2")` });
+    assert.equal(JSON.parse(readFileSync(join(chat, 'pulse.json'), 'utf8')).busy, true, 'asked to go on: still in its turn');
+    assert.deepEqual(stop({ stop_hook_active: true }), { code: 0, out: '', err: '' }, 'the second time: it stops');
+    assert.equal(JSON.parse(readFileSync(join(chat, 'pulse.json'), 'utf8')).busy, false);
+    say('status', 'done', 'chapter 2 written');
+    assert.equal(stop({ stop_hook_active: false }).out, '', 'it said done: nothing to ask');
+    say('doing', 'chapter 3'); say('ask', 'A title?', '--choice', 'yes', '--choice', 'no');
+    assert.equal(stop({ stop_hook_active: false }).out, '', 'it asked them something: it waits');
+    assert.equal(stop({}).out, '', 'what it asked is still the newest');
+    assert.equal(run(['pulse', '--end', '--stop-check'], { env, cwd: work, stdin: () => 'not json' }).code, 0, 'what the hook gives is not trusted');
+});
+
+test('what it reads and what it tells say when its chat says nothing, or something old', (t) => {
+    const work = folder(t); const chat = join(work, '.parley'); mkdirSync(chat);
+    const app = new Parley(chat);
+    const env = { PARLEY_DIR: '' };
+    app.say('Translate the page.');
+    assert.match(run(['read'], { env, cwd: work }).out, /\nWhen you start on it, say so: parley doing "what you do"; when you finish: parley status done\.\n/);
+    run(['doing', 'translating'], { env, cwd: work });
+    assert.equal(run(['tell', 'On it.'], { env, cwd: work }).out, 'Posted. They will read it on their screen.\n', 'just said: nothing more');
+    /* Its last step, a while ago. */
+    const lines = readFileSync(join(chat, 'from-agent.jsonl'), 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l));
+    const old = new Date(Date.now() - 25 * 60_000).toISOString();
+    writeFileSync(join(chat, 'from-agent.jsonl'), lines.map((l) => JSON.stringify(l.kind === 'doing' ? { ...l, at: old } : l)).join('\n') + '\n');
+    assert.match(run(['tell', 'Halfway.'], { env, cwd: work }).out, /^Posted\. They will read it on their screen\.\nTheir screen still says you are working on "translating", since 25 min: say what you do now/);
 });

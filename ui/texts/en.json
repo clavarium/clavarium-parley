@@ -29,6 +29,7 @@
   "today": "Today",
   "yesterday": "Yesterday",
   "quiet": "nothing new since {time}",
+  "stopped": "stopped at {time}",
   "mic": "Dictate",
   "mic-stop": "Stop",
   "auto-send": "Send what I dictate as soon as I stop talking",

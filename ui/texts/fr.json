@@ -29,6 +29,7 @@
   "today": "Aujourd'hui",
   "yesterday": "Hier",
   "quiet": "rien de nouveau depuis {time}",
+  "stopped": "arrêté à {time}",
   "mic": "Dicter",
   "mic-stop": "Arrêter",
   "auto-send": "Envoyer ce que je dicte dès que j'arrête de parler",

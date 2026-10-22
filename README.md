@@ -31,7 +31,10 @@ agent that is given it that way; both write the same files.
 An agent may also work long without a word. Its TOOL can say it acts:
 `parley pulse` in its hooks at each action, `parley pulse --end` when its turn
 ends (with Claude Code: `PreToolUse`, `UserPromptSubmit`; `Stop`, `Notification`). Nothing is
-posted and nothing printed; the screen says "Working…" while it beats.
+posted and nothing printed; the screen says "Working…" while it beats, and
+"stopped at 14:32" once its turn ended. `parley pulse --end --stop-check` in
+Claude Code's `Stop` hook asks it once, when it stops while its chat still says
+it works, to say where it is.
 
 Nothing waits: the agent posts, and is told in one line when a message
 arrived. See [docs/protocol.md](docs/protocol.md).

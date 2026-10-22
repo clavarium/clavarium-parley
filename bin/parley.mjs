@@ -38,6 +38,8 @@ export const GUIDE = `How to work with the person through Parley
 
 /* The line that ends a read with something in it: not every empty poll. */
 export const REMINDER = 'Forgot how to work with them? parley guide';
+/* What the agent is told, once, when it stops while its chat still says it works. */
+export const STOP_CHECK = 'Before you stop: their screen still says you are working. Say where you are: parley status done "what you finished", or parley status waiting "what you need from them"; then stop.';
 
 export const HELP = `parley: talk with the person you work for. They read and answer on their own screen, not in this terminal.
 
@@ -61,8 +63,8 @@ export const HELP = `parley: talk with the person you work for. They read and an
                                        say where you are: working when you start, waiting when you
                                        need them, done when the task is finished
   parley guide                         how to work with them, in a few lines: when you forgot
-  parley pulse [--end]                 for the hooks of your tool, not for you: it acts, or its turn
-                                       ended; prints nothing
+  parley pulse [--end [--stop-check]]  for the hooks of your tool, not for you: it acts, or its turn
+                                       ended; prints nothing (--stop-check: Claude Code's Stop hook)
 
 ${wrap(WRITING)}
 
@@ -134,10 +136,25 @@ export function run(argv, { env = process.env, cwd = process.cwd(), stdin = () =
     /* For the hooks of the agent's tool, not for the agent: nothing printed, ever (a hook's output may
        reach the agent). No folder, or a folder that cannot be written: said by the exit code alone. */
     if (verb === 'pulse') {
-        if (rest.some((a) => a !== '--end')) return { code: 64, out: '', err: '' };
+        if (rest.some((a) => a !== '--end' && a !== '--stop-check')) return { code: 64, out: '', err: '' };
         const folder = findFolder({ dir, env, from: cwd });
         if (!folder) return { code: 2, out: '', err: '' };
-        try { bridge(folder).pulse(!rest.includes('--end')); return { code: 0, out: '', err: '' }; } catch { return { code: 1, out: '', err: '' }; }
+        try {
+            const verbs = bridge(folder);
+            /* --stop-check (the Stop hook of Claude Code): its turn ends while its chat still says it works --
+               asked once to say where it is, in that hook's own words; the second time it stops, it stops. */
+            if (rest.includes('--stop-check')) {
+                let hook = {};
+                try { hook = JSON.parse(stdin() || '{}') ?? {}; } catch { hook = {}; }
+                const s = verbs.standing();
+                if (hook.stop_hook_active !== true && s?.state === 'working') {
+                    verbs.pulse(true);
+                    return { code: 0, out: `${JSON.stringify({ decision: 'block', reason: `${STOP_CHECK}${s.note ? ` (it says: "${s.note}")` : ''}` })}\n`, err: '' };
+                }
+            }
+            verbs.pulse(!rest.includes('--end'));
+            return { code: 0, out: '', err: '' };
+        } catch { return { code: 1, out: '', err: '' }; }
     }
     if (!['read', 'tell', 'ask', 'show', 'close', 'doing', 'status'].includes(verb)) return { code: 64, out: '', err: `Unknown: ${verb}. Run "parley --help".\n` };
     const folder = findFolder({ dir, env, from: cwd });

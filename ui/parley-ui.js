@@ -171,7 +171,7 @@ import { icon, fileIcon } from './parley-icons.js';
 export const VIEWS = Object.freeze(['simple', 'detailed']);
 /* The words this screen uses: a dictionary needs these keys. */
 export const KEYS = Object.freeze(['send', 'placeholder', 'empty', 'view', 'simple', 'detailed', 'working', 'waiting', 'done', 'no-status', 'asks', 'open', 'outside',
-    'not-read', 'read', 'remind', 'reminded', 'steps', 'no-steps', 'files', 'no-files', 'terminal', 'not-sent', 'step-one', 'steps-many', 'today', 'yesterday', 'quiet',
+    'not-read', 'read', 'remind', 'reminded', 'steps', 'no-steps', 'files', 'no-files', 'terminal', 'not-sent', 'step-one', 'steps-many', 'today', 'yesterday', 'quiet', 'stopped',
     'mic', 'mic-stop', 'auto-send', 'auto-on', 'settings', 'voice-placeholder', 'voice-calibrating', 'voice-listening', 'voice-hearing', 'voice-transcribing', 'voice-wait', 'voice-off', 'replies', 'replies-more', 'replies-less',
     'attach', 'remove-file', 'sending-files', 'attach-where',
     'copy', 'copied', 'see-details', 'see-more', 'see-less', 'note', 'tip', 'important', 'warning', 'caution', 'badge-ok', 'badge-todo', 'badge-blocked', 'badge-warn',
@@ -593,11 +593,15 @@ export function view(data, { words = {}, view: as = 'simple', now = Date.now(), 
     /* Its tool says it acts (the agent itself may say nothing for long). */
     const beat = data?.pulse?.busy === true ? stamp(data.pulse.at) : null;
     const pulsing = beat !== null && now - beat < PULSE_MS;
+    /* Its tool says its turn ended: what it said it does stops there, at once, whatever it forgot to say. */
+    const ended = data?.pulse?.busy === false ? stamp(data.pulse.at) : null;
     if (live) {
         const t = stamp(live.at);
-        const fresh = t !== null && (now - t < STALE_MS || pulsing);
+        const stopped = ended !== null && t !== null && ended >= t;
+        const fresh = t !== null && !stopped && (now - t < STALE_MS || pulsing);
         const doing = String(live.note ?? '') || state('working');
-        rows.push({ type: 'now', key: `n:${String((turn[0] ?? live).id ?? '')}`, ...step(live), text: busy && fresh ? said(words, 'busy', { doing }) : doing, busy: busy && fresh, live: fresh, quiet: fresh ? '' : said(words, 'quiet', { time: clock(t, locale) }),
+        rows.push({ type: 'now', key: `n:${String((turn[0] ?? live).id ?? '')}`, ...step(live), text: busy && fresh ? said(words, 'busy', { doing }) : doing, busy: busy && fresh, live: fresh,
+            quiet: fresh ? '' : stopped ? said(words, 'stopped', { time: clock(ended, locale) }) : said(words, 'quiet', { time: clock(t, locale) }),
             label: turn.length ? count(turn.length) : '', open: detailed, steps: turn.map(step), at: stamp((turn[0] ?? live).at), end: t });
     } else if (pulsing) {
         rows.push({ type: 'now', key: `n:${String(turn[0]?.id ?? 'pulse')}`, kind: 'doing', state: 'working', text: said(words, 'pulse'), time: clock(beat, locale), when: whole(beat, locale),

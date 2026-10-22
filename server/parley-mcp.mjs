@@ -33,7 +33,7 @@ import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import { createInterface } from 'node:readline';
 
-export const VERSION = '0.11.0';
+export const VERSION = '0.12.0-next.1';
 /* A message may be long: the screen folds it, and shows its short version first. */
 export const TEXT_MAX = 16000;
 /* Its short version: a title of one or two lines. */
@@ -42,6 +42,8 @@ export const SHORT_MAX = 200;
 export const SHORT_KEPT = 1000;
 /* What it is doing now is one short line: a screen shows it while it works. */
 export const DOING_MAX = 200;
+/* Its chat says it works and nothing new came for this long: reminded, under what a verb returns. */
+export const STALE_SAID_MS = 10 * 60_000;
 export const CHOICES_MAX = 8;
 /* Files shown at once, as one gallery; the title of each. */
 export const SHOW_MAX = 12;
@@ -113,11 +115,28 @@ export function bridge(dir, { how = 'run `parley read`' } = {}) {
         appendFileSync(OUT, `${JSON.stringify({ id, at: new Date().toISOString(), ...entry })}\n`);
         return id;
     };
+    /* WHERE IT SAID IT IS: the newest of its states and of what it said it does -- a question it asked
+       after it is waiting. { state, note, at } or null when it never said. */
+    const standing = () => {
+        const mine = lines(OUT).filter(Boolean);
+        const last = mine.filter((m) => m.kind === 'status' || m.kind === 'doing').at(-1);
+        if (!last) return null;
+        const state = last.kind === 'doing' ? 'working' : STATES.includes(last.state) ? last.state : 'working';
+        const asked = mine.some((m) => m.kind === 'ask' && String(m.at ?? '') >= String(last.at ?? ''));
+        return { state: asked && state === 'working' ? 'waiting' : state, note: plain(last.text, DOING_MAX), at: String(last.at ?? '') };
+    };
+    /* Its chat still says it works, and has for a while: said under what a verb returns, so that it updates it. */
+    const stale = () => {
+        const s = standing();
+        if (s?.state !== 'working' || Date.now() - Date.parse(s.at) < STALE_SAID_MS) return '';
+        return `\nTheir screen still says you are working${s.note ? ` on "${s.note}"` : ''}, since ${Math.round((Date.now() - Date.parse(s.at)) / 60_000)} min: say what you do now (parley doing "..."), or that you finished (parley status done) or wait for them (parley status waiting).`;
+    };
     return {
+        standing,
         tell(text, { short } = {}) {
             if (!plain(text).trim()) throw new Error('the text is empty');
             post({ kind: 'say', text: plain(text), ...brief(short) });
-            return 'Posted. They will read it on their screen.';
+            return `Posted. They will read it on their screen.${stale()}`;
         },
         ask(question, choices, { short } = {}) {
             if (!plain(question).trim()) throw new Error('the question is empty');
@@ -218,7 +237,9 @@ export function bridge(dir, { how = 'run `parley read`' } = {}) {
             }
             const fresh = written.slice(seen).filter(Boolean);
             if (fresh.length === 0) return `No new message.${pending}`;
-            return `${fresh.map((m) => (m.reaction ? reacted(m) : `${m.answers ? `Answer to your question "${plain(m.question, 200)}": ` : m.re ? `Reply to your message "${plain(m.quote, 200)}"${m.via === 'voice' ? ` (${DICTATED})` : ''}: ` : m.via === 'voice' ? `Message (${DICTATED}): ` : 'Message: '}${plain(m.text)}${attached(m)}`)).join('\n')}${pending}`;
+            /* What they wrote is work: said, so that their screen shows it moving (or still, said so). */
+            const next = stale() || (standing()?.state === 'working' ? '' : '\nWhen you start on it, say so: parley doing "what you do"; when you finish: parley status done.');
+            return `${fresh.map((m) => (m.reaction ? reacted(m) : `${m.answers ? `Answer to your question "${plain(m.question, 200)}": ` : m.re ? `Reply to your message "${plain(m.quote, 200)}"${m.via === 'voice' ? ` (${DICTATED})` : ''}: ` : m.via === 'voice' ? `Message (${DICTATED}): ` : 'Message: '}${plain(m.text)}${attached(m)}`)).join('\n')}${pending}${next}`;
         },
     };
 }
