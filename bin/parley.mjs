@@ -46,8 +46,10 @@ export const HELP = `parley: talk with the person you work for. They read and an
   parley read --all                    the whole exchange, both sides, oldest first: to pick up the
                                        thread after a restart
   parley tell [--short "title"] "text" tell them something: where you are, what you did, what you found
-  parley ask [--short "title"] "question" [choice ...]
-                                       ask them something; give the answers they can pick when you can
+  parley ask [--short "title"] "question" [--choice "answer" ...]
+                                       ask them something; give the answers they can pick when you can,
+                                       each with --choice (the question first; "-" for the question
+                                       read from standard input)
   parley close ID "answer"             close a question of yours they answered another way (a message
                                        typed later), saying the answer you understood; ID as read shows it
   parley show path ["note"]            point them to a file you made, so that they can open it
@@ -140,7 +142,22 @@ export function run(argv, { env = process.env, cwd = process.cwd(), stdin = () =
             const at2 = rest.indexOf('--short');
             let short;
             if (at2 >= 0) { short = rest[at2 + 1]; if (short === undefined) return { code: 64, out: '', err: '--short needs a title.\n' }; rest.splice(at2, 2); }
-            said = verb === 'tell' ? verbs.tell(text(rest.join(' ')), { short }) : verbs.ask(text(rest[0]), rest.slice(1), { short });
+            if (verb === 'tell') said = verbs.tell(text(rest.join(' ')), { short });
+            else {
+                /* Its answers: --choice "...", once each, anywhere; or, as before, the words after the question. */
+                const choices = [];
+                for (let i = rest.indexOf('--choice'); i >= 0; i = rest.indexOf('--choice')) {
+                    if (rest[i + 1] === undefined) return { code: 64, out: '', err: '--choice needs an answer.\n' };
+                    choices.push(rest[i + 1]); rest.splice(i, 2);
+                }
+                /* The question first, then its answers: "-" (the question from standard input) is the
+                   question, never an answer -- a question asked the other way round showed its first
+                   answer as the question and the rest as buttons. */
+                if (rest.slice(1).includes('-')) return { code: 64, out: '', err: 'The question comes first, then its answers: parley ask [--short "title"] "question" (or -) [--choice "answer" ...].\n' };
+                const question = rest[0] === undefined ? '' : text(rest[0]);
+                if (!String(question).trim()) return { code: 64, out: '', err: 'A question needs its text: parley ask "question" [--choice "answer" ...].\n' };
+                said = verbs.ask(question, [...rest.slice(1), ...choices], { short });
+            }
         }
         else if (verb === 'close') said = verbs.close(rest[0], text(rest.slice(1).join(' ')));
         else if (verb === 'doing') said = verbs.doing(text(rest.join(' ')));

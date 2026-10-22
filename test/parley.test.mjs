@@ -500,3 +500,20 @@ test('"parley guide" says how to work with the person, word for word, and the he
     assert.equal(REMINDER, 'Forgot how to work with them? parley guide');
     assert.equal(run(['guide'], { cwd: tmpdir(), env: {} }).code, 0, 'no folder needed');
 });
+
+test('ask: the question first, then its answers, each with --choice or as before; asked the other way round, refused', (t) => {
+    const here = folder(t); mkdirSync(join(here, '.parley'));
+    const asked = (args, stdin = '') => run(['ask', ...args], { cwd: here, env: {}, stdin: () => stdin });
+    assert.equal(asked(['--short', 'Cover', 'Blue or red?', '--choice', 'blue', '--choice', 'red']).code, 0);
+    assert.equal(asked(['Which one?', 'left', 'right']).code, 0, 'the answers as words after the question: still read');
+    assert.equal(asked(['--short', 'Long one', '-', '--choice', 'yes'], 'A question\non two lines').code, 0);
+    const posted = readFileSync(join(here, '.parley', 'from-agent.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+    assert.deepEqual(posted.map((m) => [m.text, m.choices]), [['Blue or red?', ['blue', 'red']], ['Which one?', ['left', 'right']], ['A question\non two lines', ['yes']]]);
+    /* The mistake that showed an answer as the question: refused, saying the order. */
+    const wrong = asked(['--short', 'Title', 'yes', 'no', '-'], 'The question');
+    assert.equal(wrong.code, 64);
+    assert.match(wrong.err, /The question comes first, then its answers/);
+    assert.equal(asked(['--choice']).code, 64);
+    assert.match(asked(['--choice', 'only an answer']).err, /A question needs its text/);
+    assert.equal(readFileSync(join(here, '.parley', 'from-agent.jsonl'), 'utf8').trim().split('\n').length, 3, 'nothing posted by a refused one');
+});
