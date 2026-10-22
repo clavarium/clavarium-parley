@@ -54,8 +54,8 @@ line in the thread and nothing for the agent to remember:
 
 Both rewrite `pulse.json`, `{busy, at}`; neither posts a line, nor is
 announced, nor is an MCP tool: they are meant for the hooks of a tool (with
-Claude Code, `PreToolUse` and `UserPromptSubmit` run `parley pulse`, `Stop`
-runs `parley pulse --end`). No folder: exit code 2, and nothing is said.
+Claude Code, `PreToolUse` and `UserPromptSubmit` run `parley pulse`, `Stop` and
+`Notification` run `parley pulse --end`). No folder: exit code 2, and nothing is said.
 
 `read()` gives it as `pulse` (`{busy, at}`, or null). The screen reads it as a
 sign of life only: while it is busy and its last sign is less than 20 minutes
