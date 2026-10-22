@@ -67,6 +67,7 @@
   "received": "Received, thinking…",
   "no-answer": "No answer yet (read at {time})",
   "busy": "Busy: {doing} - your messages wait for it",
+  "pulse": "Working…",
   "state-sent": "Sent, not read yet",
   "state-read": "Read",
   "state-working": "Being worked on",

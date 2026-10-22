@@ -175,7 +175,7 @@ export const KEYS = Object.freeze(['send', 'placeholder', 'empty', 'view', 'simp
     'mic', 'mic-stop', 'auto-send', 'auto-on', 'settings', 'voice-placeholder', 'voice-calibrating', 'voice-listening', 'voice-hearing', 'voice-transcribing', 'voice-wait', 'voice-off', 'replies', 'replies-more', 'replies-less',
     'attach', 'remove-file', 'sending-files', 'attach-where',
     'copy', 'copied', 'see-details', 'see-more', 'see-less', 'note', 'tip', 'important', 'warning', 'caution', 'badge-ok', 'badge-todo', 'badge-blocked', 'badge-warn',
-    'waits-you', 'waits-you-note', 'busy', 'state-sent', 'state-read', 'state-working', 'state-done', 'sent-at', 'read-at', 'done-at',
+    'waits-you', 'waits-you-note', 'busy', 'pulse', 'state-sent', 'state-read', 'state-working', 'state-done', 'sent-at', 'read-at', 'done-at',
     'reply', 'replying', 'not-a-reply', 'in-reply', 'closed', 'you', 'agent', 'drop', 'picture', 'diagram', 'not-shown', 'grouped',
     'zoom-in', 'zoom-out', 'zoom-actual', 'zoom-fit', 'zoom-actual-short', 'zoom-fit-short', 'close', 'previous', 'next', 'search', 'found', 'newest', 'dictation', 'auto-send-off',
     'react', 'react-remove', 'react-agree', 'react-go', 'react-disagree', 'react-unclear', 'react-stop', 'react-redo', 'react-later', 'react-love',
@@ -204,6 +204,9 @@ export const IDLE_MS = 2 * 60 * 1000;
    and "No answer yet" after the second. Parley says it was received, never what the agent does. */
 export const RECEIVED_MS = 0;
 export const NO_ANSWER_MS = 5 * 60 * 1000;
+/* The pulse of the agent's tool (its hooks: it acts, its turn ended) is a sign of life this long after its last beat:
+   "Working..." where nothing would be said, and what it does now does not go still. Older: as if there were none. */
+export const PULSE_MS = 20 * 60 * 1000;
 /* A press this long on a touch screen shows a message's time. */
 export const PRESS_MS = 450;
 /* Dictating with "send when I stop": sent this long after the last phrase was written, unless the person speaks again. */
@@ -587,12 +590,18 @@ export function view(data, { words = {}, view: as = 'simple', now = Date.now(), 
     });
     const turn = kept.slice(next);
     const busy = unreadIds.length > 0;
+    /* Its tool says it acts (the agent itself may say nothing for long). */
+    const beat = data?.pulse?.busy === true ? stamp(data.pulse.at) : null;
+    const pulsing = beat !== null && now - beat < PULSE_MS;
     if (live) {
         const t = stamp(live.at);
-        const fresh = t !== null && now - t < STALE_MS;
+        const fresh = t !== null && (now - t < STALE_MS || pulsing);
         const doing = String(live.note ?? '') || state('working');
         rows.push({ type: 'now', key: `n:${String((turn[0] ?? live).id ?? '')}`, ...step(live), text: busy && fresh ? said(words, 'busy', { doing }) : doing, busy: busy && fresh, live: fresh, quiet: fresh ? '' : said(words, 'quiet', { time: clock(t, locale) }),
             label: turn.length ? count(turn.length) : '', open: detailed, steps: turn.map(step), at: stamp((turn[0] ?? live).at), end: t });
+    } else if (pulsing) {
+        rows.push({ type: 'now', key: `n:${String(turn[0]?.id ?? 'pulse')}`, kind: 'doing', state: 'working', text: said(words, 'pulse'), time: clock(beat, locale), when: whole(beat, locale),
+            busy: false, live: true, quiet: '', label: turn.length ? count(turn.length) : '', open: detailed, steps: turn.map(step), at: turn.length ? stamp(turn[0].at) : beat, end: beat });
     } else if (turn.length) rows.push(group(turn, items.length));
     /* It waits for the person: said once, at the end, until they write; not when its last word is a question, which says so. */
     const lastSaid = items.filter((x) => x.from !== 'system').at(-1);
@@ -606,7 +615,7 @@ export function view(data, { words = {}, view: as = 'simple', now = Date.now(), 
     const lastWord = all.filter((m) => m.from !== 'system').at(-1);
     const readAt = lastWord?.from === 'person' && lastWord.seen === true ? stamp(lastWord.seenAt) ?? stamp(lastWord.at) : null;
     const after = Number.isFinite(receivedAfter) ? Math.max(0, receivedAfter) : null;
-    if (readAt !== null && after !== null && !live && now - readAt >= after
+    if (readAt !== null && after !== null && !live && !pulsing && now - readAt >= after
         && ![...replies, ...allSteps.map((s) => stamp(s.at))].some((x) => x !== null && x >= readAt)) {
         const long = now - readAt >= (Number.isFinite(noAnswerAfter) ? noAnswerAfter : NO_ANSWER_MS);
         rows.push({ type: 'received', key: 'r', long, text: long ? said(words, 'no-answer', { time: clock(readAt, locale) }) : said(words, 'received'), time: clock(readAt, locale), when: whole(readAt, locale), at: null, end: null });
@@ -654,7 +663,7 @@ export function view(data, { words = {}, view: as = 'simple', now = Date.now(), 
         files: detailed ? files.map((f) => ({ path: String(f.path ?? ''), name: nameOf(f.path), note: String(f.note ?? ''), open: typeof f.open === 'string' ? f.open : null, when: whole(stamp(f.at), locale) })) : [],
         summary: detailed ? `${said(words, 'files')} (${files.length})` : '',
         /* Detailed, on the side: what it does now and the steps of this turn; what the application says of its machine. */
-        side: detailed ? { now: live ? { text: String(live.note ?? '') || state('working'), steps: turn.map(step) } : null,
+        side: detailed ? { now: live ? { text: String(live.note ?? '') || state('working'), steps: turn.map(step) } : pulsing ? { text: said(words, 'pulse'), steps: turn.map(step) } : null,
             about: (Array.isArray(data?.about) ? data.about : []).filter((a) => a && typeof a.label === 'string' && typeof a.text === 'string').slice(0, 8).map((a) => ({ label: cut(a.label, 40), text: cut(a.text, 200), tone: ['warn', 'bad', 'ok'].includes(a.tone) ? a.tone : '' })) } : null,
     };
 }

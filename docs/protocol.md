@@ -9,9 +9,10 @@ Parley is three small things that agree on one folder.
 | `from-agent.jsonl` | the agent's side | what the agent posted, one JSON object per line |
 | `to-agent.jsonl` | the application's side | what was written to the agent, one JSON object per line |
 | `read.json` | the agent's side | how many lines of `to-agent.jsonl` the agent has read (`lines`), and when it read (`reads`: `[{lines, at}]`, the last 200) |
+| `pulse.json` | the agent's side | whether the agent is in the middle of a turn (`busy`), and since its last sign (`at`): written by its own tool, never by the agent |
 | `server.mjs` | the application, once | the MCP server, for an agent given it that way (`install()`) |
 
-Both files only grow. Nothing is edited, nothing is deleted. There is no
+The two `.jsonl` files only grow. Nothing is edited, nothing is deleted. There is no
 address, no port and no key: whoever can read and write the folder is a side.
 
 The command finds the folder as git finds a repository: `--dir`, else
@@ -41,6 +42,26 @@ doing now, at each new step; it means it works: a `doing` after `done` or
 `id` (unique) and `at` (the time, ISO 8601). A text may come from standard
 input with `-`. Exit codes of the command: 0 done, 1 refused, 2 no folder,
 64 not understood.
+
+## A pulse, from the agent's tool
+
+An agent may work for a long time without a word. Its tool knows that it
+works -- each action it takes, the end of its turn -- and can say so, with no
+line in the thread and nothing for the agent to remember:
+
+    parley pulse          it acts (written at most every 10 seconds)
+    parley pulse --end    its turn ended: it stopped, or waits
+
+Both rewrite `pulse.json`, `{busy, at}`; neither posts a line, nor is
+announced, nor is an MCP tool: they are meant for the hooks of a tool (with
+Claude Code, `PreToolUse` and `UserPromptSubmit` run `parley pulse`, `Stop`
+runs `parley pulse --end`). No folder: exit code 2, and nothing is said.
+
+`read()` gives it as `pulse` (`{busy, at}`, or null). The screen reads it as a
+sign of life only: while it is busy and its last sign is less than 20 minutes
+old, the end of the thread says "Working…" where it would say nothing,
+"Received, thinking…" or "No answer yet", and what it does now does not go
+still. Older, or ended: as if there were none.
 
 ## What is written to an agent
 
@@ -102,7 +123,7 @@ whole, from the moment it was started: what was posted before is in
 |---|---|
 | `say(text, answers?, files?, {via?})` | what `read()` gives, after writing; `answers` may be any message of the agent (a question is answered, another replied to) |
 | `react(to, reaction)` | a reaction of the set (`REACTIONS`) on a message of the agent, or `null` to take it back; what `read()` gives |
-| `read()` | `messages` (each of the person's says `seen`, and `seenAt` when known, `via` when dictated; each of the agent's may carry `short`, `reaction` (`{id, at, seen}`, the one standing), `files` for a gallery (`[{path, title, open}]`), and `refs`: the paths it cites that `reach` opens; a question it closed, `closed: {text, at}`), `waiting` (questions neither answered nor closed), `status`, `steps` (every `status` and `doing`, in order: `{id, kind, state, note, at}`), `files` (every file shown, and every one cited that can be opened, `cited: true`), `unread` |
+| `read()` | `messages` (each of the person's says `seen`, and `seenAt` when known, `via` when dictated; each of the agent's may carry `short`, `reaction` (`{id, at, seen}`, the one standing), `files` for a gallery (`[{path, title, open}]`), and `refs`: the paths it cites that `reach` opens; a question it closed, `closed: {text, at}`), `waiting` (questions neither answered nor closed), `status`, `steps` (every `status` and `doing`, in order: `{id, kind, state, note, at}`), `files` (every file shown, and every one cited that can be opened, `cited: true`), `unread`, `pulse` |
 | `invite(lang, {install?, shared?})` | the invitation, a text |
 | `unread()` | how many of the person's messages the agent has not read |
 
@@ -152,7 +173,8 @@ stays, still, and says since when. The agent read the person's newest message an
 nothing since, not even a step: the screen says "Received, thinking..." (at
 once, or after a delay the application sets), and "No answer yet" after five
 minutes. It says the message was received, never what the agent does; its
-first status or message replaces it. See the table in the README for what each
+first status or message replaces it. A busy pulse says more: "Working…"
+(see above). See the table in the README for what each
 view shows.
 
 ## The box

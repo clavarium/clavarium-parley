@@ -25,14 +25,15 @@
  *   from-agent.jsonl  what the agent posted, one JSON object per line
  *   to-agent.jsonl    what was written to the agent, one JSON object per line
  *   read.json         how far the agent has read
+ *   pulse.json        whether it is in a turn: written by its tool's hooks
  */
-import { appendFileSync, readFileSync, writeFileSync, mkdirSync, existsSync, statSync, realpathSync } from 'node:fs';
+import { appendFileSync, readFileSync, writeFileSync, mkdirSync, existsSync, statSync, lstatSync, realpathSync, renameSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import { createInterface } from 'node:readline';
 
-export const VERSION = '0.10.3';
+export const VERSION = '0.11.0-next.1';
 /* A message may be long: the screen folds it, and shows its short version first. */
 export const TEXT_MAX = 16000;
 /* Its short version: a title of one or two lines. */
@@ -47,6 +48,8 @@ export const SHOW_MAX = 12;
 export const TITLE_MAX = 120;
 export const STATES = ['working', 'waiting', 'done'];
 export const FOLDER = '.parley';
+/* A pulse that says the same is written again only after this long: a tool may pulse at every action. */
+export const PULSE_EVERY_MS = 10_000;
 
 const plain = (value, max = TEXT_MAX) => String(value ?? '').slice(0, max);
 /* What `read --all` gives back at most: the newest entries, and so many characters. */
@@ -103,6 +106,7 @@ export function bridge(dir, { how = 'run `parley read`' } = {}) {
     const OUT = join(dir, 'from-agent.jsonl');
     const IN = join(dir, 'to-agent.jsonl');
     const READ = join(dir, 'read.json');
+    const PULSE = join(dir, 'pulse.json');
     const post = (entry) => {
         mkdirSync(dir, { recursive: true });
         const id = randomUUID();
@@ -162,6 +166,23 @@ export function bridge(dir, { how = 'run `parley read`' } = {}) {
             const line = plain(text).replace(/\s+/g, ' ').trim().slice(0, DOING_MAX);
             if (!line) throw new Error('the text is empty');
             post({ kind: 'doing', text: line });
+            return 'Noted.';
+        },
+        /* A sign of life from the agent's TOOL (its hooks), not from the agent:
+           `busy` while it acts, false when its turn ended. No line, no event:
+           one small file, rewritten whole. Not a verb, not an MCP tool. */
+        pulse(busy = true, { now = new Date() } = {}) {
+            const state = busy !== false;
+            try {
+                if (!lstatSync(PULSE).isSymbolicLink()) {
+                    const was = JSON.parse(readFileSync(PULSE, 'utf8'));
+                    if (was?.busy === state && now - new Date(was.at) >= 0 && now - new Date(was.at) < PULSE_EVERY_MS) return 'Noted.';
+                }
+            } catch { /* none yet */ }
+            mkdirSync(dir, { recursive: true });
+            const next = `${PULSE}.${process.pid}`;
+            writeFileSync(next, JSON.stringify({ busy: state, at: now.toISOString() }));
+            renameSync(next, PULSE);
             return 'Noted.';
         },
         /* What was written since the last read; `all`: the whole exchange,

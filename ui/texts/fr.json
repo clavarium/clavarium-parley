@@ -67,6 +67,7 @@
   "received": "Reçu, réflexion…",
   "no-answer": "Pas encore de réponse (lu à {time})",
   "busy": "Occupé : {doing} - vos messages l'attendent",
+  "pulse": "En cours…",
   "state-sent": "Envoyé, pas encore lu",
   "state-read": "Lu",
   "state-working": "En cours de traitement",

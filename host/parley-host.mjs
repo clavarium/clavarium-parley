@@ -18,6 +18,8 @@
  *   agent-closed  {message}         (a question it closed, answered another way)
  *   person-reacted {message, reaction, wakes, unread}   react(to, reaction)
  *
+ * The pulse of the agent's tool (pulse.json) is not announced: read() gives it.
+ *
  * Nothing is typed anywhere from here: when the person wrote, the
  * application is told so, with how many messages the agent has not read,
  * and decides whether, when and how to tell the agent (WAKE is the line it
@@ -149,6 +151,19 @@ function lines(file) {
 function readCount(dir) { try { return Math.max(0, Number(JSON.parse(readFileSync(`${dir}/read.json`, 'utf8')).lines) || 0); } catch { return 0; } }
 /* When the agent read, as it wrote it: [{ lines, at }], oldest first. */
 function readTimes(dir) { try { const r = JSON.parse(readFileSync(`${dir}/read.json`, 'utf8')).reads; return Array.isArray(r) ? r.filter((x) => x && Number.isInteger(x.lines) && typeof x.at === 'string') : []; } catch { return []; } }
+/* The pulse the agent's tool wrote: {busy, at}, or null. Small, never through a link; a time
+   in the future is taken as now (clocks of two machines differ). */
+function pulseOf(dir, now) {
+    const file = `${dir}/pulse.json`;
+    try {
+        const st = lstatSync(file);
+        if (!st.isFile() || st.size > 1024) return null;
+        const p = JSON.parse(readFileSync(file, 'utf8'));
+        const t = Date.parse(p?.at);
+        if (!p || typeof p.busy !== 'boolean' || typeof p.at !== 'string' || !Number.isFinite(t)) return null;
+        return { busy: p.busy, at: new Date(Math.min(t, now.getTime())).toISOString() };
+    } catch { return null; }
+}
 function lineCount(file) { try { if (lstatSync(file).isSymbolicLink()) return 0; return readFileSync(file, 'utf8').split('\n').filter(Boolean).length; } catch { return 0; } }
 
 /* Puts the bridge in `dir`: the two files, and the MCP server for an agent
@@ -262,6 +277,7 @@ export class Parley {
             steps: steps.filter((m) => m.at >= since).sort((a, b) => a.at.localeCompare(b.at)).slice(-STEPS_MAX).map((m) => ({ id: m.id, kind: m.kind, state: m.state, note: m.text, at: m.at })),
             files: [...shown, ...cites].sort((a, b) => String(a.at).localeCompare(String(b.at))).slice(-LISTED_MAX),
             unread,
+            pulse: pulseOf(this.#dir, this.#now()),
         };
     }
 
