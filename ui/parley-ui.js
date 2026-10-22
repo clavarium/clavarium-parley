@@ -173,7 +173,7 @@ export const VIEWS = Object.freeze(['simple', 'detailed']);
 export const KEYS = Object.freeze(['send', 'placeholder', 'empty', 'view', 'simple', 'detailed', 'working', 'waiting', 'done', 'no-status', 'asks', 'open', 'outside',
     'not-read', 'read', 'remind', 'reminded', 'steps', 'no-steps', 'files', 'no-files', 'terminal', 'not-sent', 'step-one', 'steps-many', 'today', 'yesterday', 'quiet', 'stopped',
     'mic', 'mic-stop', 'auto-send', 'auto-on', 'settings', 'voice-placeholder', 'voice-calibrating', 'voice-listening', 'voice-hearing', 'voice-transcribing', 'voice-wait', 'voice-off', 'replies', 'replies-more', 'replies-less',
-    'attach', 'remove-file', 'sending-files', 'attach-where',
+    'attach', 'remove-file', 'sending-files', 'attach-where', 'draw-open', 'draw-marked', 'draw-colour', 'draw-undo', 'draw-clear', 'draw-cancel', 'draw-done', 'draw-note', 'draw-hint',
     'copy', 'copied', 'see-details', 'see-more', 'see-less', 'note', 'tip', 'important', 'warning', 'caution', 'badge-ok', 'badge-todo', 'badge-blocked', 'badge-warn',
     'waits-you', 'waits-you-note', 'busy', 'pulse', 'state-sent', 'state-read', 'state-working', 'state-done', 'sent-at', 'read-at', 'done-at',
     'reply', 'replying', 'not-a-reply', 'in-reply', 'closed', 'you', 'agent', 'drop', 'picture', 'diagram', 'not-shown', 'grouped',
@@ -523,7 +523,7 @@ export function view(data, { words = {}, view: as = 'simple', now = Date.now(), 
             dictated: person && m.via === 'voice',
             tool: detailed && !person && agentTool ? String(agentTool) : '',
             /* What the person attached: by name, opened the application's way; its whole path in the detailed view. */
-            files: (person && Array.isArray(m.files) ? m.files : []).slice(0, FILES_MAX).filter((f) => f && typeof f === 'object').map((f) => ({ path: String(f.path ?? ''), name: String(f.name || nameOf(f.path)), open: typeof f.open === 'string' ? f.open : null, shown: detailed ? String(f.path ?? '') : '', size: sizeText(f.size), picture: PICTURE.test(String(f.name || f.path || '')) })),
+            files: (person && Array.isArray(m.files) ? m.files : []).slice(0, FILES_MAX).filter((f) => f && typeof f === 'object').map((f) => ({ path: String(f.path ?? ''), name: String(f.name || nameOf(f.path)), open: typeof f.open === 'string' ? f.open : null, shown: detailed ? String(f.path ?? '') : '', size: sizeText(f.size), picture: PICTURE.test(String(f.name || f.path || '')), ...(String(f.note ?? '').trim() ? { note: cut(String(f.note).replace(/\s+/g, ' ').trim(), 500) } : {}) })),
             actions: [],
             outside: show && !(Array.isArray(m.files) && m.files.length) && reach === null ? said(words, 'outside', { path: String(m.path ?? '') }) : show && Array.isArray(m.files) && m.files.some((f) => f && typeof f.open !== 'string') && detailed ? said(words, 'outside', { path: m.files.filter((f) => f && typeof f.open !== 'string').map((f) => f.path).join(', ') }) : '',
             choices: m.kind === 'ask' && !answered.has(m.id) ? (m.choices ?? []).map(String) : [],
@@ -1186,6 +1186,135 @@ function zoomer(root, words, steps) {
     };
 }
 
+/* DRAWING ON A PICTURE before it is sent, and a note about it alone: what the person
+   means ("this button", "here") is where they point. Lines are kept in the picture's own
+   pixels, so they stay where they were drawn whatever the screen; sent as one picture. */
+/* The colours of the pen: seen on light and dark pictures alike. */
+export const PEN_COLOURS = Object.freeze(['#e53935', '#fdd835', '#1e88e5', '#43a047', '#ffffff', '#111111']);
+/* A picture drawn on is sent no larger than this on its longest side. */
+export const DRAWN_MAX_PX = 2048;
+/* How thick a line is, in the picture's pixels: seen on a large picture, not a blot on a small one. */
+export const penWidth = (w, h) => Math.max(3, Math.round(Math.max(w, h) / 150));
+/* The name it is sent under: what it was, and that it was drawn on. */
+export const drawnName = (name, type) => `${String(name ?? '').replace(/\.[A-Za-z0-9]{1,5}$/, '') || 'picture'}-annotated.${type === 'image/jpeg' ? 'jpg' : 'png'}`;
+/* The size it is drawn at: its own, made smaller only past the most. */
+export const drawnSize = (w, h, most = DRAWN_MAX_PX) => { const k = Math.min(1, most / Math.max(w, h, 1)); return { w: Math.max(1, Math.round(w * k)), h: Math.max(1, Math.round(h * k)) }; };
+function annotator(words, steps) {
+    const box = el('div', 'parley-zoom parley-draw'); box.hidden = true; box.setAttribute('role', 'dialog'); box.setAttribute('aria-modal', 'true'); box.tabIndex = -1;
+    const bar = el('div', 'parley-zoom-bar');
+    const title = el('span', 'parley-zoom-name');
+    const tool = (kind, key, name, act) => {
+        const b = el('button', `parley-zoom-${kind}`); b.type = 'button'; b.title = said(words, key); b.setAttribute('aria-label', b.title);
+        b.append(icon(name, 'parley-sign'), el('span', 'parley-zoom-word', said(words, key)));
+        b.addEventListener('click', act); return b;
+    };
+    const stage = el('div', 'parley-draw-stage');
+    const canvas = el('canvas', 'parley-draw-canvas');
+    stage.append(canvas);
+    const colours = el('div', 'parley-draw-colours'); colours.setAttribute('role', 'radiogroup'); colours.setAttribute('aria-label', said(words, 'draw-colour'));
+    let colour = PEN_COLOURS[0];
+    const swatches = PEN_COLOURS.map((c) => {
+        const b = el('button', 'parley-draw-colour'); b.type = 'button'; b.style.backgroundColor = c; b.dataset.colour = c;
+        b.setAttribute('role', 'radio'); b.setAttribute('aria-label', `${said(words, 'draw-colour')} ${c}`);
+        b.addEventListener('click', () => { colour = c; paintSwatches(); });
+        return b;
+    });
+    const paintSwatches = () => { for (const b of swatches) b.setAttribute('aria-checked', String(b.dataset.colour === colour)); };
+    colours.append(...swatches); paintSwatches();
+    const undo = tool('undo', 'draw-undo', 'undo-2', () => { strokes.pop(); paint(); });
+    const clear = tool('clear', 'draw-clear', 'eraser', () => { strokes = []; paint(); });
+    const cancel = tool('close', 'draw-cancel', 'x', () => close(null));
+    const done = tool('done', 'draw-done', 'check', () => { void finish(); });
+    bar.append(title, colours, undo, clear, cancel, done);
+    const foot = el('div', 'parley-draw-foot');
+    const note = el('textarea', 'parley-draw-note'); note.rows = 2; note.maxLength = 500; note.placeholder = said(words, 'draw-note'); note.setAttribute('aria-label', said(words, 'draw-note'));
+    const hint = el('p', 'parley-draw-hint', said(words, 'draw-hint'));
+    foot.append(hint, note);
+    box.append(bar, stage, foot);
+    const img = el('img');
+    let strokes = []; let drawing = null; let file = null; let done2 = null; let back = null;
+    const pen = () => penWidth(canvas.width, canvas.height);
+    const line = (ctx, st) => {
+        ctx.strokeStyle = st.colour; ctx.lineWidth = st.width; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+        ctx.beginPath(); const [x0, y0] = st.points[0]; ctx.moveTo(x0, y0);
+        if (st.points.length === 1) ctx.lineTo(x0 + 0.01, y0); else for (const [x, y] of st.points.slice(1)) ctx.lineTo(x, y);
+        ctx.stroke();
+    };
+    function paint() {
+        const ctx = canvas.getContext('2d'); if (!ctx) return;
+        ctx.clearRect(0, 0, canvas.width, canvas.height); ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        for (const st of strokes) line(ctx, st);
+        undo.disabled = clear.disabled = strokes.length === 0;
+    }
+    /* The canvas fills what room there is, keeping the picture's shape. */
+    const fit = () => {
+        const w = stage.clientWidth || 1; const h = stage.clientHeight || 1;
+        const k = Math.min(w / canvas.width, h / canvas.height);
+        canvas.style.width = `${Math.floor(canvas.width * k)}px`; canvas.style.height = `${Math.floor(canvas.height * k)}px`;
+    };
+    const at = (event) => { const r = canvas.getBoundingClientRect(); return [(event.clientX - r.left) * (canvas.width / (r.width || 1)), (event.clientY - r.top) * (canvas.height / (r.height || 1))]; };
+    canvas.addEventListener('pointerdown', (event) => {
+        if (event.button !== undefined && event.button !== 0) return;
+        event.preventDefault();
+        try { canvas.setPointerCapture(event.pointerId); } catch { /* not given */ }
+        drawing = { id: event.pointerId, colour, width: pen(), points: [at(event)] };
+        strokes.push(drawing); paint();
+    });
+    canvas.addEventListener('pointermove', (event) => {
+        if (!drawing || event.pointerId !== drawing.id) return;
+        drawing.points.push(at(event));
+        const ctx = canvas.getContext('2d'); if (ctx) line(ctx, { ...drawing, points: drawing.points.slice(-2) });
+    });
+    const lift = (event) => { if (drawing && event.pointerId === drawing.id) { drawing = null; paint(); } };
+    canvas.addEventListener('pointerup', lift); canvas.addEventListener('pointercancel', lift);
+    box.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape') { event.preventDefault(); close(null); }
+        else if ((event.ctrlKey || event.metaKey) && event.key === 'z' && event.target !== note) { event.preventDefault(); strokes.pop(); paint(); }
+    });
+    const onResize = () => { if (!box.hidden) fit(); };
+    function close(result) {
+        if (box.hidden) return;
+        box.hidden = true; removeEventListener('resize', onResize);
+        steps?.closed('draw');
+        try { back?.focus?.({ preventScroll: true }); } catch { /* gone */ }
+        const r = done2; done2 = null; r?.(result);
+    }
+    async function finish() {
+        const kept = { strokes: strokes.map((st) => ({ ...st, points: [...st.points] })), note: note.value.replace(/\s+/g, ' ').trim().slice(0, 500), drawn: null };
+        if (strokes.length) {
+            const type = file.type === 'image/jpeg' ? 'image/jpeg' : 'image/png';
+            const blob = await new Promise((resolve) => { try { canvas.toBlob(resolve, type, 0.9); } catch { resolve(null); } });
+            if (blob) kept.drawn = new File([blob], drawnName(file.name, type), { type });
+        }
+        close(kept);
+    }
+    return {
+        box,
+        get open() { return !box.hidden; },
+        /* Opens `picture` (a File) at `url`, with what was drawn and noted on it before. Resolves with
+           { strokes, note, drawn } (drawn: the picture to send, or null when nothing is drawn), or null when given up. */
+        edit(picture, url, before = {}) {
+            close(null);
+            return new Promise((resolve) => {
+                file = picture; done2 = resolve; back = document.activeElement;
+                title.textContent = picture.name;
+                strokes = (before.strokes ?? []).map((st) => ({ ...st, points: [...st.points] }));
+                note.value = before.note ?? '';
+                img.onload = () => {
+                    const { w, h } = drawnSize(img.naturalWidth, img.naturalHeight);
+                    canvas.width = w; canvas.height = h; paint(); fit();
+                };
+                img.onerror = () => close(null);
+                img.src = url;
+                box.hidden = false; addEventListener('resize', onResize);
+                box.focus?.({ preventScroll: true });
+                steps?.opened('draw', () => close(null));
+            });
+        },
+        close: () => close(null),
+    };
+}
+
 /* The kind of a file, as a short tag on its card. */
 const extOf = (name) => { const m = /\.([a-z0-9]{1,5})$/i.exec(String(name ?? '')); return m ? m[1].toUpperCase() : ''; };
 /* The icon of a file's kind, and its kind and size in a word under its name. */
@@ -1309,13 +1438,14 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
     form.append(field, clip, mic, go, picker);
     const dropZone = el('div', 'parley-drop', said(words, 'drop')); dropZone.hidden = true;
     const zoom = zoomer(root, words, steps);
+    const drawer = annotator(words, steps);
     /* What floats over the chat first; then the chat, top to bottom. */
     /* The box and what goes with it: apart from the thread, by a line and some room. */
     const composer = el('div', 'parley-composer');
     composer.append(quickRow, replyRow, pendingRow, form, problem);
     const reacting = reactionPicker();
     const shelf = mediaShelf();
-    root.replaceChildren(zoom.box, shelf.box, reacting.box, dropZone, top, finder, main, composer);
+    root.replaceChildren(zoom.box, drawer.box, shelf.box, reacting.box, dropZone, top, finder, main, composer);
     root.dataset.view = as;
     const narrow = () => root.clientWidth > 0 && root.clientWidth < NARROW_PX;
     let wasNarrow = narrow();
@@ -1509,10 +1639,12 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
             const pictures = el('div', 'parley-pictures');
             for (const f of item.files) {
                 const url = f.picture && f.open !== null ? pictureUrl(f) : null;
-                if (url) { pictures.append(fileView(f)); continue; }
+                /* What they wrote about this file alone, under it. */
+                if (url) { const v = fileView(f); if (f.note) { const fig = el('figure', 'parley-noted'); fig.append(v, el('figcaption', 'parley-file-note', f.note)); pictures.append(fig); } else pictures.append(v); continue; }
                 const row2 = el('div', 'parley-file'); row2.dataset.attached = 'true';
                 row2.append(card(f, words, open, f.size));
                 if (f.shown) row2.append(el('span', 'parley-path', f.shown));
+                if (f.note) row2.append(el('span', 'parley-file-note', f.note));
                 bubble.append(row2);
             }
             if (pictures.childNodes.length) bubble.append(pictures);
@@ -1935,7 +2067,13 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
         if (!previews.has(file)) { let url = null; try { if (/^image\/(png|jpeg|gif|webp)$/.test(file.type) && typeof URL?.createObjectURL === 'function') url = URL.createObjectURL(file); } catch { url = null; } previews.set(file, url); }
         return previews.get(file);
     };
-    const letGo = (keep2) => { for (const [file, url] of previews) if (!keep2.includes(file)) { if (url) try { URL.revokeObjectURL(url); } catch { /* gone */ } previews.delete(file); } };
+    /* What was drawn on a picture about to go, and noted about it: { strokes, note, drawn }. */
+    const marks = new Map();
+    const letGo = (keep2) => {
+        const kept = new Set([...keep2, ...keep2.map((f) => marks.get(f)?.drawn).filter(Boolean)]);
+        for (const [file, url] of previews) if (!kept.has(file)) { if (url) try { URL.revokeObjectURL(url); } catch { /* gone */ } previews.delete(file); }
+        for (const file of [...marks.keys()]) if (!keep2.includes(file)) marks.delete(file);
+    };
     const paintPending = () => {
         letGo(pending);
         pendingRow.hidden = pending.length === 0;
@@ -1943,8 +2081,20 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
         const where = el('p', 'parley-where', said(words, 'attach-where'));
         pendingRow.replaceChildren(where, ...pending.map((file, i) => {
             const url = previewOf(file);
+            const mark = marks.get(file);
             const chip = el('span', url ? 'parley-pending parley-pending-picture' : 'parley-pending');
-            if (url) { const img = el('img'); img.src = url; img.alt = file.name; chip.append(img); chip.title = `${file.name} (${sizeText(file.size)})`; }
+            if (url) {
+                /* A tap opens it large, to draw on it and say something about it alone. */
+                const open2 = el('button', 'parley-pending-open'); open2.type = 'button';
+                open2.title = said(words, 'draw-open', { name: file.name }); open2.setAttribute('aria-label', open2.title);
+                const img = el('img'); img.src = (mark?.drawn && previewOf(mark.drawn)) || url; img.alt = file.name; open2.append(img);
+                if (mark && (mark.drawn || mark.note)) { const badge = el('span', 'parley-pending-marked'); badge.append(icon('pencil', 'parley-sign')); badge.title = mark.note || said(words, 'draw-marked'); open2.append(badge); chip.dataset.marked = 'true'; }
+                open2.addEventListener('click', async () => {
+                    const got = await drawer.edit(file, url, mark ?? {});
+                    if (got && pending.includes(file)) { if (got.drawn || got.note) marks.set(file, got); else marks.delete(file); paintPending(); }
+                });
+                chip.append(open2);
+            }
             else { const about = el('span', 'parley-card-about'); about.append(el('span', 'parley-name', file.name), kindLine(file.name, sizeText(file.size))); chip.append(fileGlyph(file.name), about); }
             const x = button('\u00d7', 'parley-unattach', () => { pending = pending.filter((_, j) => j !== i); paintPending(); stayIn(); });
             x.title = said(words, 'remove-file', { name: file.name }); x.setAttribute('aria-label', x.title);
@@ -1984,7 +2134,11 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
         problem.hidden = false; problem.dataset.kind = 'sending'; problem.textContent = said(words, 'sending-files');
         const files = [];
         try {
-            for (const file of pending) files.push(await attach.upload(file, file.name));
+            for (const file of pending) {
+                const mark = marks.get(file); const sent2 = mark?.drawn ?? file;
+                const up = await attach.upload(sent2, sent2.name);
+                files.push(mark?.note ? { ...up, note: mark.note } : up);
+            }
         } catch (error) {
             problem.dataset.kind = ''; problem.textContent = said(words, 'not-sent', { error: String(error?.message ?? error) });
             uploading = false; go.disabled = clip.disabled = false;

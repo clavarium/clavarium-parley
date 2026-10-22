@@ -390,6 +390,32 @@ mark.parley-found[data-now="true"] { outline: 2px solid var(--parley-ask); }
   .parley-zoom-word { display: inline; }
   .parley .parley-zoom-bar .parley-zoom-close { margin-left: .9em; }
 }
+/* ---- drawing on a picture before it is sent ---- */
+.parley-noted { margin: 0; display: flex; flex-direction: column; gap: .2em; max-width: 16em; }
+.parley-file-note { font-size: .85em; color: var(--parley-dim); font-style: italic; overflow-wrap: anywhere; }
+
+.parley-draw { background: #0d0f13; }
+.parley-draw .parley-zoom-name { flex: 1 1 100%; text-align: center; }
+.parley .parley-draw .parley-zoom-bar .parley-zoom-close { order: 0; }
+.parley-draw-stage { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; padding: .4em; overflow: hidden; }
+.parley-draw-canvas { display: block; touch-action: none; cursor: crosshair; background: #fff; box-shadow: 0 0 0 1px rgba(255, 255, 255, .2); }
+.parley-draw-colours { display: inline-flex; gap: .3em; align-items: center; padding-inline: .3em; }
+.parley .parley-zoom-bar .parley-draw-colour { min-width: 2em; min-height: 2em; width: 2em; height: 2em; padding: 0; border-radius: 50%; border: 2px solid rgba(255, 255, 255, .5); }
+.parley .parley-zoom-bar .parley-draw-colour[aria-checked="true"] { outline: 3px solid #f2f3f5; outline-offset: 2px; }
+.parley-draw .parley-zoom-undo .parley-zoom-word, .parley-draw .parley-zoom-clear .parley-zoom-word { display: none; }
+.parley-draw .parley-zoom-close .parley-zoom-word, .parley-draw .parley-zoom-done .parley-zoom-word { display: inline; }
+.parley .parley-zoom-bar .parley-zoom-done { border-color: transparent; background: var(--parley-action); color: var(--parley-on-action); font-weight: 650; padding: 0 .9em 0 .6em; }
+.parley .parley-zoom-bar button:disabled { opacity: .4; }
+.parley-draw-foot { display: flex; flex-direction: column; gap: .3em; padding: .4em .6em calc(.5em + env(safe-area-inset-bottom)); background: rgba(0, 0, 0, .4); }
+.parley-draw-hint { margin: 0; font-size: .8em; opacity: .75; text-align: center; }
+.parley .parley-draw-note { width: 100%; max-width: 48rem; margin-inline: auto; box-sizing: border-box; resize: none; font: inherit; font-size: 16px; padding: .45em .6em; border-radius: 10px; border: 1px solid rgba(255, 255, 255, .3); background: rgba(255, 255, 255, .08); color: #f2f3f5; }
+@container parley (min-width: 46rem) {
+  .parley-draw .parley-zoom-name { flex: 0 1 auto; }
+  .parley-draw .parley-zoom-undo .parley-zoom-word, .parley-draw .parley-zoom-clear .parley-zoom-word { display: inline; }
+}
+.parley .parley-pending-open { display: block; position: relative; padding: 0; border: 0; background: none; cursor: zoom-in; min-height: 0; }
+.parley-pending-marked { position: absolute; left: .2em; bottom: .2em; display: inline-flex; padding: .15em; border-radius: 6px; background: var(--parley-action); color: var(--parley-on-action); }
+.parley-pending-marked .parley-sign { width: .9em; height: .9em; }
 /* ---- the composer, in the same column ---- */
 .parley-top, .parley-quick, .parley-attached, .parley-form, .parley-problem, .parley-replying { width: 100%; max-width: var(--parley-column); margin-inline: auto; box-sizing: border-box; }
 .parley-replying { width: auto; margin-inline: 0; }

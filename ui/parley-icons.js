@@ -11,7 +11,7 @@
  * where it had none ("3.676.56" is "3.676 .56"): the same drawing.
  *
  * Lucide's licence (ISC), and the MIT licence of the Feather icons some of
- * them derive from (arrow-up, arrow-down, chevron-left, chevron-right, plus,
+ * them derive from (arrow-up, arrow-down, check, chevron-left, chevron-right, plus,
  * smartphone, x), as the package gives them:
  *
  *   ISC License. Copyright (c) 2026 Lucide Icons and Contributors.
@@ -82,6 +82,10 @@ export const ICONS = Object.freeze({
     'arrow-up': [['path',{d:'m5 12 7-7 7 7'}],['path',{d:'M12 19V5'}]],
     'arrow-down': [['path',{d:'M12 5v14'}],['path',{d:'m19 12-7 7-7-7'}]],
     'plus': [['path',{d:'M5 12h14'}],['path',{d:'M12 5v14'}]],
+    'pencil': [['path',{d:'M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5 .83l-1.321 4.352a.5 .5 0 0 0 .623 .622l4.353-1.32a2 2 0 0 0 .83-.497z'}],['path',{d:'m15 5 4 4'}]],
+    'undo-2': [['path',{d:'M9 14 4 9l5-5'}],['path',{d:'M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5a5.5 5.5 0 0 1-5.5 5.5H11'}]],
+    'eraser': [['path',{d:'M21 21H8a2 2 0 0 1-1.42-.587l-3.994-3.999a2 2 0 0 1 0-2.828l10-10a2 2 0 0 1 2.829 0l5.999 6a2 2 0 0 1 0 2.828L12.834 21'}],['path',{d:'m5.082 11.09 8.828 8.828'}]],
+    'check': [['path',{d:'M20 6 9 17l-5-5'}]],
 });
 
 /* The kinds of files, by extension, and the icon of each. */

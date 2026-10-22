@@ -49,6 +49,8 @@ export const FILE_MAX = 2 * 1024 * 1024;
 export const STATES = ['working', 'waiting', 'done'];
 /* Files the person attaches to one message, at most. */
 export const FILES_MAX = 10;
+/* What the person wrote about one file they attached. */
+export const NOTE_MAX = 500;
 /* Files the agent shows at once, as one gallery. */
 export const SHOW_MAX = 12;
 /* THE REACTIONS a person may put on a message of the agent, by default: an
@@ -222,7 +224,7 @@ export class Parley {
         return list.slice(0, FILES_MAX).filter((f) => f && typeof f === 'object').map((f) => {
             const path = oneLine(f.path, 1000);
             const open = this.#open(path);
-            return { path, name: oneLine(f.name, 200) || path.split('/').pop(), size: Number.isInteger(f.size) && f.size >= 0 ? f.size : null, open };
+            return { path, name: oneLine(f.name, 200) || path.split('/').pop(), size: Number.isInteger(f.size) && f.size >= 0 ? f.size : null, open, ...(oneLine(f.note, NOTE_MAX) ? { note: oneLine(f.note, NOTE_MAX) } : {}) };
         });
     }
 
@@ -290,12 +292,12 @@ export class Parley {
         const said = clean(text).trim();
         const given = Array.isArray(files) ? files : [];
         if (given.length > FILES_MAX) throw new RangeError(`${FILES_MAX} files at most in one message.`);
-        const attached = given.map((f) => ({ path: oneLine(f?.path, 1000), name: oneLine(f?.name, 200), size: Number.isInteger(f?.size) && f.size >= 0 ? f.size : undefined }));
+        const attached = given.map((f) => ({ path: oneLine(f?.path, 1000), name: oneLine(f?.name, 200), size: Number.isInteger(f?.size) && f.size >= 0 ? f.size : undefined, note: oneLine(f?.note, NOTE_MAX) }));
         if (attached.some((f) => !f.path.startsWith('/'))) throw new RangeError('A file is given by its whole path.');
         if (!said && attached.length === 0) throw new RangeError('Write something.');
         const entry = { id: randomUUID(), at: this.#now().toISOString(), text: said };
         if (via === 'voice') entry.via = 'voice';
-        if (attached.length) entry.files = attached.map((f) => ({ path: f.path, name: f.name || f.path.split('/').pop(), ...(f.size === undefined ? {} : { size: f.size }) }));
+        if (attached.length) entry.files = attached.map((f) => ({ path: f.path, name: f.name || f.path.split('/').pop(), ...(f.size === undefined ? {} : { size: f.size }), ...(f.note ? { note: f.note } : {}) }));
         if (typeof answers === 'string' && answers) {
             const asked = this.read().messages.find((m) => m.from === 'agent' && ['say', 'ask', 'show'].includes(m.kind) && m.id === answers);
             /* A question is answered; any other message of the agent is replied to, quoted. */

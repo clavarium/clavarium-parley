@@ -96,8 +96,11 @@ message proposes; several proposals: ask which), `disagree` (ask what is
 wrong), `unclear` (explain more simply, without acting), `stop` (stop now,
 do nothing more), `redo` (another way), `later` (nothing for now), `love`
 (noted). An application may offer another set: an unknown one is given by
-its name. When the person attached files: `files`, `[{path, name, size}]`, ten at most,
-`path` as the agent sees it; the text may then be empty. Where the files are
+its name. When the person attached files: `files`, `[{path, name, size, note?}]`, ten at most,
+`path` as the agent sees it; the text may then be empty. `note`: what the
+person wrote about that file alone (500 characters, one line); a picture
+they drew on before sending comes as they drew it, and its name says so
+(`photo-annotated.png`). Where the files are
 put is the application's business: it puts them where the agent can open
 them, and gives Parley their paths. `parley read` gives each path.
 

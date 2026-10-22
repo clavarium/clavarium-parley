@@ -33,7 +33,7 @@ import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import { createInterface } from 'node:readline';
 
-export const VERSION = '0.12.0';
+export const VERSION = '0.13.0-next.1';
 /* A message may be long: the screen folds it, and shows its short version first. */
 export const TEXT_MAX = 16000;
 /* Its short version: a title of one or two lines. */
@@ -61,7 +61,7 @@ export const ALL_CHARS = 100_000;
 const lines = (file) => { try { return readFileSync(file, 'utf8').split('\n').filter(Boolean).map((l) => { try { const j = JSON.parse(l); return j && typeof j === 'object' && !Array.isArray(j) ? j : null; } catch { return null; } }); } catch { return []; } };
 const size = (n) => (n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` : n >= 1024 ? `${Math.round(n / 1024)} KB` : `${n} bytes`);
 /* The files the person attached to a message, one line each: where they are, for the agent to open. */
-const attached = (m) => (Array.isArray(m.files) ? m.files.slice(0, 10).map((f) => `\n  Attached file: ${plain(f?.path, 1000)}${Number.isInteger(f?.size) ? ` (${size(f.size)})` : ''}`).join('') : '');
+const attached = (m) => (Array.isArray(m.files) ? m.files.slice(0, 10).map((f) => `\n  Attached file: ${plain(f?.path, 1000)}${Number.isInteger(f?.size) ? ` (${size(f.size)})` : ''}${f?.note ? `\n    Their note on this file: ${plain(f.note, 500).replace(/\s+/g, ' ')}` : ''}`).join('') : '');
 /* The short version of a message, when given: one or two lines. */
 /* A message the person dictated: said so, for the words a recognizer got wrong. */
 export const DICTATED = 'dictated: may hold recognition mistakes; ask when a key word seems wrong';

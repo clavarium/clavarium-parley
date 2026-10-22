@@ -36,6 +36,10 @@ posted and nothing printed; the screen says "Working…" while it beats, and
 Claude Code's `Stop` hook asks it once, when it stops while its chat still says
 it works, to say where it is.
 
+A picture the person attaches can be drawn on before it is sent (a tap on it,
+then a finger or the mouse), with a note about it alone: the agent receives
+the picture as drawn (`photo-annotated.png`) and the note under its path.
+
 Nothing waits: the agent posts, and is told in one line when a message
 arrived. See [docs/protocol.md](docs/protocol.md).
 
