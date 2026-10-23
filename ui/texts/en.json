@@ -50,6 +50,8 @@
   "sending-files": "Sending the files...",
   "attach-where": "They go to its work folder: it opens them there, and so can whoever has this chat.",
   "draw-open": "Open {name}: draw on it, add a note",
+  "draw-again": "Draw on it and send it",
+  "drawn-from": "drawn on {name}, a picture of this chat",
   "draw-marked": "Drawn on",
   "draw-colour": "Colour",
   "draw-undo": "Undo",

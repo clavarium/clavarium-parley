@@ -173,7 +173,7 @@ export const VIEWS = Object.freeze(['simple', 'detailed']);
 export const KEYS = Object.freeze(['send', 'placeholder', 'empty', 'view', 'simple', 'detailed', 'working', 'waiting', 'done', 'no-status', 'asks', 'open', 'outside',
     'not-read', 'read', 'remind', 'reminded', 'steps', 'no-steps', 'files', 'no-files', 'terminal', 'not-sent', 'step-one', 'steps-many', 'today', 'yesterday', 'quiet', 'stopped',
     'mic', 'mic-stop', 'auto-send', 'auto-on', 'settings', 'voice-placeholder', 'voice-calibrating', 'voice-listening', 'voice-hearing', 'voice-transcribing', 'voice-wait', 'voice-off', 'replies', 'replies-more', 'replies-less',
-    'attach', 'remove-file', 'sending-files', 'attach-where', 'draw-open', 'draw-marked', 'draw-colour', 'draw-undo', 'draw-clear', 'draw-cancel', 'draw-done', 'draw-note', 'draw-hint',
+    'attach', 'remove-file', 'sending-files', 'attach-where', 'draw-open', 'draw-again', 'drawn-from', 'draw-marked', 'draw-colour', 'draw-undo', 'draw-clear', 'draw-cancel', 'draw-done', 'draw-note', 'draw-hint',
     'copy', 'copied', 'see-details', 'see-more', 'see-less', 'note', 'tip', 'important', 'warning', 'caution', 'badge-ok', 'badge-todo', 'badge-blocked', 'badge-warn',
     'waits-you', 'waits-you-note', 'busy', 'pulse', 'state-sent', 'state-read', 'state-working', 'state-done', 'sent-at', 'read-at', 'done-at',
     'reply', 'replying', 'not-a-reply', 'in-reply', 'closed', 'you', 'agent', 'drop', 'picture', 'diagram', 'not-shown', 'grouped',
@@ -1019,6 +1019,7 @@ function zoomer(root, words, steps) {
         if (kind === 'left') b.append(icon('chevron-left', 'parley-sign'));
         else if (kind === 'right') b.append(icon('chevron-right', 'parley-sign'));
         else if (kind === 'close') b.append(icon('x', 'parley-sign'));
+        else if (kind === 'draw') b.append(icon('pencil', 'parley-sign'));
         else if (kind === 'minus' || kind === 'plus') b.append(sign(kind));
         b.append(el('span', short ? 'parley-zoom-short' : 'parley-zoom-word', short ? said(words, short) : said(words, key)));
         b.addEventListener('click', act); return b;
@@ -1088,6 +1089,11 @@ function zoomer(root, words, steps) {
     const next = tool('right', 'next', () => go(1));
     const tools = el('div', 'parley-zoom-tools'); tools.setAttribute('role', 'group');
     tools.append(tool('minus', 'zoom-out', () => zoomTo(s / 1.5)), tool('plus', 'zoom-in', () => zoomTo(s * 1.5)), tool('actual', 'zoom-actual', () => zoomTo(1), 'zoom-actual-short'), tool('fit', 'zoom-fit', fitIn, 'zoom-fit-short'), prev, next);
+    /* Drawn on, and sent again: the picture shown, taken into the box with its source (the chat says where). */
+    let annotate = null;
+    const redraw = tool('draw', 'draw-again', () => { const item = list[at]; if (!item || !annotate) return; close(); void annotate(item); });
+    redraw.hidden = true;
+    tools.append(redraw);
     const shut = tool('close', 'close', () => close(), 'close');
     bar.append(title, tools, shut);
     box.append(bar, stage, strip);
@@ -1108,6 +1114,7 @@ function zoomer(root, words, steps) {
         title.textContent = `${item.title || item.name}${list.length > 1 ? ` (${at + 1}/${list.length})` : ''}`;
         title.title = item.name;
         prev.hidden = next.hidden = list.length < 2;
+        redraw.hidden = !annotate;
         img.style.transition = ''; img.style.opacity = ''; box.style.opacity = ''; delete box.dataset.dragging; delete box.dataset.sliding;
         const same = img.getAttribute('src') === item.url;
         img.src = item.url; img.alt = item.title || item.name;
@@ -1209,6 +1216,8 @@ function zoomer(root, words, steps) {
         },
         get open() { return !box.hidden; },
         close,
+        /* `fn(item)`: what "draw on it and send it" does; none: not offered. */
+        set annotate(fn) { annotate = typeof fn === 'function' ? fn : null; },
     };
 }
 
@@ -1489,7 +1498,7 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
     /* The pictures of the thread, each once: one shown in a gallery and cited in a text is one picture, as in the media. */
     const zoomFrom = (img) => {
         const seen = new Map();
-        for (const i of thread.querySelectorAll('img[data-zoom]')) if (!seen.has(i.dataset.zoom)) seen.set(i.dataset.zoom, { url: i.dataset.zoom, name: i.dataset.name || i.alt || '', title: i.dataset.title || '' });
+        for (const i of thread.querySelectorAll('img[data-zoom]')) if (!seen.has(i.dataset.zoom)) seen.set(i.dataset.zoom, { url: i.dataset.zoom, name: i.dataset.name || i.alt || '', title: i.dataset.title || '', from: i.closest('.parley-said')?.dataset.id ?? '' });
         const all = [...seen.values()];
         zoom.show(all, Math.max(0, all.findIndex((x) => x.url === img.dataset.zoom)), img);
     };
@@ -1847,7 +1856,7 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
                     const cell = el('figure', 'parley-media-item');
                     const b = el('button', 'parley-media-thumb'); b.type = 'button'; b.title = `${x.f.title} - ${x.f.name}`;
                     const img = el('img'); img.src = x.url; img.alt = x.f.title; img.loading = 'lazy'; b.append(img);
-                    b.addEventListener('click', () => zoom.show(inOrder.map((y) => ({ url: y.url, name: y.f.name, title: y.f.title })), inOrder.indexOf(x), img));
+                    b.addEventListener('click', () => zoom.show(inOrder.map((y) => ({ url: y.url, name: y.f.name, title: y.f.title, from: y.f.id ?? '' })), inOrder.indexOf(x), img));
                     const where = button(said(words, 'see-in-thread'), 'parley-media-where', () => find(x.f.id));
                     where.title = x.f.when;
                     cell.append(b, el('figcaption', '', x.f.title), where);
@@ -2129,6 +2138,27 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
     };
     /* Files from the button, pasted, or dropped: the same way, the same limits. */
     const add = (files) => { if (!attach?.upload) return; const list = [...files].filter((f) => f && typeof f.name === 'string'); if (!list.length) return; pending = [...pending, ...list].slice(0, FILES_MAX); paintPending(); };
+    /* A PICTURE OF THE CHAT, DRAWN ON AND SENT AGAIN: taken from where it is shown, opened in the
+       same drawing, then waiting in the box as any picture attached -- its note says where it came
+       from, and the message answers the one it was in. Cancelled, nothing is attached. */
+    const drawAgain = async (item) => {
+        if (!attach?.upload || pending.length >= FILES_MAX) return;
+        let blob;
+        try { const r = await fetch(item.url); if (!r.ok) throw new Error(String(r.status)); blob = await r.blob(); } catch (error) { problem.textContent = said(words, 'not-sent', { error: String(error?.message ?? error) }); problem.hidden = false; return; }
+        if (!/^image\/(png|jpeg|gif|webp)$/.test(blob.type)) return;
+        const name = String(item.name || 'picture').replace(/[\\/]/g, '_') || 'picture';
+        const file = new File([blob], /\.[A-Za-z0-9]{1,5}$/.test(name) ? name : `${name}.${blob.type === 'image/jpeg' ? 'jpg' : blob.type.slice(6)}`, { type: blob.type });
+        pending = [...pending, file]; paintPending();
+        const url = previewOf(file);
+        const got = url ? await drawer.edit(file, url, {}) : null;
+        if (!got || (!got.drawn && !got.note)) { pending = pending.filter((f) => f !== file); paintPending(); return; }
+        const source = said(words, 'drawn-from', { name: item.title || item.name || name });
+        marks.set(file, { ...got, note: cut(got.note ? `${got.note} (${source})` : source, 500) });
+        const from = item.from ? latestItems().find((i) => i.id === item.from) : null;
+        if (from && send) { replyTo = { id: from.id, text: cut(from.short || from.text || from.file?.name || name, 90), auto: false }; dismissed.delete(from.id); paintReply(); }
+        paintPending(); focusBox();
+    };
+    zoom.annotate = attach?.upload ? drawAgain : null;
     let uploading = false;
     /* Emptied once sent. A keyboard's own dictation (a tablet's, a phone's) may still be composing the words when
        Send is touched: it puts them back as it ends. What comes back within a moment and is what was sent (or

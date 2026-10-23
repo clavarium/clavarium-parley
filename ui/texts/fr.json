@@ -50,6 +50,8 @@
   "sending-files": "Envoi des fichiers...",
   "attach-where": "Ils vont dans son dossier de travail : il les ouvre là, comme quiconque a ce chat.",
   "draw-open": "Ouvrir {name} : dessiner dessus, ajouter une note",
+  "draw-again": "Dessiner dessus et la renvoyer",
+  "drawn-from": "dessin sur {name}, une image de ce chat",
   "draw-marked": "Annotée",
   "draw-colour": "Couleur",
   "draw-undo": "Défaire",
