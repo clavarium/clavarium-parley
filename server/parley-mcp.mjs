@@ -33,7 +33,7 @@ import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import { createInterface } from 'node:readline';
 
-export const VERSION = '0.13.1-next.1';
+export const VERSION = '0.13.1-next.2';
 /* A message may be long: the screen folds it, and shows its short version first. */
 export const TEXT_MAX = 16000;
 /* Its short version: a title of one or two lines. */
@@ -129,7 +129,7 @@ export function bridge(dir, { how = 'run `parley read`' } = {}) {
     const stale = () => {
         const s = standing();
         if (s?.state !== 'working' || Date.now() - Date.parse(s.at) < STALE_SAID_MS) return '';
-        return `\nTheir screen still says you are working${s.note ? ` on "${s.note}"` : ''}, since ${Math.round((Date.now() - Date.parse(s.at)) / 60_000)} min: say what you do now (parley doing "..."), or that you finished (parley status done) or wait for them (parley status waiting).`;
+        return `\nTheir screen still says you are working${s.note ? ` on "${s.note}"` : ''}, since ${Math.round((Date.now() - Date.parse(s.at)) / 60_000)} min: say what you do now (parley doing "..."), or that you stopped and they have nothing to do (parley status done), or, only if you need their answer or action, parley status waiting.`;
     };
     return {
         standing,
@@ -262,7 +262,7 @@ export const TOOLS = [
         inputSchema: { type: 'object', properties: { id: { type: 'string', description: 'The id of the question, as read shows it.' }, answer: { type: 'string', description: 'The answer you understood, in one line.' } }, required: ['id', 'answer'] } },
     { name: 'doing', description: 'Say in one short line what you are doing right now ("reading the 12 recordings", "running the tests"), each time you move to something new. Their screen shows it while you work, and keeps what came before. It does not wait.',
         inputSchema: { type: 'object', properties: { text: { type: 'string', description: 'One short line, in their language.' } }, required: ['text'] } },
-    { name: 'status', description: 'Say in one word where you are, so that their screen shows it: "working" when you start, "waiting" when you need them, "done" when the task is finished.',
+    { name: 'status', description: 'Say in one word where you are, so that their screen shows it: "working" when you start; "done" when you stop and they have nothing to do; "waiting" only when you need their answer or action (it puts them on alert).',
         inputSchema: { type: 'object', properties: { state: { type: 'string', enum: STATES }, note: { type: 'string', description: 'Optional: one short line.' } }, required: ['state'] } },
 ];
 
