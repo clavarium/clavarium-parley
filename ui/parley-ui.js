@@ -1625,7 +1625,7 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
             if (item.name && item.tool && item.tool !== item.name) head.append(el('span', 'parley-tool', item.tool));
             if (item.time) head.append(time(item.trail ? `${item.time} - ${item.trail.label}` : item.time, item.when));
             bubble.append(head);
-            /* React to it: a button that shows on hover (a right click, or a long press, too). */
+            /* React to it: a button that shows on hover (a right click too); on a touch screen, always there, in its corner. */
             if (react && reactions.length && ['say', 'ask', 'show'].includes(item.kind)) {
                 const r = el('button', 'parley-react-open'); r.type = 'button'; r.title = said(words, 'react'); r.setAttribute('aria-label', r.title); r.setAttribute('aria-haspopup', 'true');
                 r.append(icon('smile-plus', 'parley-sign'));
@@ -1735,8 +1735,9 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
     /* REACTIONS: one choice over the page, near the message -- each icon with
        its word under it, its meaning on hover; the one standing is pressed,
        pressed again it is taken back. Reply is there too: what is typed next
-       answers that message. Opened by the button on the message, a right
-       click, or a long press. */
+       answers that message. Opened by the button on the message (always in
+       sight on a touch screen), or a right click. A long press is left to the
+       browser: it selects the text, to copy it. */
     function reactionPicker() {
         const box = el('div', 'parley-react'); box.hidden = true; box.setAttribute('role', 'dialog'); box.setAttribute('aria-label', said(words, 'react')); box.tabIndex = -1;
         const grid = el('div', 'parley-react-grid');
@@ -2029,9 +2030,7 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
         if (!bubble || event.pointerType === 'mouse') return;
         unpress();
         pressing = setTimeout(() => {
-            /* On a message of the agent, a long press also offers its reactions. */
-            const item = bubble.dataset.from === 'agent' && react && reactions.length ? latestItems().find((i) => i.id === bubble.dataset.id && ['say', 'ask', 'show'].includes(i.kind)) : null;
-            if (item && !(event.target instanceof Element && event.target.closest('a, button, img'))) reacting.open(item, bubble);
+            /* Its text stays the browser's to select: the reactions are its button's, in its corner. */
             for (const other of thread.querySelectorAll('.parley-said[data-reveal]')) delete other.dataset.reveal;
             bubble.dataset.reveal = 'true'; revealed = bubble.dataset.id ?? '';
             clearTimeout(hiding);

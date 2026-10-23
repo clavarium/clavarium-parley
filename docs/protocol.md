@@ -237,8 +237,9 @@ extension and dashes); the name of the file on hover and in the detailed view.
 
 ## Reactions, the media, the viewer
 
-A message of the agent takes a reaction: a button on hover, a right click, or
-a long press opens the set, each icon with its word under it and its meaning
+A message of the agent takes a reaction: a button on hover (always in sight
+on a touch screen, where a long press selects the text), or a right click,
+opens the set, each icon with its word under it and its meaning
 on hover, and Reply. The icons are Lucide's (`ui/parley-icons.js`, copied with
 its version and licence, nothing loaded). "Media and files", in the menu of
 settings, shows every picture of the thread as a grid (the newest first) and

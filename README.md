@@ -112,7 +112,7 @@ Two views of one exchange, and a person picks one:
 | Steps it went through | folded into the message they led to: a click on it opens them ("5 steps" is said with its time) | unfolded between the messages, each with its time and state |
 | Where it is | when it waits for the person: once, at the end of the thread, until they write; done: once, quietly, while it is the last thing that happened | the same; at the top, what it does now, or the state it said when the end does not say it; on the side, what it does now and its machine (`about`, given by the application) |
 | Its newest message | never folded nor cut: nothing seems left below it | unfolded |
-| Reactions | on its messages: a button on hover, a right click or a long press; eight, each with its word | the same |
+| Reactions | on its messages: a button on hover (always there on a touch screen, in its corner), or a right click; a long press selects the text; eight, each with its word | the same |
 | Pictures | in their place, their title under them; several shown at once, one gallery; large: grown out of the thumbnail, zoomed, a strip of the others, closed with a tap; "Media and files" in the menu | the same, with each file's name |
 | Files | the ones the person can open, by name | every one, with its path; one that cannot be opened is said so |
 | Its terminal | | a way to it |
