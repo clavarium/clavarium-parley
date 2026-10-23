@@ -1068,8 +1068,22 @@ function zoomer(root, words, steps) {
         img.style.transform = `translate(${fx}px, ${fy}px) scale(${fs})`;
         setTimeout(() => { img.style.transition = ''; delete box.dataset.opening; }, OPEN_MS + 30);
     };
-    img.addEventListener('load', () => { fitIn(); grow(); });
-    const go = (step) => { if (list.length < 2) return; at = (at + step + list.length) % list.length; load(); };
+    /* The next or previous picture comes in from its side, as the last one went out: never a jump. */
+    let slide = 0;
+    const slideIn = () => {
+        const d = slide; slide = 0;
+        if (!d || still()) return;
+        const { w } = size();
+        img.style.transition = 'none'; img.style.opacity = '0';
+        img.style.transform = `translate(${tx + d * w * 0.4}px, ${ty}px) scale(${s})`;
+        void img.getBoundingClientRect();
+        img.style.transition = `transform ${OPEN_MS}ms cubic-bezier(.2,.8,.2,1), opacity ${OPEN_MS}ms ease-out`;
+        img.style.opacity = ''; apply();
+        setTimeout(() => { img.style.transition = ''; }, OPEN_MS + 30);
+    };
+    const enter = () => { if (slide) { from = null; slideIn(); } else grow(); };
+    img.addEventListener('load', () => { fitIn(); enter(); });
+    const go = (step) => { if (list.length < 2) return; at = (at + step + list.length) % list.length; slide = step; load(); };
     const prev = tool('left', 'previous', () => go(-1));
     const next = tool('right', 'next', () => go(1));
     const tools = el('div', 'parley-zoom-tools'); tools.setAttribute('role', 'group');
@@ -1084,7 +1098,7 @@ function zoomer(root, words, steps) {
             const b = el('button', 'parley-zoom-thumb'); b.type = 'button'; b.title = item.title || item.name; b.setAttribute('aria-label', b.title);
             if (i === at) b.setAttribute('aria-current', 'true');
             const small = el('img'); small.src = item.url; small.alt = ''; small.loading = 'lazy'; b.append(small);
-            b.addEventListener('click', () => { at = i; load(); });
+            b.addEventListener('click', () => { if (i === at) return; slide = i > at ? 1 : -1; at = i; load(); });
             return b;
         }));
         strip.querySelector('[aria-current]')?.scrollIntoView?.({ block: 'nearest', inline: 'center' });
@@ -1094,10 +1108,11 @@ function zoomer(root, words, steps) {
         title.textContent = `${item.title || item.name}${list.length > 1 ? ` (${at + 1}/${list.length})` : ''}`;
         title.title = item.name;
         prev.hidden = next.hidden = list.length < 2;
-        img.style.transition = ''; box.style.opacity = ''; delete box.dataset.dragging;
+        img.style.transition = ''; img.style.opacity = ''; box.style.opacity = ''; delete box.dataset.dragging; delete box.dataset.sliding;
+        const same = img.getAttribute('src') === item.url;
         img.src = item.url; img.alt = item.title || item.name;
         paintStrip();
-        if (img.complete && img.naturalWidth) { fitIn(); grow(); }
+        if (same || (img.complete && img.naturalWidth)) { fitIn(); enter(); }
     }
     /* The page zoomed while it is open: the viewer covers the screen at its own size again. */
     const view = () => (typeof window !== 'undefined' ? window.visualViewport : null);
@@ -1144,8 +1159,11 @@ function zoomer(root, words, steps) {
         if (pointers.size === 2 && pinch) { const [a, b] = [...pointers.values()]; zoomTo(pinch.s * (Math.hypot(a.x - b.x, a.y - b.y) / pinch.d), ((a.x + b.x) / 2 - r.left) / q, ((a.y + b.y) / 2 - r.top) / q); return; }
         if (pointers.size !== 1 || !start) return;
         if (s > fit * 1.01) { tx = start.tx + (event.clientX - start.x) / q; ty = start.ty + (event.clientY - start.y) / q; clamp(); apply(); return; }
-        /* Not zoomed, pulled down by a finger: it follows, and fades. */
+        /* Not zoomed, pulled sideways: it follows, toward the next or the previous one. */
+        const dx = event.clientX - start.x;
         const dy = event.clientY - start.y;
+        if (list.length > 1 && !box.dataset.dragging && (box.dataset.sliding || (Math.abs(dx) > 10 && Math.abs(dx) > Math.abs(dy)))) { box.dataset.sliding = 'true'; img.style.transition = 'none'; img.style.transform = `translate(${start.tx + dx / q}px, ${start.ty}px) scale(${s})`; return; }
+        /* Not zoomed, pulled down by a finger: it follows, and fades. */
         if (start.touch && dy > 10 && Math.abs(dy) > Math.abs(event.clientX - start.x)) { box.dataset.dragging = 'true'; img.style.transform = `translate(${start.tx}px, ${start.ty + dy / q}px) scale(${s})`; box.style.opacity = String(Math.max(0.35, 1 - dy / 600)); }
     });
     const up = (event) => {
@@ -1156,6 +1174,14 @@ function zoomer(root, words, steps) {
         const dx = event.clientX - start.x; const dy = event.clientY - start.y;
         const was = start; start = null;
         if (box.dataset.dragging) { delete box.dataset.dragging; if (dy > 90) { close(); return; } box.style.opacity = ''; apply(); return; }
+        if (box.dataset.sliding) {
+            delete box.dataset.sliding;
+            if (Math.abs(dx) > 60) { go(dx < 0 ? 1 : -1); return; }
+            /* Not far enough: back where it was. */
+            img.style.transition = still() ? '' : `transform ${OPEN_MS}ms ease-out`; apply();
+            setTimeout(() => { img.style.transition = ''; }, OPEN_MS + 30);
+            return;
+        }
         if (s <= fit * 1.01 && Math.abs(dx) > 60 && Math.abs(dy) < 80) { go(dx < 0 ? 1 : -1); return; }
         if (Math.hypot(dx, dy) >= 10 || Date.now() - was.t >= 300) return;
         const now = Date.now();
@@ -1170,7 +1196,7 @@ function zoomer(root, words, steps) {
            follows (two zoom). What moves it (a finger or the mouse dragged, two fingers) never closes it. */
         clearTimeout(tapping); tapping = setTimeout(() => { if (!box.hidden) close(); }, 330);
     };
-    stage.addEventListener('pointerup', up); stage.addEventListener('pointercancel', (event) => { pointers.delete(event.pointerId); start = null; pinch = null; delete box.dataset.dragging; box.style.opacity = ''; apply(); });
+    stage.addEventListener('pointerup', up); stage.addEventListener('pointercancel', (event) => { pointers.delete(event.pointerId); start = null; pinch = null; delete box.dataset.dragging; delete box.dataset.sliding; box.style.opacity = ''; img.style.transition = ''; apply(); });
     return {
         box,
         /* `all`: [{ url, name, title }]; `thumb`: the element it was opened from, to grow out of. */
