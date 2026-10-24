@@ -225,6 +225,43 @@ test('the screen: one card, a step each, a summary with Modify, one Send; what i
     }
 });
 
+test('the screen: an answer in one\'s own words is written in one box, kept with its focus and its cursor when typed in and when the thread is drawn again (a touch screen\'s keyboard stays open)', async (t) => {
+    const leave = fakePage();
+    const root = document.createElement('div');
+    document.body.append(root);
+    const at = (n) => new Date(Date.UTC(2026, 9, 24, 9, n)).toISOString();
+    let data = { messages: [{ from: 'agent', id: 'g', at: at(0), kind: 'ask', text: '1. Note ...', intro: 'Two things', choices: [], questions: [THREE[2], THREE[0]] }] };
+    const handle = mount(root, { load: async () => data, send: async () => {}, words: texts('en'), every: 0, touch: true });
+    t.after(() => { handle.destroy(); leave(); });
+    await settle(); await settle();
+    const $ = (s) => root.querySelector(s);
+    const free = $('.parley-questions-free');
+    free.focus();
+    let range = null;
+    free.selectionStart = 0; free.selectionEnd = 0;
+    free.setSelectionRange = (from, to) => { range = [from, to]; };
+    /* The first letter: the tab says it is answered, and the box is the same, still focused. */
+    free.value = 'N'; free.dispatchEvent(fakeEvent('input'));
+    assert.equal($('.parley-questions-tab').dataset.done, 'true');
+    assert.equal($('.parley-questions-free'), free, 'not made again');
+    assert.equal(document.activeElement, free, 'the focus stays');
+    /* All of it erased: the tab says so, the box is still the one. */
+    free.value = ''; free.dispatchEvent(fakeEvent('input'));
+    assert.equal($('.parley-questions-tab').dataset.done, 'false');
+    assert.equal($('.parley-questions-tab').textContent, '1Note');
+    assert.equal(document.activeElement, free);
+    /* Something new in the thread while a word in the middle is corrected: the same box, the focus and the cursor back. */
+    free.value = 'No deploy on Friday.'; free.dispatchEvent(fakeEvent('input'));
+    free.selectionStart = 3; free.selectionEnd = 9;
+    data = { ...data, messages: [...data.messages, { from: 'agent', id: 'n', at: at(1), kind: 'say', text: 'Still here.' }] };
+    await handle.refresh(); await settle();
+    assert.ok(root.querySelectorAll('.parley-said').length >= 2, 'the thread was drawn again');
+    assert.equal($('.parley-questions-free'), free, 'the same box, moved');
+    assert.equal(free.value, 'No deploy on Friday.');
+    assert.equal(document.activeElement, free, 'given the focus back');
+    assert.deepEqual(range, [3, 9], 'the cursor where it was');
+});
+
 test('the screen\'s data: answered, the card is gone and its text is read; no quick answers for it', () => {
     const at = (n) => new Date(Date.UTC(2026, 9, 24, 9, n)).toISOString();
     const asked = { from: 'agent', id: 'g', at: at(0), kind: 'ask', text: '1. a\n2. b', intro: 'Two things', choices: [], questions: [{ id: 'a', question: 'a', choices: ['x', 'y'] }, { id: 'b', question: 'b', choices: [] }] };

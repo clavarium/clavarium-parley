@@ -2006,7 +2006,9 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
     /* What the agent wrote: rendered, or as plain text. */
     /* WHAT THE PERSON STARTED ANSWERING, by question: kept while the thread is drawn again. */
     const drafts = new Map();
-    const draftOf = (id) => { if (!drafts.has(id)) drafts.set(id, { step: 0, answers: new Map(), ticked: new Set() }); return drafts.get(id); };
+    /* `fields`: the box of each question answered in one's own words, made once and moved, never made again:
+       a box made anew under the finger loses the focus, and folds a touch screen's keyboard. */
+    const draftOf = (id) => { if (!drafts.has(id)) drafts.set(id, { step: 0, answers: new Map(), ticked: new Set(), fields: new Map() }); return drafts.get(id); };
     /* QUESTIONS ASKED TOGETHER: one card, a step each (one choice, several to tick, or their own
        words), a summary where each can be changed, one Send. */
     function groupCard(item) {
@@ -2016,14 +2018,20 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
         const answerOf = (q) => { const a = d.answers.get(q.id); if (!a) return null; if (a.own) return a.text.trim() ? { text: a.text.trim() } : null; const picked = q.choices.filter((c) => a.picked.includes(c)); return picked.length ? { picked } : null; };
         const slot = (q) => { if (!d.answers.has(q.id)) d.answers.set(q.id, { picked: [], own: q.choices.length === 0, text: '' }); return d.answers.get(q.id); };
         const go = (step) => { d.step = Math.max(0, Math.min(qs.length, step)); paint2(); };
+        /* Answered or not, said on its tab: a check, else its number. */
+        const markTab = (t, i, done) => {
+            t.dataset.done = String(done);
+            const n = t.querySelector('.parley-questions-n');
+            if (done) n.replaceChildren(icon('check', 'parley-sign')); else n.textContent = String(i + 1);
+        };
         const paint2 = () => {
             const tabs = el('div', 'parley-questions-tabs'); tabs.setAttribute('role', 'tablist');
             qs.forEach((q, i) => {
                 const t = el('button', 'parley-questions-tab'); t.type = 'button'; t.setAttribute('role', 'tab');
                 const done = answerOf(q) !== null;
-                t.dataset.done = String(done); t.setAttribute('aria-selected', String(d.step === i));
-                const n = el('span', 'parley-questions-n'); if (done) n.append(icon('check', 'parley-sign')); else n.textContent = String(i + 1);
-                t.append(n, el('span', 'parley-questions-label', q.label || cut(q.question, 24)));
+                t.setAttribute('aria-selected', String(d.step === i));
+                t.append(el('span', 'parley-questions-n'), el('span', 'parley-questions-label', q.label || cut(q.question, 24)));
+                markTab(t, i, done);
                 t.title = q.question;
                 t.addEventListener('click', () => go(i));
                 tabs.append(t);
@@ -2060,9 +2068,19 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
                     parts.push(row);
                 }
                 if (a.own) {
-                    const free = el('textarea', 'parley-questions-free'); free.rows = 3; free.value = a.text; free.placeholder = said(words, 'group-own'); free.dataset.draft = `${item.id}:${q.id}`;
-                    free.setAttribute('aria-label', q.question);
-                    free.addEventListener('input', () => { a.text = free.value; const tab = tabs.children[d.step]; const done = answerOf(q) !== null; if (tab && tab.dataset.done !== String(done)) paint2(); });
+                    let free = d.fields.get(q.id);
+                    if (!free) {
+                        free = el('textarea', 'parley-questions-free'); free.rows = 3; free.value = a.text; free.placeholder = said(words, 'group-own'); free.dataset.draft = `${item.id}:${q.id}`;
+                        free.setAttribute('aria-label', q.question);
+                        /* Typed in: its tab says so, the box stays the one being written in. */
+                        free.addEventListener('input', () => {
+                            a.text = free.value;
+                            const tab = free.closest('.parley-questions')?.querySelector('.parley-questions-tabs')?.children[d.step];
+                            const done = answerOf(q) !== null;
+                            if (tab && tab.dataset.done !== String(done)) markTab(tab, d.step, done);
+                        });
+                        d.fields.set(q.id, free);
+                    }
                     parts.push(free);
                 } else if (q.choices.length) parts.push(button(said(words, 'other-answer'), 'parley-reply-to parley-other', () => { a.own = true; paint2(); card.querySelector('.parley-questions-free')?.focus({ preventScroll: true }); }));
                 nav.append(button(said(words, d.step === qs.length - 1 ? 'group-review' : 'group-next'), 'parley-questions-next', () => go(d.step + 1)));
@@ -2555,6 +2573,8 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
         const keep = atBottom ? 0 : thread.scrollTop;
         if (!atBottom && !paging && v.items.length > count) { awayCount += v.items.length - count; paintJump(); }
         count = v.items.length;
+        /* Typing in a card when the thread is drawn again: seen before its rows are made, which move the box being written in. */
+        const typing = document.activeElement?.dataset?.draft ? { key: document.activeElement.dataset.draft, from: document.activeElement.selectionStart, to: document.activeElement.selectionEnd } : null;
         /* What arrives while the thread is open comes in softly, and is marked a moment: never on the first look, nor what was there. */
         const made = v.rows.map((row) => { const r = wrap(row, rowOf(row, v)); if (!paging && seenKeys !== null && row.key && !seenKeys.has(row.key) && !['day', 'gap'].includes(row.type)) r.dataset.arrived = row.type === 'message' && row.from !== 'system' ? 'message' : 'line'; return r; });
         /* The thread goes further back: one button at its top asks for the page before. */
@@ -2562,10 +2582,9 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
         const firstLook = seenKeys === null;
         seenKeys = new Set([...(seenKeys ?? []), ...v.rows.map((row) => row.key).filter(Boolean)]);
         if (firstLook && !v.rows.length) seenKeys = new Set();
-        /* Typing in a card when the thread is drawn again: the cursor stays where it was. */
-        const typing = document.activeElement?.dataset?.draft ? { key: document.activeElement.dataset.draft, at: document.activeElement.selectionStart } : null;
         thread.replaceChildren(...made);
-        if (typing) { const back2 = thread.querySelectorAll('textarea').find((x) => x.dataset.draft === typing.key); if (back2) { back2.focus({ preventScroll: true }); try { back2.setSelectionRange(typing.at, typing.at); } catch { /* not a text field */ } } }
+        /* The same box, moved: given the focus back at once, and its cursor (a NodeList has no find). */
+        if (typing) { const back2 = [...thread.querySelectorAll('textarea')].find((x) => x.dataset.draft === typing.key); if (back2 && document.activeElement !== back2) { back2.focus({ preventScroll: true }); try { back2.setSelectionRange(typing.from, typing.to ?? typing.from); } catch { /* not a text field */ } } }
         for (const r of made) if (r.dataset.arrived) setTimeout(() => { delete r.dataset.arrived; }, 1700);
         watchChoices();
         if (v.empty) thread.append(el('p', 'parley-empty', v.empty));
