@@ -10,11 +10,13 @@
  *                          messages: { from: 'system', id, at, text, level,
  *                          tone, topic, brief, actions: [{ id, label }] } (see
  *                          LINES OF THE APPLICATION, below)
- *   send(text, answers, files)
+ *   send(text, answers, files, { via, picked })
  *                          the person wrote; `answers` is the id of the
  *                          question it answers (a choice, or a text written
  *                          in reply); `files`, what `attach` gave back for
- *                          the files they attached
+ *                          the files they attached; `picked`, the choices
+ *                          ticked of a question that lets several be ticked
+ *                          (the text says them too, one per line)
  *   words                  the words of the screen: texts(lang, own) of
  *                          parley-host.mjs, or any object with those keys
  *   open(file)             optional: opens a file the agent showed or cited
@@ -176,7 +178,7 @@ export const KEYS = Object.freeze(['send', 'placeholder', 'empty', 'view', 'simp
     'attach', 'remove-file', 'sending-files', 'attach-where', 'draw-open', 'draw-again', 'drawn-from', 'draw-marked', 'draw-colour', 'draw-undo', 'draw-clear', 'draw-cancel', 'draw-done', 'draw-note', 'draw-hint',
     'copy', 'copied', 'see-details', 'see-more', 'see-less', 'note', 'tip', 'important', 'warning', 'caution', 'badge-ok', 'badge-todo', 'badge-blocked', 'badge-warn',
     'waits-you', 'waits-you-note', 'busy', 'pulse', 'state-sent', 'state-read', 'state-working', 'state-done', 'sent-at', 'read-at', 'done-at',
-    'reply', 'replying', 'not-a-reply', 'in-reply', 'closed', 'you', 'agent', 'drop', 'picture', 'diagram', 'not-shown', 'grouped',
+    'reply', 'other-answer', 'replying', 'not-a-reply', 'in-reply', 'closed', 'you', 'agent', 'drop', 'picture', 'diagram', 'not-shown', 'grouped',
     'zoom-in', 'zoom-out', 'zoom-actual', 'zoom-fit', 'zoom-actual-short', 'zoom-fit-short', 'close', 'previous', 'next', 'search', 'found', 'newest', 'dictation', 'auto-send-off',
     'react', 'react-remove', 'react-agree', 'react-go', 'react-disagree', 'react-unclear', 'react-stop', 'react-redo', 'react-later', 'react-love',
     'react-agree-hint', 'react-go-hint', 'react-disagree-hint', 'react-unclear-hint', 'react-stop-hint', 'react-redo-hint', 'react-later-hint', 'react-love-hint',
@@ -537,6 +539,8 @@ export function view(data, { words = {}, view: as = 'simple', now = Date.now(), 
             actions: [],
             outside: show && !(Array.isArray(m.files) && m.files.length) && reach === null ? said(words, 'outside', { path: String(m.path ?? '') }) : show && Array.isArray(m.files) && m.files.some((f) => f && typeof f.open !== 'string') && detailed ? said(words, 'outside', { path: m.files.filter((f) => f && typeof f.open !== 'string').map((f) => f.path).join(', ') }) : '',
             choices: m.kind === 'ask' && !answered.has(m.id) ? (m.choices ?? []).map(String) : [],
+            /* Several of its choices may be ticked, then sent together. */
+            many: m.kind === 'ask' && m.many === true && Array.isArray(m.choices) && m.choices.length > 1,
             open,
             closed: m.kind === 'ask' && m.closed && !answered.has(m.id) ? said(words, 'closed', { answer: cut(m.closed.text, 300) }) : '',
             reply: person && (m.answers || m.re) ? said(words, 'in-reply', { question: cut(m.question || m.quote, 90) }) : '',
@@ -714,7 +718,8 @@ export function quick(data, replies = []) {
     const all = Array.isArray(data?.messages) ? data.messages : [];
     const answered = new Set(all.map((m) => m?.answers).filter(Boolean));
     const asks = [...all].reverse().find((m) => m && openQuestion(m, answered) && Array.isArray(m.choices) && m.choices.length > 0);
-    const out = asks ? asks.choices.map((c) => ({ kind: 'choice', label: String(c), text: String(c), send: true, answers: String(asks.id ?? '') })) : [];
+    /* Choices to tick are ticked in the question itself: one tap above the box would send one alone. */
+    const out = asks && asks.many !== true ? asks.choices.map((c) => ({ kind: 'choice', label: String(c), text: String(c), send: true, answers: String(asks.id ?? '') })) : [];
     for (const r of Array.isArray(replies) ? replies.slice(0, REPLIES_MAX) : []) {
         if (!r || typeof r.label !== 'string' || typeof r.text !== 'string' || !r.label.trim() || !r.text.trim()) continue;
         out.push({ kind: 'reply', label: r.label.trim().slice(0, LABEL_MAX), text: r.text.slice(0, TEXT_MAX), send: r.send === true });
@@ -1498,9 +1503,11 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
     watch?.observe(root);
     /* Part of what is in the box was dictated: the message says so (via: voice), once. */
     let dictatedNow = false;
-    const say = async (text, answers, files, via) => {
+    const say = async (text, answers, files, via, picked) => {
         problem.hidden = true;
-        try { await send(text, answers, ...(files?.length || via ? [files?.length ? files : undefined] : []), ...(via ? [{ via }] : [])); await refresh(); return true; } catch (error) { problem.textContent = said(words, 'not-sent', { error: String(error?.message ?? error) }); problem.hidden = false; return false; }
+        const more = { ...(via ? { via } : {}), ...(picked ? { picked } : {}) };
+        const extra = Object.keys(more).length > 0;
+        try { await send(text, answers, ...(files?.length || extra ? [files?.length ? files : undefined] : []), ...(extra ? [more] : [])); await refresh(); return true; } catch (error) { problem.textContent = said(words, 'not-sent', { error: String(error?.message ?? error) }); problem.hidden = false; return false; }
     };
     const fileButton = (file) => (file.open === null || !open ? null : button(said(words, 'open'), 'parley-open', () => open(file)));
     const time = (text, when) => { const t = el('time', 'parley-time', text); if (when) t.title = when; return t; };
@@ -1694,14 +1701,40 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
             }
             if (pictures.childNodes.length) bubble.append(pictures);
         }
-        if (item.choices.length > 0) {
+        if (item.choices.length > 0 && item.many) {
+            /* Several to tick: each a box with its words, then Send, which waits for one ticked at least. */
+            const choices = el('div', 'parley-choices parley-picks'); choices.setAttribute('role', 'group');
+            const ticked = new Set();
+            const go = button(said(words, 'send'), 'parley-picks-send', () => {
+                const picked = item.choices.filter((c) => ticked.has(c));
+                if (picked.length === 0) return;
+                for (const x of choices.querySelectorAll('button')) x.disabled = true;
+                void say(picked.join('\n'), item.id, undefined, undefined, picked).then((ok) => { if (!ok) for (const x of choices.querySelectorAll('button')) x.disabled = x === go && ticked.size === 0; });
+            });
+            go.disabled = true;
+            for (const choice of item.choices) {
+                const b = el('button', 'parley-pick'); b.type = 'button'; b.setAttribute('role', 'checkbox'); b.setAttribute('aria-checked', 'false');
+                const mark = el('span', 'parley-pick-box'); mark.setAttribute('aria-hidden', 'true'); mark.append(icon('check', 'parley-sign'));
+                b.append(mark, el('span', 'parley-pick-text', choice));
+                b.addEventListener('click', () => {
+                    if (ticked.has(choice)) ticked.delete(choice); else ticked.add(choice);
+                    b.setAttribute('aria-checked', String(ticked.has(choice)));
+                    go.disabled = ticked.size === 0;
+                });
+                choices.append(b);
+            }
+            choices.append(go);
+            bubble.append(choices);
+        } else if (item.choices.length > 0) {
             const choices = el('div', 'parley-choices');
             for (const choice of item.choices) choices.append(button(choice, '', () => { for (const x of choices.children) x.disabled = true; void say(choice, item.id); }));
             bubble.append(choices);
         }
-        /* A question: answered by what is typed, once Reply is pressed. */
+        /* A question: answered by what is typed, once Reply is pressed; under choices, a quiet
+           "Other answer…": their own words instead of one of them. */
         if ((item.open || item.closed) && send) {
-            const r = button(said(words, 'reply'), 'parley-reply-to', () => { replyTo = { id: item.id, text: cut(item.short || item.text, 90), auto: false }; dismissed.delete(item.id); paintReply(); focusBox(); });
+            const other = item.choices.length > 0;
+            const r = button(said(words, other ? 'other-answer' : 'reply'), other ? 'parley-reply-to parley-other' : 'parley-reply-to', () => { replyTo = { id: item.id, text: cut(item.short || item.text, 90), auto: false }; dismissed.delete(item.id); paintReply(); focusBox(); });
             bubble.append(r);
         }
         if (item.sign) {

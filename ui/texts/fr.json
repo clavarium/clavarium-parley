@@ -88,6 +88,7 @@
   "read-at": "lu à {time}",
   "done-at": "traité à {time}",
   "reply": "Répondre",
+  "other-answer": "Autre réponse…",
   "replying": "En réponse à : {question}",
   "not-a-reply": "Pas une réponse à cette question",
   "in-reply": "En réponse à : {question}",

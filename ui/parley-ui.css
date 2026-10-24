@@ -418,7 +418,7 @@ mark.parley-found[data-now="true"] { outline: 2px solid var(--parley-ask); }
 .parley-pending-marked .parley-sign { width: .9em; height: .9em; }
 /* ---- the composer, in the same column ---- */
 .parley-top, .parley-quick, .parley-attached, .parley-form, .parley-problem, .parley-replying { width: 100%; max-width: var(--parley-column); margin-inline: auto; box-sizing: border-box; }
-.parley-replying { width: auto; margin-inline: 0; }
+.parley-replying { width: auto; margin-inline: 0; max-width: min(100%, var(--parley-column)); }
 @container parley (min-width: 60rem) { .parley-replying { margin-left: max(0px, calc((100% - var(--parley-column)) / 2)); } }
 .parley[data-view="detailed"] .parley-top { max-width: none; }
 .parley-dictation { border-top: 1px solid var(--parley-line); margin-top: .35em; padding-top: .35em; }
@@ -555,3 +555,14 @@ mark.parley-found[data-now="true"] { outline: 2px solid var(--parley-ask); }
 /* A word of a line of the application that is a button (a commit it names): read as a link. */
 .parley .parley-ref { font: inherit; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 0.95em; color: var(--parley-action); background: none; border: 0; padding: 0 0.1em; margin: 0; text-decoration: underline; text-underline-offset: 2px; cursor: pointer; min-height: 0; }
 .parley .parley-ref:focus-visible { outline: 2px solid var(--parley-action); outline-offset: 1px; border-radius: 3px; }
+/* ---- under choices: their own words instead, quietly; choices to tick ---- */
+.parley .parley-reply-to.parley-other { align-self: flex-start; min-height: 2.75em; margin: .1em 0 0 -.35em; padding: 0 .35em; border: 0; border-radius: 6px; background: transparent; color: var(--parley-dim); font-weight: 500; text-decoration: underline; text-underline-offset: .22em; text-decoration-thickness: 1px; }
+.parley .parley-reply-to.parley-other:hover { color: var(--parley-action); }
+.parley-picks { flex-direction: column; align-items: stretch; flex-wrap: nowrap; gap: .4em; max-width: 34em; }
+.parley .parley-picks .parley-pick { display: flex; align-items: center; gap: .7em; min-height: 3em; padding: .45em .9em; text-align: left; border: 1px solid var(--parley-line); background: var(--parley-bg); color: var(--parley-text); font-weight: 500; }
+.parley .parley-picks .parley-pick[aria-checked="true"] { border-color: var(--parley-action); background: color-mix(in srgb, var(--parley-action) 13%, var(--parley-bg)); font-weight: 650; }
+.parley-pick-box { flex: none; width: 1.45em; height: 1.45em; box-sizing: border-box; border: 2px solid var(--parley-dim); border-radius: 5px; display: inline-flex; align-items: center; justify-content: center; color: transparent; }
+.parley-pick[aria-checked="true"] .parley-pick-box { border-color: var(--parley-action); background: var(--parley-action); color: var(--parley-on-action); }
+.parley-pick-box .parley-sign { width: 1em; height: 1em; stroke-width: 3.2; }
+.parley-pick-text { min-width: 0; overflow-wrap: anywhere; }
+.parley .parley-picks .parley-picks-send { align-self: flex-start; min-width: 8em; margin-top: .2em; border-color: var(--parley-action); background: var(--parley-action); color: var(--parley-on-action); font-weight: 650; }

@@ -295,6 +295,8 @@ export class Parley {
         const kind = KINDS.includes(m.kind) ? m.kind : 'say';
         const entry = { from: 'agent', id: String(m.id ?? ''), at: String(m.at ?? ''), kind, text: clean(m.text), choices: kind === 'ask' && Array.isArray(m.choices) ? m.choices.slice(0, 8).map((x) => oneLine(x, 200)).filter(Boolean) : [] };
         if ((kind === 'say' || kind === 'ask') && typeof m.short === 'string' && oneLine(m.short, SHORT_KEPT)) entry.short = oneLine(m.short, SHORT_KEPT);
+        /* Several of its choices may be ticked, sent together. */
+        if (kind === 'ask' && m.many === true && entry.choices.length > 1) entry.many = true;
         if (kind === 'say' || kind === 'ask') {
             /* The paths it cites that the person can open: a link, or a picture, on the screen. */
             const refs = cited(`${entry.text}\n${entry.short ?? ''}`).map((path) => ({ path, open: this.#open(path) })).filter((r) => r.open !== null);
@@ -399,7 +401,7 @@ export class Parley {
         const person = written.map((m, i) => (typeof m.reaction === 'string' ? null : (() => {
             const seen = i < written.length - unread;
             return { from: 'person', id: String(m.id ?? ''), at: String(m.at ?? ''), kind: 'say', text: clean(m.text), choices: [], seen, ...(seen && seenAt(i) ? { seenAt: seenAt(i) } : {}),
-                ...(m.answers ? { answers: String(m.answers), question: oneLine(m.question, 300) } : {}), ...(m.re ? { re: String(m.re), quote: oneLine(m.quote, 300) } : {}), ...(Array.isArray(m.files) && m.files.length ? { files: this.#files(m.files) } : {}), ...(m.via === 'voice' ? { via: 'voice' } : {}) };
+                ...(m.answers ? { answers: String(m.answers), question: oneLine(m.question, 300) } : {}), ...(m.answers && Array.isArray(m.picked) ? { picked: m.picked.slice(0, 8).map((x) => oneLine(x, 200)).filter(Boolean) } : {}), ...(m.re ? { re: String(m.re), quote: oneLine(m.quote, 300) } : {}), ...(Array.isArray(m.files) && m.files.length ? { files: this.#files(m.files) } : {}), ...(m.via === 'voice' ? { via: 'voice' } : {}) };
         })())).filter(Boolean);
         for (const m of agent) if (reactions.has(m.id)) m.reaction = reactions.get(m.id);
         const answered = new Set(person.map((m) => m.answers).filter(Boolean));
@@ -431,24 +433,31 @@ export class Parley {
     /* The person writes. `answers`: the id of the question this answers.
        `files`: what they attached, put where the agent can open them by the
        application ({ path, name?, size? }: `path` as the agent sees it); a
-       message may be files alone. The application is told (person-wrote),
-       and decides how to tell the agent. */
-    say(text, answers, files = [], { via } = {}) {
-        const said = clean(text).trim();
+       message may be files alone. `picked`: the choices ticked, for a question
+       that lets several be ticked (`many`); the text, when empty, says them,
+       one per line, for an agent that reads the text alone. The application
+       is told (person-wrote), and decides how to tell the agent. */
+    say(text, answers, files = [], { via, picked } = {}) {
         const given = Array.isArray(files) ? files : [];
         if (given.length > FILES_MAX) throw new RangeError(`${FILES_MAX} files at most in one message.`);
         const attached = given.map((f) => ({ path: oneLine(f?.path, 1000), name: oneLine(f?.name, 200), size: Number.isInteger(f?.size) && f.size >= 0 ? f.size : undefined, note: oneLine(f?.note, NOTE_MAX) }));
         if (attached.some((f) => !f.path.startsWith('/'))) throw new RangeError('A file is given by its whole path.');
+        const asked = typeof answers === 'string' && answers ? this.read().messages.find((m) => m.from === 'agent' && ['say', 'ask', 'show'].includes(m.kind) && m.id === answers) : undefined;
+        /* Ticked: only choices of a question that lets several be ticked, kept in its order. */
+        let ticked;
+        if (picked !== undefined) {
+            if (asked?.kind !== 'ask' || !asked.many || !Array.isArray(picked)) throw new RangeError('Choices are ticked only for a question that lets several be ticked.');
+            ticked = asked.choices.filter((c) => picked.includes(c));
+            if (ticked.length === 0 || picked.some((c) => !asked.choices.includes(c))) throw new RangeError('Tick one of its choices at least, and only its choices.');
+        }
+        const said = clean(text).trim() || (ticked ? ticked.join('\n') : '');
         if (!said && attached.length === 0) throw new RangeError('Write something.');
         const entry = { id: randomUUID(), at: this.#now().toISOString(), text: said };
         if (via === 'voice') entry.via = 'voice';
         if (attached.length) entry.files = attached.map((f) => ({ path: f.path, name: f.name || f.path.split('/').pop(), ...(f.size === undefined ? {} : { size: f.size }), ...(f.note ? { note: f.note } : {}) }));
-        if (typeof answers === 'string' && answers) {
-            const asked = this.read().messages.find((m) => m.from === 'agent' && ['say', 'ask', 'show'].includes(m.kind) && m.id === answers);
-            /* A question is answered; any other message of the agent is replied to, quoted. */
-            if (asked?.kind === 'ask') { entry.answers = asked.id; entry.question = oneLine(asked.text, 300); }
-            else if (asked) { entry.re = asked.id; entry.quote = oneLine(asked.text || asked.path, 300); }
-        }
+        /* A question is answered; any other message of the agent is replied to, quoted. */
+        if (asked?.kind === 'ask') { entry.answers = asked.id; entry.question = oneLine(asked.text, 300); if (ticked) entry.picked = ticked; }
+        else if (asked) { entry.re = asked.id; entry.quote = oneLine(asked.text || asked.path, 300); }
         this.#write([entry]);
         const now = this.read();
         this.#tell({ type: 'person-wrote', message: now.messages.find((m) => m.id === entry.id) ?? { from: 'person', ...entry }, unread: now.unread });

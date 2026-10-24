@@ -9,7 +9,7 @@
 import { readFileSync, realpathSync, existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { bridge, findFolder, STATES, VERSION, FOLDER, WRITING, SHORTER, GALLERY } from '../server/parley-mcp.mjs';
+import { bridge, findFolder, STATES, VERSION, FOLDER, WRITING, SHORTER, GALLERY, ASKING } from '../server/parley-mcp.mjs';
 
 /* How to work with the person, in a few lines: what an agent comes back to
    when it forgot. Its words are accepted as they are. */
@@ -29,6 +29,8 @@ export const GUIDE = `How to work with the person through Parley
 3. Tell, don't wait to be asked:
    parley tell  -> progress and results
    parley ask   -> a decision (give the choices)
+                   which items to do: --pick-many, they tick several
+                   an open question: no choices
 
 4. Anything that needs their action or decision
    goes in the short version (--short), first line.
@@ -50,10 +52,10 @@ export const HELP = `parley: talk with the person you work for. They read and an
   parley read --all                    the whole exchange, both sides, oldest first: to pick up the
                                        thread after a restart
   parley tell [--short "title"] "text" tell them something: where you are, what you did, what you found
-  parley ask [--short "title"] "question" [--choice "answer" ...]
+  parley ask [--short "title"] [--pick-many] "question" [--choice "answer" ...]
                                        ask them something; give the answers they can pick when you can,
                                        each with --choice (the question first; "-" for the question
-                                       read from standard input)
+                                       read from standard input); --pick-many: they may tick several
   parley close ID "answer"             close a question of yours they answered another way (a message
                                        typed later), saying the answer you understood; ID as read shows it
   parley show path ["note"]            point them to a file you made, so that they can open it
@@ -72,6 +74,9 @@ export const HELP = `parley: talk with the person you work for. They read and an
 ${wrap(WRITING)}
 
 ${wrap(SHORTER)}
+
+${wrap(ASKING)}
+  parley ask --pick-many "Which batches do I launch?" --choice "Docket" --choice "Dictation"
 
 ${wrap(GALLERY)}
   parley show before.png="Home page, before" after.png="Home page, after" "The new header"
@@ -172,6 +177,9 @@ export function run(argv, { env = process.env, cwd = process.cwd(), stdin = () =
             const at2 = rest.indexOf('--short');
             let short;
             if (at2 >= 0) { short = rest[at2 + 1]; if (short === undefined) return { code: 64, out: '', err: '--short needs a title.\n' }; rest.splice(at2, 2); }
+            /* --pick-many, anywhere: several of its choices may be ticked. */
+            const many = verb === 'ask' && rest.includes('--pick-many');
+            if (many) rest.splice(rest.indexOf('--pick-many'), 1);
             if (verb === 'tell') said = verbs.tell(text(rest.join(' ')), { short });
             else {
                 /* Its answers: --choice "...", once each, anywhere; or, as before, the words after the question. */
@@ -186,7 +194,7 @@ export function run(argv, { env = process.env, cwd = process.cwd(), stdin = () =
                 if (rest.slice(1).includes('-')) return { code: 64, out: '', err: 'The question comes first, then its answers: parley ask [--short "title"] "question" (or -) [--choice "answer" ...].\n' };
                 const question = rest[0] === undefined ? '' : text(rest[0]);
                 if (!String(question).trim()) return { code: 64, out: '', err: 'A question needs its text: parley ask "question" [--choice "answer" ...].\n' };
-                said = verbs.ask(question, [...rest.slice(1), ...choices], { short });
+                said = verbs.ask(question, [...rest.slice(1), ...choices], { short, many });
             }
         }
         else if (verb === 'close') said = verbs.close(rest[0], text(rest.slice(1).join(' ')));

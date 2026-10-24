@@ -78,6 +78,9 @@ export const REACTION_MEANINGS = Object.freeze({
     later: 'Later: do nothing about it for now.',
     love: 'Love it: noted, nothing to do.',
 });
+/* The choices they ticked, when a question let them tick several: the text says them too, for an older reader. */
+const ticked = (m) => (Array.isArray(m.picked) ? m.picked.filter((c) => typeof c === 'string' && c.trim()).slice(0, CHOICES_MAX).map((c) => plain(c, 200).replace(/\s+/g, ' ').trim()) : null);
+const answerText = (m) => { const t = ticked(m); return t ? `they ticked ${t.length === 0 ? 'none' : t.map((c) => `"${c}"`).join(', ')}${plain(m.text).trim() && plain(m.text).trim() !== t.join('\n') ? `; they added: ${plain(m.text)}` : ''}` : plain(m.text); };
 const reacted = (m) => {
     const name = plain(m.reaction, 30).replace(/[^a-z0-9-]/g, '');
     const target = `your message${m.toAt ? ` of ${plain(m.toAt, 40).slice(0, 16).replace('T', ' ')}` : ''}${m.quote ? ` "${plain(m.quote, 200).replace(/\s+/g, ' ')}"` : ''}`;
@@ -138,10 +141,13 @@ export function bridge(dir, { how = 'run `parley read`' } = {}) {
             post({ kind: 'say', text: plain(text), ...brief(short) });
             return `Posted. They will read it on their screen.${stale()}`;
         },
-        ask(question, choices, { short } = {}) {
+        /* `many`: several of its choices may be ticked, sent together; a screen
+           that does not know it shows them as single choices, which still answer. */
+        ask(question, choices, { short, many = false } = {}) {
             if (!plain(question).trim()) throw new Error('the question is empty');
             const picked = Array.isArray(choices) ? choices.slice(0, CHOICES_MAX).map((c) => plain(c, 200).trim()).filter(Boolean) : [];
-            post({ kind: 'ask', text: plain(question), choices: picked, ...brief(short) });
+            if (many === true && picked.length < 2) throw new Error('several choices to tick need two choices at least');
+            post({ kind: 'ask', text: plain(question), choices: picked, ...(many === true ? { many: true } : {}), ...brief(short) });
             return `Posted. Do not wait here: you will be told in the terminal when they answer; then ${how}.`;
         },
         /* A question they answered another way (a message typed later): closed
@@ -224,11 +230,11 @@ export function bridge(dir, { how = 'run `parley read`' } = {}) {
             const closed = new Set(posted.filter((m) => m.kind === 'close').map((m) => m.answers));
             const open = posted.filter((m) => m.kind === 'ask' && typeof m.id === 'string' && !answered.has(m.id) && !closed.has(m.id));
             const pending = open.length === 0 ? '' : `\nOpen questions (one they answered another way: close it with parley close ID "the answer you understood"):${open.slice(-10).map((m) => `\n  [${m.id.slice(0, ID_SHOWN)}] ${plain(m.text, 200).replace(/\s+/g, ' ')}`).join('')}`;
-            const fromThem = (m) => (m.reaction ? reacted(m) : `${m.answers ? `They answered your question "${plain(m.question, 200)}": ` : m.re ? `They replied to your message "${plain(m.quote, 200)}"${m.via === 'voice' ? ` (${DICTATED})` : ''}: ` : m.via === 'voice' ? `They wrote (${DICTATED}): ` : 'They wrote: '}${plain(m.text)}${attached(m)}`);
+            const fromThem = (m) => (m.reaction ? reacted(m) : `${m.answers ? `They answered your question "${plain(m.question, 200)}": ` : m.re ? `They replied to your message "${plain(m.quote, 200)}"${m.via === 'voice' ? ` (${DICTATED})` : ''}: ` : m.via === 'voice' ? `They wrote (${DICTATED}): ` : 'They wrote: '}${m.answers ? answerText(m) : plain(m.text)}${attached(m)}`);
             if (all) {
                 const theirs = written.flatMap((m, i) => (m ? [{ at: String(m.at ?? ''), text: `${fromThem(m)}${i >= seen ? ' (new)' : ''}` }] : []));
                 const mine = lines(OUT).filter((m) => m && ['say', 'ask', 'show', 'close'].includes(m.kind)).map((m) => ({ at: String(m.at ?? ''),
-                    text: m.kind === 'close' ? `You closed a question, the answer you understood being: ${plain(m.text, 500)}` : m.kind === 'ask' ? `You asked them: ${plain(m.text)}${Array.isArray(m.choices) && m.choices.length ? ` (choices: ${m.choices.map((c) => plain(c, 200)).join(', ')})` : ''}`
+                    text: m.kind === 'close' ? `You closed a question, the answer you understood being: ${plain(m.text, 500)}` : m.kind === 'ask' ? `You asked them: ${plain(m.text)}${Array.isArray(m.choices) && m.choices.length ? ` (${m.many === true ? 'several could be ticked' : 'choices'}: ${m.choices.map((c) => plain(c, 200)).join(', ')})` : ''}`
                         : m.kind === 'show' ? (Array.isArray(m.files) && m.files.length > 1 ? `You showed them ${m.files.length} files: ${m.files.map((f) => `${plain(f?.path, 1000)}${f?.title ? ` "${plain(f.title, 120)}"` : ''}`).join(', ')}${m.text ? ` (${plain(m.text, 500)})` : ''}` : `You showed them a file: ${plain(m.path, 1000)}${m.text ? ` (${plain(m.text, 500)})` : ''}`) : `You told them: ${plain(m.text)}` }));
                 const both = [...mine, ...theirs].sort((a, b) => a.at.localeCompare(b.at)).slice(-ALL_ENTRIES).map((e) => `[${e.at.slice(0, 16).replace('T', ' ')}] ${e.text}`);
                 while (both.length > 1 && both.join('\n').length > ALL_CHARS) both.shift();
@@ -239,7 +245,7 @@ export function bridge(dir, { how = 'run `parley read`' } = {}) {
             if (fresh.length === 0) return `No new message.${pending}`;
             /* What they wrote is work: said, so that their screen shows it moving (or still, said so). */
             const next = stale() || (standing()?.state === 'working' ? '' : '\nWhen you start on it, say so: parley doing "what you do"; when you finish: parley status done.');
-            return `${fresh.map((m) => (m.reaction ? reacted(m) : `${m.answers ? `Answer to your question "${plain(m.question, 200)}": ` : m.re ? `Reply to your message "${plain(m.quote, 200)}"${m.via === 'voice' ? ` (${DICTATED})` : ''}: ` : m.via === 'voice' ? `Message (${DICTATED}): ` : 'Message: '}${plain(m.text)}${attached(m)}`)).join('\n')}${pending}${next}`;
+            return `${fresh.map((m) => (m.reaction ? reacted(m) : `${m.answers ? `Answer to your question "${plain(m.question, 200)}": ` : m.re ? `Reply to your message "${plain(m.quote, 200)}"${m.via === 'voice' ? ` (${DICTATED})` : ''}: ` : m.via === 'voice' ? `Message (${DICTATED}): ` : 'Message: '}${m.answers ? answerText(m) : plain(m.text)}${attached(m)}`)).join('\n')}${pending}${next}`;
         },
     };
 }
@@ -249,11 +255,13 @@ export function bridge(dir, { how = 'run `parley read`' } = {}) {
 export const WRITING = 'The chat renders Markdown: write as you do in your terminal -- short lists, a bold label per point, one idea per line, a heading or a short title when long, one key sentence in a "> [!IMPORTANT]" block (an action, a decision, a blocker). Tables, code blocks and mermaid diagrams are shown; ==text== is highlighted; [ok] [todo] [blocked] [warn] are small badges; a picture from a shared folder is shown where you put it, its text in brackets as its title under it, and pictures on one line side by side: ![Home page, before](/work/before.png) ![Home page, after](/work/after.png).';
 export const GALLERY = 'Pictures that go together (before and after, several pages) are shown at once, as one gallery: give each a title that says what it is ("Home page, before"); the file name is not a title.';
 export const SHORTER = 'For anything longer than a few lines, give a short version too (short): a title of one or two lines, shown first, the rest one tap away. Whatever asks them for an action or a decision, or says you are blocked, MUST be in the short version.';
+/* Which form of question, when: one line an agent keeps. */
+export const ASKING = 'Which form: one choice for a decision; several to tick when they pick which items to do, such as which batches to launch; no choices for an open question. They can always answer in their own words.';
 export const TOOLS = [
     { name: 'tell', description: `Tell the person you work for something: where you are, what you did, what you found. They read it on their own screen, not in this terminal. It does not wait for an answer. ${WRITING} ${SHORTER}`,
         inputSchema: { type: 'object', properties: { text: { type: 'string', description: 'What to tell them, in Markdown.' }, short: { type: 'string', description: 'Optional, for a long text: its title, one or two lines.' } }, required: ['text'] } },
-    { name: 'ask', description: `Ask the person you work for a question, instead of asking it in the terminal. It does NOT wait: it posts the question and returns at once. Stop or go on with something else; you will be told in the terminal when a message arrives, then call read. A question they answered another way (a message typed later): close it with close. ${WRITING}`,
-        inputSchema: { type: 'object', properties: { question: { type: 'string' }, choices: { type: 'array', items: { type: 'string' }, description: 'Optional: the answers they can pick from.' }, short: { type: 'string', description: 'Optional, for a long question: its title, one or two lines.' } }, required: ['question'] } },
+    { name: 'ask', description: `Ask the person you work for a question, instead of asking it in the terminal. It does NOT wait: it posts the question and returns at once. Stop or go on with something else; you will be told in the terminal when a message arrives, then call read. A question they answered another way (a message typed later): close it with close. ${ASKING} Several to tick: many: true. ${WRITING}`,
+        inputSchema: { type: 'object', properties: { question: { type: 'string' }, choices: { type: 'array', items: { type: 'string' }, description: 'Optional: the answers they can pick from.' }, many: { type: 'boolean', description: 'Optional, with two choices or more: they may tick several, sent together; read lists those ticked.' }, short: { type: 'string', description: 'Optional, for a long question: its title, one or two lines.' } }, required: ['question'] } },
     { name: 'show', description: `Point the person you work for to a file you made (a report, a picture, a page), or to several at once, so that they can open them from their screen. ${GALLERY} Put them in a folder you share with them.`,
         inputSchema: { type: 'object', properties: { path: { type: 'string', description: 'The path of one file.' }, files: { type: 'array', items: { type: 'object', properties: { path: { type: 'string' }, title: { type: 'string', description: 'What it is, in their language: "Home page, before".' } }, required: ['path'] }, description: `Several files shown together (${SHOW_MAX} at most), each with its title.` }, paths: { type: 'array', items: { type: 'string' }, description: 'Several files, without titles (prefer files, with titles).' }, note: { type: 'string', description: 'One line on what it is, common to all.' } } } },
     { name: 'read', description: 'Read what was written to you since you last read: new instructions, answers to your questions, files they attached, their reactions to your messages (only "go ahead" authorizes what a message proposes; "stop" means stop now), and the questions still open with their ids. A message they dictated is said so: it may hold recognition mistakes. Call it when you are told a message arrived, and before you finish a task. With all: true, the whole exchange, both sides, oldest first: to pick up the thread after a restart.',
@@ -270,7 +278,7 @@ export function serve(dir, { input = process.stdin, output = process.stdout } = 
     const verbs = bridge(dir, { how: 'call read' });
     const call = (name, args = {}) => {
         if (name === 'tell') return verbs.tell(args.text, { short: args.short });
-        if (name === 'ask') return verbs.ask(args.question, args.choices, { short: args.short });
+        if (name === 'ask') return verbs.ask(args.question, args.choices, { short: args.short, many: args.many === true });
         if (name === 'close') return verbs.close(args.id, args.answer);
         if (name === 'show') return verbs.show(Array.isArray(args.files) ? args.files : Array.isArray(args.paths) ? args.paths : args.path, args.note);
         if (name === 'read') return verbs.read({ all: args.all === true });

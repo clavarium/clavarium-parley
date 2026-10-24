@@ -25,7 +25,7 @@ The command finds the folder as git finds a repository: `--dir`, else
 | Command | MCP tool | It posts | It returns |
 |---|---|---|---|
 | `parley tell [--short TITLE] TEXT` | `tell(text, short?)` | `{kind:"say", text, short?}` | at once |
-| `parley ask [--short TITLE] QUESTION [CHOICE ...]` | `ask(question, choices?, short?)` | `{kind:"ask", text, choices, short?}` | at once: it never waits for the answer |
+| `parley ask [--short TITLE] [--pick-many] QUESTION [CHOICE ...]` | `ask(question, choices?, many?, short?)` | `{kind:"ask", text, choices, many?, short?}` (`many: true` only when given, with two choices or more) | at once: it never waits for the answer |
 | `parley close ID ANSWER` | `close(id, answer)` | `{kind:"close", answers, text}` | at once; ID is the question's, or its first 8 characters or more |
 | `parley show PATH [NOTE]` | `show(path, note?)` | `{kind:"show", path, text}`, the path made whole | at once; refused if there is no such file |
 | `parley show A="title" B="title" [NOTE]` | `show({files: [{path, title}], note?})` (or `paths`) | `{kind:"show", path, text, files: [{path, title?}]}`, twelve at most, `path` the first | at once: one gallery, each with its title |
@@ -37,6 +37,11 @@ The command finds the folder as git finds a repository: `--dir`, else
 
 The command ends a read that found something (not an empty poll) with one
 line, `Forgot how to work with them? parley guide`.
+
+Which form of question, when: one choice for a decision (`choices`); several
+to tick when the person picks which items to do, such as which batches to
+launch (`choices` and `many`, `--pick-many`); no choices for an open question.
+Under choices, "Other answer…" lets the person answer in their own words.
 
 `TEXT` is Markdown, 16,000 characters at most; `short` is its short version, a title of one or two lines (200 characters), which a screen shows first: whatever asks the person for an action or a decision, or says the agent is blocked, belongs in it. A question is closed (`close`) when the person answered it another way (a message typed later): the screen says the answer the agent understood, and the person may still answer with the question's buttons. `STATE` is `working`, `waiting` or `done`. `doing` says what the agent is
 doing now, at each new step; it means it works: a `doing` after `done` or
@@ -84,7 +89,17 @@ line stops at once, "stopped at 14:32", whatever it forgot to say.
 
 `{id, at, text}`, and when it answers a question: `answers` (the id of that
 question) and `question` (its words, so that the agent is reminded of them).
-When it answers a question by text typed in reply, the same. When it replies
+When it answers a question by text typed in reply, the same. When it answers
+a question that let several choices be ticked: `picked`, the choices ticked
+(an array, in the question's order, one at least), and `text` says them too,
+one per line; `parley read` says `they ticked "A", "B"`.
+
+Old and new sides keep working together: `many` and `picked` are added
+fields, never a change of one there before. An older screen ignores `many`
+and shows single choices: one tap answers with one choice, a plain answer.
+An older agent's side ignores `picked` and reads the text, the choices one
+per line. A screen sends `picked` only for a question that says `many`; the
+host refuses it otherwise, and refuses a choice the question does not have. When it replies
 to another message of the agent: `re` (its id) and `quote` (its words). When
 the person dictated part of it: `via: "voice"`, and `parley read` says it may
 hold recognition mistakes.
@@ -142,7 +157,7 @@ whole, from the moment it was started: what was posted before is in
 
 | Action | Gives |
 |---|---|
-| `say(text, answers?, files?, {via?})` | what `read()` gives, after writing; `answers` may be any message of the agent (a question is answered, another replied to) |
+| `say(text, answers?, files?, {via?, picked?})` | what `read()` gives, after writing; `answers` may be any message of the agent (a question is answered, another replied to); `picked`: the choices ticked of a question with `many` (the text may then be empty: it is made of them) |
 | `react(to, reaction)` | a reaction of the set (`REACTIONS`) on a message of the agent, or `null` to take it back; what `read()` gives |
 | `read()` | `messages` (each of the person's says `seen`, and `seenAt` when known, `via` when dictated; each of the agent's may carry `short`, `reaction` (`{id, at, seen}`, the one standing), `files` for a gallery (`[{path, title, open}]`), and `refs`: the paths it cites that `reach` opens; a question it closed, `closed: {text, at}`), `waiting` (questions neither answered nor closed), `status`, `steps` (every `status` and `doing`, in order: `{id, kind, state, note, at}`), `files` (every file shown, and every one cited that can be opened, `cited: true`), `unread`, `pulse` |
 | `invite(lang, {install?, shared?})` | the invitation, a text |
@@ -242,7 +257,9 @@ box), `enter` (what Enter does) and `attach` (files the person attaches: a
 button beside the box picks them, they are shown above it, and on Send each
 is given to `upload(file)`, which puts it where the agent can open it and
 resolves with `{path, name, size}`; then the message goes, with them). The choices of the question the agent
-asks now come first above the box when its message has scrolled away. The
+asks now come first above the box when its message has scrolled away; choices
+to tick are not (one tap there would send one alone), they are ticked in the
+question, then sent with its own Send. The
 page never puts the cursor in the box on a touch screen: only a finger does.
 See the README for each slot.
 
