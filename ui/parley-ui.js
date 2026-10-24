@@ -1370,13 +1370,16 @@ const extOf = (name) => { const m = /\.([a-z0-9]{1,5})$/i.exec(String(name ?? ''
 /* The icon of a file's kind, and its kind and size in a word under its name. */
 const fileGlyph = (name) => { const holder = el('span', 'parley-card-icon'); holder.dataset.kind = fileIcon(name); holder.append(icon(fileIcon(name), 'parley-sign')); return holder; };
 const kindLine = (name, size) => el('span', 'parley-size', [extOf(name), size].filter(Boolean).join(' · '));
+/* A file, as one card: its kind's icon, its name, its kind and size. One that can be opened IS the button:
+   a tap anywhere on it opens it, no "Open" beside it to aim for. */
 function card(file, words, open, size, title) {
-    const c = el('span', 'parley-card');
+    const opens = Boolean(open && file.open !== null);
+    const c = opens ? button('', 'parley-card parley-open', () => open(file)) : el('span', 'parley-card');
     const about = el('span', 'parley-card-about'); about.append(el('span', 'parley-name', title || file.name));
-    if (title && title !== file.name) about.title = file.name;
+    if (title && title !== file.name) c.title = file.name;
     about.append(kindLine(file.name, size));
     c.append(fileGlyph(file.name), about);
-    if (open && file.open !== null) c.append(button(said(words, 'open'), 'parley-open', () => open(file)));
+    if (opens) { c.setAttribute('aria-label', `${said(words, 'open')}: ${title || file.name}`); c.dataset.opens = 'true'; }
     return c;
 }
 

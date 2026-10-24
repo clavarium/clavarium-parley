@@ -218,7 +218,7 @@
 /* A file of the person: its name cut short before its Open button is pushed below it. */
 .parley-file[data-attached="true"] { flex-wrap: nowrap; }
 .parley-file[data-attached="true"] .parley-name { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.parley-file[data-attached="true"] .parley-open { flex: none; margin-left: auto; }
+.parley-file[data-attached="true"] .parley-card { flex: 0 1 auto; min-width: 0; }
 .parley-size { flex: none; font-size: .8em; color: var(--parley-dim); white-space: nowrap; }
 .parley-pending .parley-size { margin-left: .4em; }
 .parley-where { flex-basis: 100%; font-size: .8em; color: var(--parley-dim); }
@@ -300,6 +300,10 @@
 .parley-noimg { display: inline-block; padding: 0 .5em; border: 1px dashed var(--parley-line); border-radius: 6px; color: var(--parley-dim); font-size: .9em; }
 /* A file: a card with its kind, its name, its size, and Open. */
 .parley-card { display: inline-flex; align-items: center; gap: .6em; max-width: 100%; min-width: 0; padding: .35em .5em; border: 1px solid var(--parley-line); border-radius: 10px; background: var(--parley-bg); }
+/* The card that opens: the whole of it is the button, shown so by its pointer and a light hover. */
+.parley .parley-card[data-opens] { font: inherit; color: inherit; text-align: left; cursor: pointer; padding: .35em .9em .35em .5em; min-height: 2.9em; }
+.parley .parley-card[data-opens]:hover { border-color: var(--parley-action); }
+.parley .parley-card[data-opens]:focus-visible { outline: 2px solid var(--parley-action); outline-offset: 2px; }
 .parley-card-icon { position: relative; flex: none; width: 2.2em; height: 2.2em; display: inline-flex; align-items: center; justify-content: center; color: var(--parley-dim); }
 .parley-card-icon .parley-sign { width: 1.9em; height: 1.9em; stroke-width: 1.6; }
 .parley-card-about { display: flex; flex-direction: column; min-width: 0; line-height: 1.25; }
