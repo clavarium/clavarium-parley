@@ -33,7 +33,9 @@ The command finds the folder as git finds a repository: `--dir`, else
 | `parley status STATE [NOTE]` | `status(state, note?)` | `{kind:"status", state, text}` | at once |
 | `parley doing TEXT` | `doing(text)` | `{kind:"doing", text}`, one line of 200 characters at most | at once |
 | `parley read` | `read()` | nothing | what was written since the last read, answers and attached files included, then the questions still open with their ids |
-| `parley read --all` | `read({all: true})` | nothing | the whole exchange, both sides, oldest first (the newest 200 entries): to pick up the thread after a restart |
+| `parley read --last N` (or `--days D`) | `read({last})` (or `{days}`) | nothing | the END of the exchange, both sides, oldest first: the newest N entries (1,000 at most), or those of the last D days (20 at least); 100,000 characters at most; it ends with how to read what came before: to pick up the thread after a restart |
+| `parley read --before ID [--last N]` | `read({before, last?})` | nothing | the part before that entry (its id, or its first 8 characters or more), the same way: page after page, as far back as needed |
+| `parley read --all` | `read({all: true})` | nothing | the newest 200 entries, the same way (kept for an agent told so before) |
 | `parley guide` | none | nothing | how to work with the person, in a few lines: for an agent that forgot |
 
 The command ends a read that found something (not an empty poll) with one
@@ -176,9 +178,11 @@ LINE to the agent, by a way of its own, when it judges right:
 What was written is never on that line. After the agent lost its memory (its
 machine restarted, a new session), the application may type, once:
 
-    Your chat with the person is kept: run "parley read --all" before going on. Forgot how to work with them? parley guide
- The agent runs `parley read` and
-finds it. An answer may therefore come two minutes or two days later.
+    Your chat with the person is kept: run "parley read --last 100" before going on; it says how to read further back. Forgot how to work with them? parley guide
+
+(`reread({last})` or `reread({days})` gives the same line for another end.) The
+thread is never cut, summarised nor compacted: the agent reads its end, and goes
+back as far as it needs. The agent runs `parley read` and finds it. An answer may therefore come two minutes or two days later.
 
 ## Parley announces, the application decides
 
@@ -206,6 +210,42 @@ whole, from the moment it was started: what was posted before is in
 | `invite(lang, {install?, shared?})` | the invitation, a text |
 | `read().altered` | with a keep folder only: what changed in the bridge folder after it was kept, oldest first (see below) |
 | `unread()` | how many of the person's messages the agent has not read |
+| `read(options)` | A PART OF THE THREAD, the same fields (see below) |
+| `search(text, {limit?})` | the whole thread searched: `{matches: [{id, at, from, kind, text}], count}`, newest first, 100 at most, `text` the words around what was found |
+
+## A part of the thread
+
+A thread only grows: after days, a screen that is given all of it at each look
+carries more than it shows. The files stay whole -- nothing is cut, summarised
+or compacted -- and only what is handed over changes. `read()` without options
+gives the newest 200 messages, as it always did. With options:
+
+| Options | Gives |
+|---|---|
+| `{last: N}` | the newest N messages (200 by default, 2,000 at most) |
+| `{days: D}` | those of the last D days, 20 at least, 2,000 at most |
+| `{before: ID, last}` or `{before: ID, days}` | the same, older than the message ID: the page before |
+| `{before: ID, from: ID2}` | from the message ID2 (and 3 before it) up to ID: what a search found, at its place |
+| `{all: true}` | every message: for the application's own checks (is this file one of the thread?), not for a screen |
+| `{since: CURSOR, last \| days}` | `since: true`: only what changed since the cursor -- new messages, those whose state moved (read by the agent, reacted to, closed), new steps; `files` only when the agent posted; `status`, `waiting`, `unread`, `pulse` (and `altered`) always. A cursor that does not fit (a bridge file rewritten shorter, without a keep folder): the window again |
+
+Each answer but `since` gives `window: {before, more, total, from, until}`
+(`before`: the id that asks for the page before it, null at the start; `more`:
+how many messages are older; `from`: the time of its oldest; `until`: the time
+of the message it stops before) and `cursor`, for the next `since`. What a
+window counts is the thread's, never the window's: the questions still open,
+`waiting`, the status, the files, the unread. A question still open comes with
+the newest window, however old it is (first, being the oldest). Messages
+answered or reacted to are found in the whole thread, not in a window.
+
+The screen asks for its window (`window` of `mount`: `{messages: N}` or
+`{days: D}`, 200 messages by default), then, at each look, only what changed
+since its cursor; "Earlier messages" at the top of the thread brings the page
+before, where the reader stays; "Media and files" offers the older ones the same
+way; the search (`search` of `mount`: the host's `search()`, through the
+application) looks in the whole thread, and opens a message found further back
+at its place, the part up to it brought. An application whose `load` ignores the
+options, and gives no cursor, is read whole at each look, as before.
 
 `reach(path)`, given by the application, says how the person opens a file
 the agent showed, or one the person attached: a reference of its own, or

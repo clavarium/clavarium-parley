@@ -20,7 +20,7 @@ application, any agent that can run a command.
 | `parley doing "text"` | say in one line what it is doing now, at each new step |
 | `parley read` | read what was written to it, answers and attached files included, and its questions still open |
 | `parley close ID "answer"` | close a question the person answered another way |
-| `parley read --all` | the whole exchange, both sides: to pick up the thread after a restart |
+| `parley read --last 100` | the end of the exchange, both sides (or `--days 2`): to pick up the thread after a restart; older: `parley read --before ID`, page after page |
 | `parley status working\|waiting\|done ["note"]` | say where it is |
 | `parley guide` | how to work with the person, in a few lines, for an agent that forgot |
 
@@ -61,6 +61,8 @@ arrived. See [docs/protocol.md](docs/protocol.md).
 | `say(text, answers, files, {via, picked})` | writes what the person said (`answers`: the message it answers or replies to; `via: 'voice'`: dictated; `picked`: the choices ticked; `replies`: the answers to questions asked together; `about`: the person or zone they tapped) |
 | `react(to, reaction)` | puts a reaction of the set on a message of the agent, or takes it back (`null`) |
 | `read()` | the exchange: messages, open questions, status, steps (states and what it did, in order), files, unread |
+| `read({ last \| days \| before \| since })` | a part of it: the end, the page before, or only what changed since a cursor; the questions open, the status and the counts stay the whole thread's (see [the protocol](docs/protocol.md#a-part-of-the-thread)) |
+| `search(text)` | the whole thread searched, newest first |
 | `invite(lang, { install, shared })` | the text that asks an agent to use Parley, in English, saying the person's language |
 
 Parley types nothing anywhere. `WAKE` (`You have a new message: run "parley
@@ -149,6 +151,8 @@ gives it. Without a slot, nothing of it is shown.
 | `refs` | `{ label(ref), open(ref) }`: the word on the button of a person or a zone the agent linked (`[Anna](app:people/12)`), or null for none; what opening it does | a card on a tap on a person of a family or a zone of a picture: its label, its line, that button, "Talk about it" |
 | `math` | `{ url, css }`: another copy of KaTeX (default: Parley's own, `ui/vendor/katex/`, loaded on the first formula); `false`: formulas as written | formulas, `$...$` and `$$...$$` |
 | `attach` | `{ upload(file, name) }`, resolving with `{ path, name, size }`: where the agent finds the file | a button beside the box picks files; they are shown above it until sent; on Send each is uploaded, then the message goes with them (files alone are a message); in the thread, by name in the person's bubble |
+| `window` | `{ messages: N }` or `{ days: D }` (default: 200 messages), and a `load(options)` that passes them to `read(options)` | the end of the thread; "Earlier messages" at its top brings the page before, the reader kept where they were; each look asks only what changed |
+| `search` | `(text)`: the host's `search()`, through the application | the search looks in the whole thread; a message found further back opens at its place |
 
 Lines of the application -- what happened around the agent, such as its
 machine short of memory -- are given with the messages (`from: "system"`) and
@@ -188,7 +192,10 @@ Tried for real with version 0.2 (OpenCode, on hosted open models): the
 `show` and `status`, an answer given ten minutes later, and the two views in
 a real page.
 
-Not tried yet with a real agent: questions asked together (`--group`), choices to tick (`--pick-many`, `many`) and "Other answer…" (tested here, the screen checked in a browser); version 0.10 -- Back closing what is open over the thread (tested here, and in an application's own end-to-end runs); "Received, thinking..." and "No answer yet" (tested here); version 0.8 -- several files shown at once with their titles, reactions, dictated messages, done said once, the media of a thread, the viewer, the side of the detailed view (tested here and in an application's own end-to-end runs, the screen checked on a real thread replayed); Markdown, short versions, `close` and the signs of each message (version 0.7, tested here and in an application's own end-to-end runs, the screen checked on a real thread replayed); `doing` and the line of what it does now
+Not tried yet with a real agent: a part of the thread (`read({ last | days | before | since })`,
+`search()`, "Earlier messages", `parley read --last` and `--before`; tested here
+and in an application's own end-to-end runs, on threads of 600 and 1,000
+messages); questions asked together (`--group`), choices to tick (`--pick-many`, `many`) and "Other answer…" (tested here, the screen checked in a browser); version 0.10 -- Back closing what is open over the thread (tested here, and in an application's own end-to-end runs); "Received, thinking..." and "No answer yet" (tested here); version 0.8 -- several files shown at once with their titles, reactions, dictated messages, done said once, the media of a thread, the viewer, the side of the detailed view (tested here and in an application's own end-to-end runs, the screen checked on a real thread replayed); Markdown, short versions, `close` and the signs of each message (version 0.7, tested here and in an application's own end-to-end runs, the screen checked on a real thread replayed); `doing` and the line of what it does now
 (version 0.3, tested here with stand-ins); the box's slots (version 0.4:
 dictation, ready answers, the keyboard of a phone), tested in an
 application's own end-to-end runs with a recorded voice and an emulated

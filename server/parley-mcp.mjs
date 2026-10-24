@@ -58,9 +58,14 @@ export const FOLDER = '.parley';
 export const PULSE_EVERY_MS = 10_000;
 
 const plain = (value, max = TEXT_MAX) => String(value ?? '').slice(0, max);
-/* What `read --all` gives back at most: the newest entries, and so many characters. */
+/* THE END OF THE EXCHANGE (`read --last N`, `--days D`, `--all`): so many entries by default
+   (`--all`: ALL_ENTRIES), LAST_MAX at most, and so many characters; `--days` gives LEAST at
+   least. What is older is read with `--before ID`, page after page: never cut nor summarised. */
 export const ALL_ENTRIES = 200;
 export const ALL_CHARS = 100_000;
+export const LAST_MAX = 1000;
+export const DAYS_MAX = 366;
+export const LEAST = 20;
 /* Each line of a file that only grows, as an object, or null where it is not one: counted, and skipped. */
 const lines = (file) => { try { return readFileSync(file, 'utf8').split('\n').filter(Boolean).map((l) => { try { const j = JSON.parse(l); return j && typeof j === 'object' && !Array.isArray(j) ? j : null; } catch { return null; } }); } catch { return []; } };
 const size = (n) => (n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` : n >= 1024 ? `${Math.round(n / 1024)} KB` : `${n} bytes`);
@@ -124,7 +129,7 @@ export function findFolder({ dir, env = process.env, from = process.cwd() } = {}
 
 /* The seven verbs on one folder. `how` is what the agent is told to do when a
    message arrives: run a command, or call a tool. */
-export function bridge(dir, { how = 'run `parley read`' } = {}) {
+export function bridge(dir, { how = 'run `parley read`', back = (id) => `parley read --before ${id}` } = {}) {
     const OUT = join(dir, 'from-agent.jsonl');
     const IN = join(dir, 'to-agent.jsonl');
     const READ = join(dir, 'read.json');
@@ -252,11 +257,12 @@ export function bridge(dir, { how = 'run `parley read`' } = {}) {
             renameSync(next, PULSE);
             return 'Noted.';
         },
-        /* What was written since the last read; `all`: the whole exchange,
-           both sides, oldest first -- for an agent that lost its memory (a
-           restart, a new session) and must pick up the thread. Either way,
+        /* What was written since the last read; `all`, `last`, `days`: the END of
+           the exchange, both sides, oldest first -- for an agent that lost its
+           memory (a restart, a new session) and must pick up the thread -- with
+           how to read the part before it (`before`: the id it gives). Either way,
            everything is read afterwards. */
-        read({ all = false } = {}) {
+        read({ all = false, last, days, before } = {}) {
             const written = lines(IN);
             let seen = 0;
             try { seen = Number(JSON.parse(readFileSync(READ, 'utf8')).lines) || 0; } catch { /* nothing was read yet */ }
@@ -273,15 +279,36 @@ export function bridge(dir, { how = 'run `parley read`' } = {}) {
             const open = posted.filter((m) => m.kind === 'ask' && typeof m.id === 'string' && !answered.has(m.id) && !closed.has(m.id));
             const pending = open.length === 0 ? '' : `\nOpen questions (one they answered another way: close it with parley close ID "the answer you understood"):${open.slice(-10).map((m) => `\n  [${m.id.slice(0, ID_SHOWN)}] ${plain(m.text, 200).replace(/\s+/g, ' ')}`).join('')}`;
             const fromThem = (m) => (m.reaction ? reacted(m) : `${m.answers ? `They answered your question "${plain(m.question, 200)}": ` : m.re ? `They replied to your message "${plain(m.quote, 200)}"${m.via === 'voice' ? ` (${DICTATED})` : ''}: ` : m.via === 'voice' ? `They wrote (${DICTATED}): ` : 'They wrote: '}${m.answers ? answerText(m) : plain(m.text)}${aboutText(m)}${attached(m)}`);
-            if (all) {
-                const theirs = written.flatMap((m, i) => (m ? [{ at: String(m.at ?? ''), text: `${fromThem(m)}${i >= seen ? ' (new)' : ''}` }] : []));
-                const mine = lines(OUT).filter((m) => m && ['say', 'ask', 'show', 'close'].includes(m.kind)).map((m) => ({ at: String(m.at ?? ''),
+            if (all || last !== undefined || days !== undefined || before !== undefined) {
+                const theirs = written.flatMap((m, i) => (m ? [{ id: String(m.id ?? ''), at: String(m.at ?? ''), text: `${fromThem(m)}${i >= seen ? ' (new)' : ''}` }] : []));
+                const mine = lines(OUT).filter((m) => m && ['say', 'ask', 'show', 'close'].includes(m.kind)).map((m) => ({ id: String(m.id ?? ''), at: String(m.at ?? ''),
                     text: m.kind === 'close' ? `You closed a question, the answer you understood being: ${plain(m.text, 500)}` : m.kind === 'ask' && Array.isArray(m.questions) ? `You asked them ${m.questions.length} questions at once: ${plain(m.text)}` : m.kind === 'ask' ? `You asked them: ${plain(m.text)}${Array.isArray(m.choices) && m.choices.length ? ` (${m.many === true ? 'several could be ticked' : 'choices'}: ${m.choices.map((c) => plain(c, 200)).join(', ')})` : ''}`
                         : m.kind === 'show' ? (Array.isArray(m.files) && m.files.length > 1 ? `You showed them ${m.files.length} files: ${m.files.map((f) => `${plain(f?.path, 1000)}${f?.title ? ` "${plain(f.title, 120)}"` : ''}`).join(', ')}${m.text ? ` (${plain(m.text, 500)})` : ''}` : `You showed them a file: ${plain(m.path, 1000)}${m.text ? ` (${plain(m.text, 500)})` : ''}`) : `You told them: ${plain(m.text)}` }));
-                const both = [...mine, ...theirs].sort((a, b) => a.at.localeCompare(b.at)).slice(-ALL_ENTRIES).map((e) => `[${e.at.slice(0, 16).replace('T', ' ')}] ${e.text}`);
-                while (both.length > 1 && both.join('\n').length > ALL_CHARS) both.shift();
-                if (both.length === 0) return `Nothing was written yet, on either side.${pending}`;
-                return `The whole exchange with the person, oldest first (${both.length}):\n${both.join('\n')}\nEnd of the exchange: everything is read now.${pending}`;
+                const every = [...mine, ...theirs].sort((a, b) => a.at.localeCompare(b.at));
+                if (every.length === 0) return `Nothing was written yet, on either side.${pending}`;
+                /* Older than the entry `before` (its id, or its first 8 characters or more). */
+                let end = every.length;
+                if (before !== undefined) {
+                    const key = plain(before, 100).trim();
+                    const i = key.length >= ID_SHOWN ? every.findIndex((e) => e.id === key || e.id.startsWith(key)) : -1;
+                    if (i < 0) throw new Error(`no message has the id ${key}: give the id read shows ("parley read --before ID")`);
+                    end = i;
+                }
+                let start;
+                if (days !== undefined) {
+                    const ref = end < every.length && Number.isFinite(Date.parse(every[end].at)) ? Date.parse(every[end].at) : Date.now();
+                    const limit = new Date(ref - Math.min(DAYS_MAX, Math.max(1, Math.floor(Number(days)) || 1)) * 86_400_000).toISOString();
+                    start = end;
+                    while (start > 0 && every[start - 1].at >= limit) start -= 1;
+                    start = Math.max(Math.min(start, end - LEAST), end - LAST_MAX, 0);
+                } else start = Math.max(0, end - Math.min(LAST_MAX, Number.isInteger(last) && last > 0 ? last : ALL_ENTRIES));
+                const page = every.slice(start, end);
+                const both = page.map((e) => `[${e.at.slice(0, 16).replace('T', ' ')}] ${e.text}`);
+                while (both.length > 1 && both.join('\n').length > ALL_CHARS) { both.shift(); page.shift(); start += 1; }
+                if (both.length === 0) return `Nothing before that message.${pending}`;
+                const older = start > 0 ? `\nOlder: ${start} more before these. To read them: ${back(page[0].id.slice(0, ID_SHOWN))}` : '\nNothing older: this is the start of the exchange.';
+                const head = start === 0 && end === every.length ? `The whole exchange with the person, oldest first (${both.length}):` : end === every.length ? `The end of the exchange with the person, oldest first (the newest ${both.length} of ${every.length}):` : `An earlier part of the exchange with the person, oldest first (${both.length}, ${every.length - end} newer after them):`;
+                return `${head}\n${both.join('\n')}${older}\nEnd of what was asked: everything is read now.${pending}`;
             }
             const fresh = written.slice(seen).filter(Boolean);
             if (fresh.length === 0) return `No new message.${pending}`;
@@ -311,8 +338,8 @@ export const TOOLS = [
                 items: { type: 'object', properties: { id: { type: 'string', description: 'Short, letters, digits, - or _: the answer names it.' }, label: { type: 'string', description: 'A word or two for its tab, in their language.' }, question: { type: 'string' }, choices: { type: 'array', items: { type: 'string' } }, many: { type: 'boolean' } }, required: ['question'] } }, short: { type: 'string', description: 'Optional, for a long question: its title, one or two lines.' } } } },
     { name: 'show', description: `Point the person you work for to a file you made (a report, a picture, a page), or to several at once, so that they can open them from their screen. ${GALLERY} Put them in a folder you share with them.`,
         inputSchema: { type: 'object', properties: { path: { type: 'string', description: 'The path of one file.' }, files: { type: 'array', items: { type: 'object', properties: { path: { type: 'string' }, title: { type: 'string', description: 'What it is, in their language: "Home page, before".' } }, required: ['path'] }, description: `Several files shown together (${SHOW_MAX} at most), each with its title.` }, paths: { type: 'array', items: { type: 'string' }, description: 'Several files, without titles (prefer files, with titles).' }, note: { type: 'string', description: 'One line on what it is, common to all.' } } } },
-    { name: 'read', description: 'Read what was written to you since you last read: new instructions, answers to your questions, files they attached, their reactions to your messages (only "go ahead" authorizes what a message proposes; "stop" means stop now), and the questions still open with their ids. A message they dictated is said so: it may hold recognition mistakes. Call it when you are told a message arrived, and before you finish a task. With all: true, the whole exchange, both sides, oldest first: to pick up the thread after a restart.',
-        inputSchema: { type: 'object', properties: { all: { type: 'boolean', description: 'Optional: the whole exchange, not only what is new.' } } } },
+    { name: 'read', description: 'Read what was written to you since you last read: new instructions, answers to your questions, files they attached, their reactions to your messages (only "go ahead" authorizes what a message proposes; "stop" means stop now), and the questions still open with their ids. A message they dictated is said so: it may hold recognition mistakes. Call it when you are told a message arrived, and before you finish a task. After a restart, to pick up the thread: last (the newest messages, both sides, oldest first) or days; it says how to read further back (before: the id it gives). The exchange is kept whole: read back as far as you need.',
+        inputSchema: { type: 'object', properties: { last: { type: 'integer', description: `Optional: the newest so many messages of the exchange, both sides (${LAST_MAX} at most).` }, days: { type: 'integer', description: 'Optional: the messages of the last so many days.' }, before: { type: 'string', description: 'Optional, with last or days: the part before this message (the id read gave).' }, all: { type: 'boolean', description: `Optional: the newest ${ALL_ENTRIES} messages of the exchange.` } } } },
     { name: 'close', description: 'Close a question of yours that they answered another way (in a message typed later, not with its buttons), saying the answer you understood. Their screen shows it; they may still correct it. The id is the one read shows.',
         inputSchema: { type: 'object', properties: { id: { type: 'string', description: 'The id of the question, as read shows it.' }, answer: { type: 'string', description: 'The answer you understood, in one line.' } }, required: ['id', 'answer'] } },
     { name: 'doing', description: 'Say in one short line what you are doing right now ("reading the 12 recordings", "running the tests"), each time you move to something new. Their screen shows it while you work, and keeps what came before. It does not wait.',
@@ -322,13 +349,13 @@ export const TOOLS = [
 ];
 
 export function serve(dir, { input = process.stdin, output = process.stdout } = {}) {
-    const verbs = bridge(dir, { how: 'call read' });
+    const verbs = bridge(dir, { how: 'call read', back: (id) => `call read with before: "${id}"` });
     const call = (name, args = {}) => {
         if (name === 'tell') return verbs.tell(args.text, { short: args.short });
         if (name === 'ask') return verbs.ask(args.question, args.choices, { short: args.short, many: args.many === true, ...(args.questions !== undefined ? { questions: args.questions } : {}) });
         if (name === 'close') return verbs.close(args.id, args.answer);
         if (name === 'show') return verbs.show(Array.isArray(args.files) ? args.files : Array.isArray(args.paths) ? args.paths : args.path, args.note);
-        if (name === 'read') return verbs.read({ all: args.all === true });
+        if (name === 'read') return verbs.read({ all: args.all === true, ...(Number.isInteger(args.last) ? { last: args.last } : {}), ...(Number.isInteger(args.days) ? { days: args.days } : {}), ...(typeof args.before === 'string' ? { before: args.before } : {}) });
         if (name === 'status') return verbs.status(args.state, args.note);
         if (name === 'doing') return verbs.doing(args.text);
         throw new Error(`unknown tool: ${name}`);

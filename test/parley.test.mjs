@@ -157,7 +157,7 @@ test('the texts an agent reads are English and say the person\'s language; the l
     const text = invitation({ lang: 'fr-FR', install: 'npm install -g /tools/clavarium-parley-0.2.0.tgz', shared: '/work' });
     for (const part of ['npm install -g /tools/clavarium-parley-0.2.0.tgz', 'parley --help', 'parley tell', 'parley ask', 'parley show', 'parley doing', 'parley status', 'under /work', 'Write to them in French.', 'You have a new message', 'parley read']) assert.ok(text.includes(part), part);
     assert.ok(/^[\x20-\x7e]+$/.test(text), 'one line, plain ASCII');
-    assert.equal(REREAD, 'Your chat with the person is kept: run "parley read --all" before going on. Forgot how to work with them? parley guide');
+    assert.equal(REREAD, 'Your chat with the person is kept: run "parley read --last 100" before going on; it says how to read further back. Forgot how to work with them? parley guide');
     assert.ok(text.endsWith('Forgot how to work with them? parley guide Start now: tell them in one line that you are ready.'), 'the startup line points to the guide');
     assert.ok(/^[\x20-\x7e]+$/.test(REREAD));
     for (const line of [text, WAKE, REREAD]) assert.ok(!/[`'$\\]/.test(line), 'nothing a shell would run or wait on, should one listen instead of an agent');
@@ -428,15 +428,16 @@ test('after a restart the agent picks up the thread: "read --all" gives the whol
         `You showed them a file: ${join(home, 'chapter.html')} (Chapter 1)`,
         'They answered your question "His voice, or about him?": his voice (new)',
     ], 'what it did not read yet is marked; what it was doing is not part of the exchange');
-    assert.equal(all[6], 'End of the exchange: everything is read now.');
-    assert.equal(all[7], 'Forgot how to work with them? parley guide');
+    assert.equal(all[6], 'Nothing older: this is the start of the exchange.');
+    assert.equal(all[7], 'End of what was asked: everything is read now.');
+    assert.equal(all[8], 'Forgot how to work with them? parley guide');
     assert.equal(host.unread(), 0);
     assert.equal(parley(home, ['read']).out, 'No new message.\n');
     assert.equal(parley(home, ['read', '--every']).code, 64);
     /* The same through MCP. */
     const replies = await agent(dir, [tool('read', { all: true })], join(dir, 'server.mjs'));
     assert.match(said(replies[1]), /^The whole exchange with the person, oldest first \(5\):/);
-    assert.ok(HELP.includes('parley read --all'));
+    assert.ok(HELP.includes('parley read --last 100'));
 });
 
 test('the person attaches files to a message: the agent is told where they are, the screen opens them the application\'s way', async (t) => {
@@ -494,7 +495,7 @@ test('"parley guide" says how to work with the person, word for word, and the he
     assert.ok(GUIDE.startsWith('How to work with the person through Parley\n\n1. When you read a new message, first say you have it:\n   parley status working "reading your message"\n'));
     for (const part of ['(Parley already shows "Received, thinking..." until you do.)', 'parley doing "running the tests"   what you do now', 'parley status done                 you stop, they have nothing to do', 'parley status waiting "your choice"', 'you need their answer or action', 'Nothing for them to do: done, never waiting.',
         '3. Tell, don\'t wait to be asked:', 'parley tell  -> progress and results', 'parley ask   -> a decision (give the choices)', '4. Anything that needs their action or decision\n   goes in the short version (--short), first line.',
-        '5. After a restart: parley read --all', '6. Forgot how? parley guide.\n   Every command: parley --help']) assert.ok(GUIDE.includes(part), part);
+        '5. After a restart: parley read --last 100', '6. Forgot how? parley guide.\n   Every command: parley --help']) assert.ok(GUIDE.includes(part), part);
     assert.ok(/^[\x20-\x7e\n]+$/.test(GUIDE), 'plain ASCII');
     assert.match(HELP, /\n {2}parley guide {2,}how to work with them/);
     assert.equal(REMINDER, 'Forgot how to work with them? parley guide');

@@ -348,6 +348,11 @@
 .parley .parley-jump[hidden] { display: none; }
 .parley-jump-count { position: absolute; top: -.35em; right: -.35em; min-width: 1.4em; height: 1.4em; padding: 0 .3em; box-sizing: border-box; border-radius: 999px; background: var(--parley-action); color: var(--parley-on-action); font-size: .72em; font-weight: 700; line-height: 1.4em; text-align: center; }
 .parley-jump-count[hidden] { display: none; }
+/* ---- the part before what is shown ---- */
+.parley-row[data-type="earlier"] { display: flex; justify-content: center; padding: .4em 0 .2em; }
+.parley .parley-earlier, .parley .parley-media-earlier { min-height: 2.2em; padding: 0 1em; border: 1px solid var(--parley-line); border-radius: 999px; background: transparent; color: var(--parley-action); font-size: .85em; }
+.parley .parley-media-earlier { display: block; margin: .8em auto 0; }
+.parley .parley-earlier:disabled, .parley .parley-media-earlier:disabled { opacity: .55; }
 /* ---- the search ---- */
 .parley-search { display: flex; align-items: center; gap: .35em; width: 100%; max-width: var(--parley-column); margin-inline: auto; box-sizing: border-box; padding: .2em .4em; border: 1px solid var(--parley-line); border-radius: 12px; }
 .parley-search[hidden] { display: none; }

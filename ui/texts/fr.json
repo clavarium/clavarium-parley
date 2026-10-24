@@ -159,5 +159,7 @@
   "side-now": "En cours",
   "side-machine": "Sa machine",
   "side-nothing": "Rien en cours.",
-  "history-changed": "Historique modifié ici : original affiché"
+  "history-changed": "Historique modifié ici : original affiché",
+  "earlier": "Messages plus anciens",
+  "media-earlier": "Plus anciens : charger"
 }

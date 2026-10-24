@@ -159,5 +159,7 @@
   "side-now": "Now",
   "side-machine": "Its machine",
   "side-nothing": "Nothing under way.",
-  "history-changed": "History changed here: original shown"
+  "history-changed": "History changed here: original shown",
+  "earlier": "Earlier messages",
+  "media-earlier": "Older ones: load"
 }

@@ -3,13 +3,28 @@
  *   import { mount } from './parley-ui.js';
  *   mount(element, { load, send, words, open, terminal, remind, view, onView, locale,
  *                    voice, autoSend, onAutoSend, replies, enter, touch, attach, act,
- *                    markdown, picture, diagram, highlight, math, refs, agentName, agentTool, react, reactions, back });
+ *                    markdown, picture, diagram, highlight, math, refs, agentName, agentTool, react, reactions, back,
+ *                    window, search });
  *
- *   load()                 resolves with what parley-host.mjs read() gives;
+ *   load(options)          resolves with what parley-host.mjs read(options) gives;
  *                          the application may add lines of its own to its
  *                          messages: { from: 'system', id, at, text, level,
  *                          tone, topic, brief, actions: [{ id, label }] } (see
- *                          LINES OF THE APPLICATION, below)
+ *                          LINES OF THE APPLICATION, below). `options` asks
+ *                          for A PART OF THE THREAD: { last } or { days } at
+ *                          first; { since: cursor } at each look, once it gave
+ *                          a cursor (only what changed comes); { before } for
+ *                          the page before what is shown ("Earlier
+ *                          messages"); { before, from } up to a message
+ *                          found. An application that ignores them gives it
+ *                          all at each look, as before.
+ *   window                 { messages: N } or { days: D }: what is shown at
+ *                          first (the newest 200 messages by default); the
+ *                          rest on demand, a page at a time
+ *   search(text)           optional: resolves with what the host's search()
+ *                          gives: the whole thread searched, however little
+ *                          of it is shown; a message found further back is
+ *                          opened at its place, the part up to it brought
  *   send(text, answers, files, { via, picked })
  *                          the person wrote; `answers` is the id of the
  *                          question it answers (a choice, or a text written
@@ -195,7 +210,8 @@ export const KEYS = Object.freeze(['send', 'placeholder', 'empty', 'view', 'simp
     'zoom-in', 'zoom-out', 'zoom-actual', 'zoom-fit', 'zoom-actual-short', 'zoom-fit-short', 'close', 'previous', 'next', 'search', 'found', 'newest', 'dictation', 'auto-send-off',
     'react', 'react-remove', 'react-agree', 'react-go', 'react-disagree', 'react-unclear', 'react-stop', 'react-redo', 'react-later', 'react-love',
     'react-agree-hint', 'react-go-hint', 'react-disagree-hint', 'react-unclear-hint', 'react-stop-hint', 'react-redo-hint', 'react-later-hint', 'react-love-hint',
-    'decide', 'media', 'media-pictures', 'media-files', 'media-none', 'see-in-thread', 'done-end', 'done-end-note', 'dictated', 'side-now', 'side-machine', 'side-nothing', 'history-changed']);
+    'decide', 'media', 'media-pictures', 'media-files', 'media-none', 'see-in-thread', 'done-end', 'done-end-note', 'dictated', 'side-now', 'side-machine', 'side-nothing', 'history-changed',
+    'earlier', 'media-earlier']);
 /* THE REACTIONS offered by default, each with its Lucide icon; their words
    are "react-<id>" (shown under the icon) and "react-<id>-hint" (on hover).
    The same ids as REACTIONS of parley-host.mjs, which says which wake. */
@@ -218,6 +234,8 @@ export const IDLE_MS = 2 * 60 * 1000;
 /* The agent read the person's message and said nothing yet: "Received, thinking..." after this long (at once by default),
    and "No answer yet" after the second. Parley says it was received, never what the agent does. */
 export const RECEIVED_MS = 0;
+/* What is shown at first, unless the application says otherwise (`window`): the newest so many messages. */
+export const WINDOW = 200;
 export const NO_ANSWER_MS = 5 * 60 * 1000;
 /* The pulse of the agent's tool (its hooks: it acts, its turn ended) is a sign of life this long after its last beat:
    "Working..." where nothing would be said, and what it does now does not go still. Older: as if there were none. */
@@ -763,6 +781,37 @@ export function media(data, { locale } = {}) {
     const list = [...found.values()].map((x, i) => ({ x, i })).sort((a, b) => (b.x.at ?? 0) - (a.x.at ?? 0) || a.i - b.i).map(({ x: { at, ...x } }) => x);
     return { pictures: list.filter((x) => x.picture), files: list.filter((x) => !x.picture) };
 }
+
+/* A PART OF THE THREAD (see read() of the host, and WINDOW in the protocol). The
+   screen is given the end of the thread, and asks for the rest when it is wanted:
+   the page before it ("Earlier messages"), the part up to a message found. Then,
+   at each look, only what changed since its cursor. Two pure functions put them
+   together; what the application gives without a cursor is taken whole, as before. */
+const keyOf = (m) => `${m?.from === 'system' ? 'y' : 'm'}:${String(m?.id ?? '')}`;
+const byAt = (a, b) => String(a.at ?? '').localeCompare(String(b.at ?? ''));
+const union = (a, b) => { const all = new Map((Array.isArray(a) ? a : []).filter((x) => x && typeof x === 'object').map((x) => [keyOf(x), x])); for (const x of Array.isArray(b) ? b : []) if (x && typeof x === 'object') all.set(keyOf(x), x); return [...all.values()].sort(byAt); };
+/* What changed since the cursor, put into what is shown: a message again replaces itself;
+   a new one comes in, unless it is older than what is shown (the part before is not here). */
+export function since(base, delta) {
+    if (!delta || typeof delta !== 'object' || delta.since !== true || !base || typeof base !== 'object') return delta;
+    const oldest = Number(base.window?.more) > 0 && typeof base.window?.from === 'string' ? base.window.from : null;
+    const known = new Set((Array.isArray(base.messages) ? base.messages : []).map(keyOf));
+    const fresh = (Array.isArray(delta.messages) ? delta.messages : []).filter((m) => m && (known.has(keyOf(m)) || oldest === null || String(m.at ?? '') >= oldest));
+    const out = { ...base, messages: union(base.messages, fresh), steps: union(base.steps, delta.steps) };
+    for (const k of ['waiting', 'status', 'unread', 'pulse', 'files', 'altered', 'about', 'cursor']) if (Object.hasOwn(delta, k)) out[k] = delta[k];
+    return out;
+}
+/* An earlier part of the thread, put before what is shown: what is shown stays as it is
+   (its cursor too: what changed in it is asked for from there). */
+export function earlier(base, page) {
+    if (!page || typeof page !== 'object' || !Array.isArray(page.messages)) return base;
+    if (!base || typeof base !== 'object') return page;
+    const w = page.window && typeof page.window === 'object' ? page.window : {};
+    return { ...base, messages: union(page.messages, base.messages), steps: union(page.steps, base.steps),
+        window: { ...(base.window ?? {}), before: w.before ?? null, more: Number(w.more) || 0, from: w.from ?? base.window?.from ?? null } };
+}
+/* `window` of mount: { messages: N } or { days: D }, as asked of load(). */
+export const windowOf = (w) => (w && Number.isInteger(w.days) && w.days > 0 ? { days: w.days } : { last: w && Number.isInteger(w.messages) && w.messages > 0 ? w.messages : WINDOW });
 
 /* THE QUICK ANSWERS ABOVE THE BOX, as plain data: the choices of the
    question the agent asks now (the newest one not answered nor closed),
@@ -1785,8 +1834,11 @@ function card(file, words, open, size, title) {
 export function mount(root, { load, send, words = {}, open, terminal, remind, view: first = 'simple', onView, every = 3000, locale,
     voice: speaking, autoSend = false, onAutoSend, replies: ready = [], enter = 'auto', touch, attach, act,
     markdown: rich = false, picture, diagram, highlight, agentName, agentTool, react, reactions: offered = REACTIONS,
-    receivedAfter = RECEIVED_MS, noAnswerAfter = NO_ANSWER_MS, back = true, draft: draftKey = '', math: mathGiven, refs: zoneRefs } = {}) {
+    receivedAfter = RECEIVED_MS, noAnswerAfter = NO_ANSWER_MS, back = true, draft: draftKey = '', math: mathGiven, refs: zoneRefs,
+    window: shownAtFirst, search: searchAll } = {}) {
     const steps = stepper(back);
+    /* What is asked of load() at first, and for each page before it: { last } or { days }. */
+    const span = windowOf(shownAtFirst);
     const formula = mathFrom(mathGiven);
     /* The set of reactions offered: well formed, each with an icon this file has. */
     const reactions = (Array.isArray(offered) ? offered : REACTIONS).filter((r) => r && /^[a-z][a-z0-9-]{0,29}$/.test(r.id) && typeof r.icon === 'string').slice(0, 12);
@@ -1805,6 +1857,8 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
     /* Kept at the newest, as a chat is, until the reader scrolls up; and again once back down. */
     let sticky = true;
     let awayCount = 0;
+    /* A page put before what is shown: how far from the bottom the reader was, kept. */
+    let anchor = null;
     root.classList.add('parley');
     const top = el('div', 'parley-top');
     const status = el('p', 'parley-status'); status.setAttribute('role', 'status');
@@ -2390,7 +2444,15 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
             row.dataset.found = 'true'; setTimeout(() => { delete row.dataset.found; }, 1800);
             paintJump();
         };
+        /* What is shown is the end of the thread: the pictures of the part before it come with it, on demand. */
         function paint3() {
+            fill();
+            if (!(Number(latest?.window?.more) > 0)) return;
+            const more = button(said(words, 'media-earlier'), 'parley-media-earlier', async () => { more.disabled = true; await before(); if (!box.hidden) paint3(); });
+            more.disabled = Boolean(fetching);
+            body2.append(more);
+        }
+        function fill() {
             const m = media(latest, { locale });
             for (const b of [tPictures, tFiles]) b.setAttribute('aria-selected', String(b.dataset.tab === on));
             tPictures.textContent = `${said(words, 'media-pictures')} (${m.pictures.length})`; tFiles.textContent = `${said(words, 'media-files')} (${m.files.length})`;
@@ -2479,20 +2541,24 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
         const v = view(data, { words, view: as, locale, agentName, agentTool, receivedAfter, noAnswerAfter });
         paintReply(v);
         const small = narrow();
-        const mark = JSON.stringify([v, small, [...expanded], searching ? query.value : '']);
-        if (mark === shown) return;
+        const older = Number(data?.window?.more) > 0 && typeof data?.window?.before === 'string' ? Number(data.window.more) : 0;
+        const mark = JSON.stringify([v, small, [...expanded], searching ? query.value : '', older]);
+        if (mark === shown) { anchor = null; return; }
         shown = mark;
         for (const b of toggles) b.setAttribute('aria-pressed', String(b.dataset.view === v.view));
         status.hidden = !v.status;
         if (v.status) { status.dataset.state = v.status.state; status.textContent = v.status.text; status.title = [v.status.text, v.status.when].filter(Boolean).join(' - '); }
-        /* The newest is shown: when the reader was at the bottom already, or when they wrote. */
-        const wrote = v.items.length > count && v.items.at(-1)?.from === 'person';
-        const atBottom = sticky || wrote;
+        /* The newest is shown: when the reader was at the bottom already, or when they wrote -- not when what came is a page before. */
+        const paging = anchor !== null;
+        const wrote = !paging && v.items.length > count && v.items.at(-1)?.from === 'person';
+        const atBottom = !paging && (sticky || wrote);
         const keep = atBottom ? 0 : thread.scrollTop;
-        if (!atBottom && v.items.length > count) { awayCount += v.items.length - count; paintJump(); }
+        if (!atBottom && !paging && v.items.length > count) { awayCount += v.items.length - count; paintJump(); }
         count = v.items.length;
         /* What arrives while the thread is open comes in softly, and is marked a moment: never on the first look, nor what was there. */
-        const made = v.rows.map((row) => { const r = wrap(row, rowOf(row, v)); if (seenKeys !== null && row.key && !seenKeys.has(row.key) && !['day', 'gap'].includes(row.type)) r.dataset.arrived = row.type === 'message' && row.from !== 'system' ? 'message' : 'line'; return r; });
+        const made = v.rows.map((row) => { const r = wrap(row, rowOf(row, v)); if (!paging && seenKeys !== null && row.key && !seenKeys.has(row.key) && !['day', 'gap'].includes(row.type)) r.dataset.arrived = row.type === 'message' && row.from !== 'system' ? 'message' : 'line'; return r; });
+        /* The thread goes further back: one button at its top asks for the page before. */
+        if (older) { const b = button(said(words, 'earlier'), 'parley-earlier', () => { void before(); }); b.title = `${said(words, 'earlier')} (${older})`; b.disabled = Boolean(fetching); const r = el('div', 'parley-row'); r.dataset.type = 'earlier'; r.append(b); made.unshift(r); }
         const firstLook = seenKeys === null;
         seenKeys = new Set([...(seenKeys ?? []), ...v.rows.map((row) => row.key).filter(Boolean)]);
         if (firstLook && !v.rows.length) seenKeys = new Set();
@@ -2516,8 +2582,9 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
                 aside.replaceChildren(fold, ...way);
             } else aside.replaceChildren(...sideNow(v), sideOf(v), ...way);
         }
+        if (paging) { thread.scrollTop = Math.max(0, thread.scrollHeight - anchor); anchor = null; }
         if (searching) { mark2(moveToLast); moveToLast = false; }
-        if (atBottom && !searching) { bottom(); sticky = true; awayCount = 0; paintJump(); requestAnimationFrame(bottom); } else if (!searching) thread.scrollTop = keep;
+        if (paging) { /* kept where it was, above */ } else if (atBottom && !searching) { bottom(); sticky = true; awayCount = 0; paintJump(); requestAnimationFrame(bottom); } else if (!searching) thread.scrollTop = keep;
     }
     const paintJump = () => { jump.hidden = sticky; jumpCount.textContent = awayCount > 0 ? String(awayCount) : ''; jumpCount.hidden = awayCount === 0; };
     jump.addEventListener('click', () => { sticky = true; awayCount = 0; bottom(); paintJump(); });
@@ -2527,7 +2594,32 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
     settle?.observe(thread);
     /* A picture that arrives after the page was drawn makes it taller: the newest stays in sight. */
     thread.addEventListener('load', () => { if (sticky) bottom(); }, true);
-    async function refresh() { try { paint(await load()); } catch { /* shown again at the next look */ } }
+    /* A look: only what changed since the cursor the application gave, when it gives one; else all of it again, as before. */
+    async function refresh() {
+        try {
+            const cursor = typeof latest?.cursor === 'string' && latest.cursor ? latest.cursor : null;
+            const got = await load(cursor ? { ...span, since: cursor } : { ...span });
+            paint(cursor ? since(latest, got) : got);
+        } catch { /* shown again at the next look */ }
+    }
+    /* THE PART BEFORE what is shown: "Earlier messages", at the top; where the reader was stays in sight. */
+    let fetching = null;
+    function before(more = {}) {
+        if (fetching) return fetching;
+        const from = latest?.window?.before;
+        if (typeof from !== 'string' || !from) return Promise.resolve(false);
+        for (const b of root.querySelectorAll('.parley-earlier, .parley-media-earlier')) b.disabled = true;
+        fetching = (async () => {
+            try {
+                const page = await load({ ...(more.from ? {} : span), before: from, ...more });
+                if (gone || !page || !Array.isArray(page.messages)) return false;
+                anchor = thread.scrollHeight - thread.scrollTop;
+                paint(earlier(latest, page));
+                return true;
+            } catch { return false; } finally { fetching = null; for (const b of root.querySelectorAll('.parley-earlier, .parley-media-earlier')) b.disabled = false; }
+        })();
+        return fetching;
+    }
     /* The messages as last drawn. */
     const latestItems = () => (latest ? view(latest, { words, view: as, locale, agentName, agentTool, receivedAfter, noAnswerAfter }).items : []);
     /* ---- the search ---- */
@@ -2556,13 +2648,54 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
         }
         if (move) current = matches.length ? matches.length - 1 : 0;
         current = Math.min(current, Math.max(0, matches.length - 1));
-        found.textContent = q ? said(words, 'found', { n: matches.length ? current + 1 : 0, m: matches.length }) : '';
+        counted();
         matches.forEach((m, i) => { if (i === current) m.dataset.now = 'true'; });
         matches[current]?.scrollIntoView?.({ block: 'center' });
     }
-    const step = (n) => { if (!matches.length) return; matches[current].dataset.now = 'false'; current = (current + n + matches.length) % matches.length; matches[current].dataset.now = 'true'; found.textContent = said(words, 'found', { n: current + 1, m: matches.length }); matches[current].scrollIntoView?.({ block: 'center' }); };
+    /* THE WHOLE THREAD SEARCHED, by the application (`search`), when only its end is shown: what
+       was found further back counts, and stepping back to it brings the part up to it. */
+    let afar = { q: '', matches: [] };
+    const notHere = () => {
+        if (afar.q !== query.value.trim().toLowerCase()) return [];
+        const here = new Set((latest?.messages ?? []).filter((m) => m && m.from !== 'system').map((m) => String(m.id ?? '')));
+        return afar.matches.filter((m) => m && typeof m.id === 'string' && !here.has(m.id));
+    };
+    const counted = () => {
+        const q = query.value.trim();
+        const far = notHere().length;
+        found.textContent = q ? said(words, 'found', { n: matches.length ? far + current + 1 : 0, m: far + matches.length }) : '';
+    };
+    /* The part of the thread up to a message found further back, then that message, its last word found. */
+    async function reach(match) {
+        if (!(await before({ from: match.id }))) return;
+        const marks = matches.map((m, i) => ({ m, i })).filter(({ m }) => m.closest?.('.parley-said')?.dataset.id === match.id);
+        if (!marks.length) return;
+        for (const m of matches) m.dataset.now = 'false';
+        current = marks.at(-1).i; matches[current].dataset.now = 'true'; counted(); matches[current].scrollIntoView?.({ block: 'center' });
+    }
+    const step = (n) => {
+        const far = notHere();
+        /* Back from the oldest found here: the next one further back, brought. */
+        if (far.length && (!matches.length || (n < 0 && current === 0))) { void reach(far[0]); return; }
+        if (!matches.length) return;
+        matches[current].dataset.now = 'false'; current = (current + n + matches.length) % matches.length; matches[current].dataset.now = 'true'; counted(); matches[current].scrollIntoView?.({ block: 'center' });
+    };
+    let asked = 0;
+    async function searchFar() {
+        const q = query.value.trim();
+        const mine = ++asked;
+        if (!searchAll || q.length < 2) { afar = { q: '', matches: [] }; counted(); return; }
+        try {
+            const r = await searchAll(q);
+            if (mine !== asked || gone || !searching) return;
+            afar = { q: q.toLowerCase(), matches: Array.isArray(r?.matches) ? r.matches : [] };
+            counted();
+            /* Nothing found in what is shown: the newest found further back is brought at once. */
+            if (!matches.length && notHere().length) void reach(notHere()[0]);
+        } catch { /* the search of what is shown stays */ }
+    }
     function openSearch() { steps.opened('search', closeSearch); searching = true; finder.hidden = false; showPrefs(false); query.focus(); query.select?.(); repaint(); }
-    function closeSearch() { steps.closed('search'); searching = false; finder.hidden = true; query.value = ''; matches = []; repaint(); sticky = true; bottom(); paintJump(); }
+    function closeSearch() { steps.closed('search'); searching = false; finder.hidden = true; query.value = ''; matches = []; afar = { q: '', matches: [] }; asked += 1; repaint(); sticky = true; bottom(); paintJump(); }
     searchButton.addEventListener('click', openSearch);
     mediaButton.addEventListener('click', () => { showPrefs(false); shelf.show(); });
     /* A right click on a message of the agent: its reactions. */
@@ -2575,7 +2708,7 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
         event.preventDefault(); reacting.open(item, bubble);
     });
     let typing2;
-    query.addEventListener('input', () => { clearTimeout(typing2); typing2 = setTimeout(() => { moveToLast = true; repaint(); }, 150); });
+    query.addEventListener('input', () => { clearTimeout(typing2); typing2 = setTimeout(() => { moveToLast = true; repaint(); void searchFar(); }, 150); });
     query.addEventListener('keydown', (event) => { if (event.key === 'Escape') { event.preventDefault(); closeSearch(); } else if (event.key === 'Enter') { event.preventDefault(); step(event.shiftKey ? -1 : 1); } });
     root.addEventListener('keydown', (event) => {
         if ((event.ctrlKey || event.metaKey) && !event.altKey && String(event.key).toLowerCase() === 'f') { event.preventDefault(); openSearch(); }

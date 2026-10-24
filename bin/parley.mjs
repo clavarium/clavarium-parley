@@ -2,7 +2,7 @@
 /* THE COMMAND: the seven verbs for any agent that can run a command. It writes
  * the same files as the MCP server, through the same code (server/).
  *
- *   parley read [--all] | tell | ask | show | close | doing | status | guide | --help
+ *   parley read [--last N | --days D] [--before ID] | tell | ask | show | close | doing | status | guide | --help
  *
  * Exit codes: 0 done; 1 refused (said on standard error); 2 no folder found;
  * 64 not understood. */
@@ -39,7 +39,8 @@ export const GUIDE = `How to work with the person through Parley
    A formula, a family, zones on a picture: only when
    the topic calls for it (parley --help says how).
 
-5. After a restart: parley read --all
+5. After a restart: parley read --last 100
+   Older: parley read --before ID (it gives the ID)
 
 6. Forgot how? parley guide.
    Every command: parley --help`;
@@ -53,8 +54,9 @@ export const HELP = `parley: talk with the person you work for. They read and an
 
   parley read                          read what they wrote since you last read (answers and the
                                        files they attached included), and your questions still open
-  parley read --all                    the whole exchange, both sides, oldest first: to pick up the
-                                       thread after a restart
+  parley read --last 100               the end of the exchange, both sides, oldest first (or --days 2):
+                                       to pick up the thread after a restart; it ends with how to read
+                                       what came before: parley read --before ID (as far back as needed)
   parley tell [--short "title"] "text" tell them something: where you are, what you did, what you found
   parley ask [--short "title"] [--pick-many] "question" [--choice "answer" ...]
                                        ask them something; give the answers they can pick when you can,
@@ -195,7 +197,22 @@ export function run(argv, { env = process.env, cwd = process.cwd(), stdin = () =
     const verbs = bridge(folder);
     try {
         let said;
-        if (verb === 'read') { if (rest.some((a) => a !== '--all')) return { code: 64, out: '', err: 'read takes nothing, or --all.\n' }; said = verbs.read({ all: rest.includes('--all') }); if (!/^(No new message|Nothing was written yet)/.test(said)) said = `${said}\n${REMINDER}`; }
+        if (verb === 'read') {
+            /* The end of the exchange: --last N, --days D, --all; what is before it: --before ID. */
+            const how = {};
+            for (let i = 0; i < rest.length; i += 1) {
+                const a = rest[i];
+                if (a === '--all') { how.all = true; continue; }
+                if (!['--last', '--days', '--before'].includes(a) || rest[i + 1] === undefined) return { code: 64, out: '', err: 'read takes nothing, or --last N, --days D, --before ID, --all.\n' };
+                const value = rest[(i += 1)];
+                if (a === '--before') how.before = value;
+                else if (!/^[1-9]\d{0,4}$/.test(value)) return { code: 64, out: '', err: `${a} takes a number.\n` };
+                else how[a.slice(2)] = Number(value);
+            }
+            if (how.last !== undefined && how.days !== undefined) return { code: 64, out: '', err: 'read takes --last or --days, not both.\n' };
+            said = verbs.read(how);
+            if (!/^(No new message|Nothing was written yet)/.test(said)) said = `${said}\n${REMINDER}`;
+        }
         else if (verb === 'tell' || verb === 'ask') {
             /* --short "title", anywhere among the words. */
             const at2 = rest.indexOf('--short');

@@ -10,7 +10,8 @@
  *
  *   events, to `on(event)`          actions, called by the application
  *   person-wrote  {message, unread} say(text, answers, files)
- *   agent-said    {message}         read()
+ *   agent-said    {message}         read(options)   (a part of the thread: last, days, before, since)
+ *                                   search(text)    (the whole thread searched)
  *   agent-asked   {message}         invite(lang, options)  -> a text
  *   agent-showed  {message}
  *   agent-status  {message}
@@ -47,6 +48,16 @@ export const LISTED_MAX = 50;
 /* Steps (what it said it was doing, and its states) kept for the screen. */
 export const STEPS_MAX = 500;
 export const FILE_MAX = 2 * 1024 * 1024;
+/* A PART OF THE THREAD (read({ last | days | before | since })): the newest WINDOW messages
+   by default, PAGE_MAX at most in one answer; a window of days holds LEAST messages at least
+   (a quiet week is not an empty screen), DAYS_MAX days at most; a page opened at a message
+   found starts CONTEXT messages before it. SEARCH_MAX messages found at most. */
+export const WINDOW = 200;
+export const PAGE_MAX = 2000;
+export const LEAST = 20;
+export const DAYS_MAX = 366;
+export const CONTEXT = 3;
+export const SEARCH_MAX = 100;
 export const STATES = ['working', 'waiting', 'done'];
 /* Files the person attaches to one message, at most. */
 export const FILES_MAX = 10;
@@ -79,7 +90,14 @@ const TEXTS = fileURLToPath(new URL('../ui/texts/', import.meta.url));
 export const WAKE = 'You have a new message: run "parley read".';
 /* What an application may type after the agent lost its memory (its machine
    restarted, a new session): the exchange is still there to be read whole. */
-export const REREAD = 'Your chat with the person is kept: run "parley read --all" before going on. Forgot how to work with them? parley guide';
+/* It reads THE END of the thread (the newest messages, or those of the last days), and is told
+   there how to read further back: the thread is never cut, summarised nor compacted. */
+export const REREAD_LAST = 100;
+export function reread({ last, days } = {}) {
+    const how = Number.isInteger(days) && days > 0 ? `--days ${Math.min(days, DAYS_MAX)}` : `--last ${Number.isInteger(last) && last > 0 ? Math.min(last, 1000) : REREAD_LAST}`;
+    return `Your chat with the person is kept: run "parley read ${how}" before going on; it says how to read further back. Forgot how to work with them? parley guide`;
+}
+export const REREAD = reread();
 const NAMES = { en: 'English', fr: 'French' };
 /* The name of a language, in English, for a sentence an agent reads. */
 export function languageName(lang) {
@@ -157,15 +175,6 @@ export function cited(text) {
 }
 const parsed = (line) => { try { const j = JSON.parse(line); return j && typeof j === 'object' && !Array.isArray(j) ? j : undefined; } catch { return undefined; } };
 
-/* The lines of a file that only grows: the last part of it, never a link,
-   never more than is wanted, and a line that is not an object is skipped. */
-function lines(file) {
-    try {
-        if (lstatSync(file).isSymbolicLink() || statSync(file).size > 16 * FILE_MAX) return [];
-        const text = readFileSync(file, 'utf8');
-        return (text.length > FILE_MAX ? text.slice(-FILE_MAX) : text).split('\n').filter(Boolean).map(parsed).filter(Boolean);
-    } catch { return []; }
-}
 /* How many whole lines the agent has read, as it wrote it. */
 function readCount(dir) { try { return Math.max(0, Number(JSON.parse(readFileSync(`${dir}/read.json`, 'utf8')).lines) || 0); } catch { return 0; } }
 /* When the agent read, as it wrote it: [{ lines, at }], oldest first. */
@@ -182,6 +191,39 @@ function pulseOf(dir, now) {
         if (!p || typeof p.busy !== 'boolean' || typeof p.at !== 'string' || !Number.isFinite(t)) return null;
         return { busy: p.busy, at: new Date(Math.min(t, now.getTime())).toISOString() };
     } catch { return null; }
+}
+/* THE WHOLE LINES OF A BRIDGE FILE, parsed, in place: a line that is not an object
+   stays as `undefined`, so that a line keeps its place (a cursor counts places). A
+   line not ended yet waits, unless it reads whole. Read again only when the file changed; never through a link. */
+const WHOLE = new Map();
+function wholeLines(file) {
+    try {
+        const st = lstatSync(file);
+        if (st.isSymbolicLink() || !st.isFile() || st.size > 16 * FILE_MAX) return [];
+        const stamp = statOf(st);
+        const known = WHOLE.get(file);
+        if (known?.stamp === stamp) return known.list;
+        const text = readFileSync(file, 'utf8');
+        const end = text.lastIndexOf('\n') + 1;
+        const list = text.slice(0, end).split('\n').filter(Boolean).map(parsed);
+        /* A last line with no end yet is taken once it reads whole (a hand-written file); never in part. */
+        const rest = parsed(text.slice(end));
+        if (rest) list.push(rest);
+        WHOLE.set(file, { stamp, list });
+        return list;
+    } catch { return []; }
+}
+/* The lines kept, parsed in place: the copy only grows, so only what is new is parsed. */
+const PARSED = new Map();
+function parsedOf(key, raw) {
+    const known = PARSED.get(key);
+    if (known && raw.length >= known.n && (known.n === 0 || raw[known.n - 1] === known.last)) {
+        if (raw.length > known.n) { known.list = [...known.list, ...raw.slice(known.n).map(parsed)]; known.n = raw.length; known.last = raw.at(-1); }
+        return known.list;
+    }
+    const entry = { n: raw.length, last: raw.at(-1), list: raw.map(parsed) };
+    PARSED.set(key, entry);
+    return entry.list;
 }
 function lineCount(file) { try { if (lstatSync(file).isSymbolicLink()) return 0; return readFileSync(file, 'utf8').split('\n').filter(Boolean).length; } catch { return 0; } }
 
@@ -237,12 +279,6 @@ function bridgeLines(file, seen) {
 const idOf = (line) => { const id = parsed(line)?.id; return typeof id === 'string' ? id : ''; };
 const atOf = (line) => { const at = parsed(line)?.at; return typeof at === 'string' ? at : ''; };
 const hashOf = (line) => createHash('sha256').update(line).digest('hex').slice(0, 16);
-/* The newest lines kept, FILE_MAX characters of them, parsed: what lines() gives of a bridge file. */
-function tail(list) {
-    let size = 0, from = list.length;
-    while (from > 0 && size + list[from - 1].length + 1 <= FILE_MAX) size += list[--from].length + 1;
-    return list.slice(from).map(parsed).filter(Boolean);
-}
 /* What changed in a bridge file, against what is kept of it: the lines kept that are not
    there in their order any more (`lost`, by place; `changed` when a line of the same id
    stands there instead), the lines that are new at its end (`fresh`, taken: the agent's
@@ -388,8 +424,6 @@ export class Parley {
     }
     /* What was noted: [{side, kind, line, id, was, at}], oldest first. */
     #altered() { return (kept(`${this.#keep}/altered.jsonl`)?.lines ?? []).map(parsed).filter(Boolean).map(({ key, ...n }) => n); }
-    /* The lines of one side, parsed: what is kept, with a keep folder; the bridge file, without. */
-    #lines(name) { return this.#keep ? tail(this.#sync(name)) : lines(`${this.#dir}/${name}`); }
     /* A line of the person's, written: kept first, so that a bridge refusing it says so. */
     #write(list) {
         const text = list.map((l) => JSON.stringify(l));
@@ -401,41 +435,49 @@ export class Parley {
     /* How many messages of the person the agent has not read. */
     unread() { return Math.max(0, (this.#keep ? this.#sync('to-agent.jsonl').length : lineCount(`${this.#dir}/to-agent.jsonl`)) - readCount(this.#dir)); }
 
-    /* Both sides, in the order they were written; how many questions wait;
-       where the agent says it is; its steps -- every state it said and every
-       line of what it was doing, in order, for the screen to put between the
-       messages; the files it showed; how many of the person's messages it has
-       not read (each says `seen`). Saying what it does means it works: a
-       `doing` after "done" or "waiting" makes the status "working" again. */
-    read() {
-        const all = this.#lines('from-agent.jsonl').map((m) => this.#fromAgent(m));
+    /* The lines of one side, parsed in place (see wholeLines): the copy kept, with a keep
+       folder; the bridge file, without. Their places are what a cursor counts. */
+    #raw(name) { return this.#keep ? parsedOf(`${this.#keep}/${name}`, this.#sync(name)) : wholeLines(`${this.#dir}/${name}`); }
+
+    /* THE WHOLE THREAD, as handed over: every message of both sides in order, every step,
+       what is open, where it is. What read() gives is a part of it; nothing is left out
+       of what is counted (the questions open, the status, the files, the unread). */
+    #model() {
+        const fromRaw = this.#raw('from-agent.jsonl');
+        const toRaw = this.#raw('to-agent.jsonl');
+        /* Where each message stands in its file: what a cursor compares. */
+        const place = new WeakMap();
+        const all = [];
+        fromRaw.forEach((m, i) => { if (!m) return; const e = this.#fromAgent(m); place.set(e, i); all.push(e); });
         const agent = all.filter((m) => m.kind !== 'close');
         const closes = new Map(all.filter((m) => m.kind === 'close').map((m) => [m.answers, { text: m.text, at: m.at }]));
-        const unread = this.unread();
-        const written = this.#lines('to-agent.jsonl');
+        const read = Math.min(readCount(this.#dir), toRaw.length);
+        const unread = Math.max(0, toRaw.length - readCount(this.#dir));
         /* When each of the person's messages was read: the first read that reached it. */
         const reads = readTimes(this.#dir);
         const seenAt = (i) => reads.find((r) => r.lines > i)?.at ?? null;
         /* A reaction is no message: it is put on the message it is about, the newest one standing. */
         const reactions = new Map();
-        written.forEach((m, i) => {
-            if (typeof m.reaction !== 'string' || typeof m.to !== 'string') return;
+        toRaw.forEach((m, i) => {
+            if (!m || typeof m.reaction !== 'string' || typeof m.to !== 'string') return;
             if (m.removed === true) { if (reactions.get(m.to)?.id === m.reaction) reactions.delete(m.to); return; }
-            reactions.set(m.to, { id: oneLine(m.reaction, 30), at: String(m.at ?? ''), seen: i < written.length - unread });
+            reactions.set(m.to, { id: oneLine(m.reaction, 30), at: String(m.at ?? ''), seen: i < toRaw.length - unread });
         });
-        const person = written.map((m, i) => (typeof m.reaction === 'string' ? null : (() => {
-            const seen = i < written.length - unread;
-            return { from: 'person', id: String(m.id ?? ''), at: String(m.at ?? ''), kind: 'say', text: clean(m.text), choices: [], seen, ...(seen && seenAt(i) ? { seenAt: seenAt(i) } : {}),
+        const person = [];
+        toRaw.forEach((m, i) => {
+            if (!m || typeof m.reaction === 'string') return;
+            const seen = i < toRaw.length - unread;
+            const e = { from: 'person', id: String(m.id ?? ''), at: String(m.at ?? ''), kind: 'say', text: clean(m.text), choices: [], seen, ...(seen && seenAt(i) ? { seenAt: seenAt(i) } : {}),
                 ...(m.answers ? { answers: String(m.answers), question: oneLine(m.question, 300) } : {}), ...(m.answers && Array.isArray(m.picked) ? { picked: m.picked.slice(0, 8).map((x) => oneLine(x, 200)).filter(Boolean) } : {}),
                 ...(m.answers && Array.isArray(m.replies) ? { replies: m.replies.slice(0, GROUP_MAX).filter((r) => r && typeof r === 'object' && typeof r.id === 'string').map((r) => ({ id: oneLine(r.id, 30), ...(oneLine(r.label, 40) ? { label: oneLine(r.label, 40) } : {}), ...(Array.isArray(r.picked) ? { picked: r.picked.slice(0, 8).map((x) => oneLine(x, 200)).filter(Boolean) } : { text: clean(r.text).slice(0, 2000) }) })) } : {}), ...(m.re ? { re: String(m.re), quote: oneLine(m.quote, 300) } : {}), ...(Array.isArray(m.files) && m.files.length ? { files: this.#files(m.files) } : {}), ...(m.via === 'voice' ? { via: 'voice' } : {}), ...(aboutOf(m.about) ? { about: aboutOf(m.about) } : {}) };
-        })())).filter(Boolean);
+            place.set(e, i);
+            person.push(e);
+        });
         for (const m of agent) if (reactions.has(m.id)) m.reaction = reactions.get(m.id);
         const answered = new Set(person.map((m) => m.answers).filter(Boolean));
         /* A question it closed says the answer it understood; answered with its buttons after that, the answer is the person's. */
         for (const m of agent) if (m.kind === 'ask' && closes.has(m.id)) m.closed = closes.get(m.id);
-        const messages = [...agent.filter((m) => !STEP.has(m.kind)), ...person].sort((a, b) => a.at.localeCompare(b.at)).slice(-SHOWN_MAX);
-        /* Steps older than the first message kept would sit before a conversation that is no longer there. */
-        const since = messages.length === SHOWN_MAX ? messages[0].at : '';
+        const messages = [...agent.filter((m) => !STEP.has(m.kind)), ...person].sort((a, b) => a.at.localeCompare(b.at));
         const steps = agent.filter((m) => STEP.has(m.kind));
         const last = steps.filter((m) => m.kind === 'status').at(-1);
         const after = steps.at(-1)?.kind === 'doing' && last?.state !== 'working';
@@ -444,15 +486,119 @@ export class Parley {
         const named = new Set(shown.map((f) => f.path));
         const cites = agent.flatMap((m) => (m.refs ?? []).map((r) => ({ path: r.path, note: '', at: m.at, open: r.open, cited: true }))).filter((f) => !named.has(f.path) && named.add(f.path));
         return {
-            messages,
-            waiting: agent.filter((m) => m.kind === 'ask' && !answered.has(m.id) && !closes.has(m.id)).length,
+            all, messages, steps, place, read, unread, fromN: fromRaw.length, toN: toRaw.length, toRaw,
+            open: agent.filter((m) => m.kind === 'ask' && !answered.has(m.id) && !closes.has(m.id)),
             status: after ? { state: 'working', note: '', at: steps.at(-1).at } : last ? { state: last.state, note: last.text, at: last.at } : null,
-            steps: steps.filter((m) => m.at >= since).sort((a, b) => a.at.localeCompare(b.at)).slice(-STEPS_MAX).map((m) => ({ id: m.id, kind: m.kind, state: m.state, note: m.text, at: m.at })),
             files: [...shown, ...cites].sort((a, b) => String(a.at).localeCompare(String(b.at))).slice(-LISTED_MAX),
-            unread,
-            pulse: pulseOf(this.#dir, this.#now()),
-            /* With a keep folder: what changed in the bridge folder after it was kept. */
-            ...(this.#keep ? { altered: this.#altered() } : {}),
+        };
+    }
+    /* A step, as handed over. */
+    static #step(m) { return { id: m.id, kind: m.kind, state: m.state, note: m.text, at: m.at }; }
+    /* What is the same whatever part of the thread is asked for. */
+    #state(t) { return { waiting: t.open.length, status: t.status }; }
+
+    /* Both sides, in the order they were written; how many questions wait;
+       where the agent says it is; its steps -- every state it said and every
+       line of what it was doing, in order, for the screen to put between the
+       messages; the files it showed; how many of the person's messages it has
+       not read (each says `seen`). Saying what it does means it works: a
+       `doing` after "done" or "waiting" makes the status "working" again.
+
+       Without options: the newest SHOWN_MAX messages, as it always was. With
+       them, A PART OF THE THREAD (see WINDOW in the protocol): the files on disk
+       stay whole, only what is handed over changes.
+         { last: N }            the newest N messages (WINDOW by default, PAGE_MAX at most)
+         { days: D }            those of the last D days, LEAST at least
+         { before, last|days }  the same, older than the message `before` (an earlier page)
+         { before, from }       from the message `from` (and CONTEXT before it) up to `before`
+         { all: true }          every message: for the application's own use, not for a screen
+         { since, last|days }   what changed since `cursor` (`since: true`): new messages, those
+                                whose state moved (read, reacted to, closed), new steps; a
+                                cursor that does not fit any more gives the window again
+       Each gives `window` ({ before, more, total, from, until }: the id that asks for the
+       page before it, how many messages are older) and `cursor`. The questions still open
+       come with the newest window whatever their age: they are open. */
+    read(options) {
+        const o = options && typeof options === 'object' && ['last', 'days', 'before', 'from', 'since', 'all'].some((k) => options[k] !== undefined && options[k] !== null && options[k] !== false) ? options : null;
+        /* Nothing written on either side, nothing read since the cursor: nothing to go through. */
+        if (o?.since !== undefined && o.since !== null) {
+            const toN = this.#raw('to-agent.jsonl').length;
+            const now = `${this.#raw('from-agent.jsonl').length}.${toN}.${Math.min(readCount(this.#dir), toN)}`;
+            if (String(o.since) === now) return { since: true, messages: [], steps: [], unread: Math.max(0, toN - readCount(this.#dir)), pulse: pulseOf(this.#dir, this.#now()), ...(this.#keep ? { altered: this.#altered() } : {}), cursor: now };
+        }
+        const t = this.#model();
+        const tail2 = { files: t.files, unread: t.unread, pulse: pulseOf(this.#dir, this.#now()), ...(this.#keep ? { altered: this.#altered() } : {}) };
+        if (!o) {
+            const messages = t.messages.slice(-SHOWN_MAX);
+            /* Steps older than the first message kept would sit before a conversation that is no longer there. */
+            const since = messages.length === SHOWN_MAX ? messages[0].at : '';
+            return { messages, ...this.#state(t), steps: t.steps.filter((m) => m.at >= since).sort((a, b) => a.at.localeCompare(b.at)).slice(-STEPS_MAX).map(Parley.#step), ...tail2 };
+        }
+        const cursor = `${t.fromN}.${t.toN}.${t.read}`;
+        const was = o.since === undefined || o.since === null ? null : /^(\d{1,9})\.(\d{1,9})\.(\d{1,9})$/.exec(String(o.since));
+        /* Only grown since: what is new, and what it changed. A file that shrank (a bridge rewritten, without a keep folder): the window again. */
+        if (was && Number(was[1]) <= t.fromN && Number(was[2]) <= t.toN && Number(was[3]) <= t.read) {
+            const [a, p, r] = [Number(was[1]), Number(was[2]), Number(was[3])];
+            const touched = new Set([
+                ...t.all.filter((m) => m.kind === 'close' && t.place.get(m) >= a).map((m) => m.answers),
+                ...t.toRaw.slice(p).filter((m) => m && typeof m.reaction === 'string' && typeof m.to === 'string').map((m) => m.to),
+            ]);
+            const changed = (m) => {
+                const at = t.place.get(m);
+                if (m.from === 'person') return at >= p || (at >= r && at < t.read);
+                return at >= a || touched.has(m.id);
+            };
+            return { since: true, messages: t.messages.filter(changed), ...this.#state(t), steps: t.steps.filter((m) => t.place.get(m) >= a).slice(-STEPS_MAX).map(Parley.#step),
+                ...(a < t.fromN ? { files: t.files } : {}), unread: tail2.unread, pulse: tail2.pulse, ...(this.#keep ? { altered: tail2.altered } : {}), cursor };
+        }
+        const list = t.messages;
+        let end = list.length;
+        let until = null;
+        if (o.before !== undefined && o.before !== null) {
+            const i = list.findIndex((m) => m.id === String(o.before));
+            end = i < 0 ? 0 : i;
+            until = i < 0 ? null : list[i].at;
+        }
+        const count = (n, d) => (Number.isInteger(n) && n > 0 ? Math.min(n, PAGE_MAX) : d);
+        let start;
+        if (o.all === true) start = 0;
+        else if (o.from !== undefined && o.from !== null && o.before !== undefined && o.before !== null) {
+            const j = list.findIndex((m) => m.id === String(o.from));
+            start = j >= 0 && j < end ? Math.max(0, j - CONTEXT) : end;
+        } else if (o.days !== undefined && o.days !== null && o.last === undefined) {
+            const days = Math.min(DAYS_MAX, Math.max(1, Number(o.days) || 1));
+            const ref = until !== null && Number.isFinite(Date.parse(until)) ? Date.parse(until) : this.#now().getTime();
+            const limit = new Date(ref - days * 86_400_000).toISOString();
+            start = end;
+            while (start > 0 && list[start - 1].at >= limit) start -= 1;
+            start = Math.max(Math.min(start, end - LEAST), end - PAGE_MAX, 0);
+        } else start = Math.max(0, end - count(Number(o.last), WINDOW));
+        const page = list.slice(start, end);
+        /* The newest window: the questions still open come with it, however old. */
+        const extra = o.before === undefined || o.before === null ? t.open.filter((q) => !page.includes(q) && list.indexOf(q) < start) : [];
+        const fromAt = page[0]?.at ?? null;
+        const steps = t.steps.filter((m) => (start === 0 || fromAt === null || m.at >= fromAt) && (until === null || m.at < until)).sort((a, b) => a.at.localeCompare(b.at)).slice(-STEPS_MAX).map(Parley.#step);
+        return { messages: [...extra, ...page], ...this.#state(t), steps, ...tail2,
+            window: { before: start > 0 ? page[0]?.id ?? null : null, more: page.length ? start : 0, total: list.length, from: fromAt, until }, cursor };
+    }
+
+    /* THE WHOLE THREAD SEARCHED, however little of it is shown: the messages whose words hold
+       `text` (case aside; what Markdown marks aside), newest first, SEARCH_MAX at most, each
+       with a few words around what was found; `count`, all of them. */
+    search(text, { limit = SEARCH_MAX } = {}) {
+        const q = oneLine(text, 200).toLowerCase();
+        if (!q) return { matches: [], count: 0 };
+        const words = (m) => [m.text, m.short, m.intro, m.kind === 'show' ? m.path : '', ...(m.files ?? []).map((f) => [f.title, f.name, f.path].filter(Boolean).join(' ')), ...(m.questions ?? []).map((x) => [x.question, ...x.choices].join(' ')), ...(m.choices ?? [])]
+            .filter(Boolean).join('\n').replace(/\*\*|__|`|==/g, '');
+        const found = this.#model().messages.map((m) => ({ m, w: words(m) })).filter((x) => x.w.toLowerCase().includes(q));
+        const max = Number.isInteger(limit) && limit > 0 ? Math.min(limit, SEARCH_MAX) : SEARCH_MAX;
+        return {
+            matches: found.slice(-max).reverse().map(({ m, w }) => {
+                const at = w.toLowerCase().indexOf(q);
+                const from = Math.max(0, at - 40);
+                return { id: m.id, at: m.at, from: m.from, kind: m.kind, text: `${from > 0 ? '…' : ''}${w.slice(from, at + q.length + 60).replace(/\s+/g, ' ').trim()}${at + q.length + 60 < w.length ? '…' : ''}` };
+            }),
+            count: found.length,
         };
     }
 
@@ -469,7 +615,8 @@ export class Parley {
         if (given.length > FILES_MAX) throw new RangeError(`${FILES_MAX} files at most in one message.`);
         const attached = given.map((f) => ({ path: oneLine(f?.path, 1000), name: oneLine(f?.name, 200), size: Number.isInteger(f?.size) && f.size >= 0 ? f.size : undefined, note: oneLine(f?.note, NOTE_MAX) }));
         if (attached.some((f) => !f.path.startsWith('/'))) throw new RangeError('A file is given by its whole path.');
-        const asked = typeof answers === 'string' && answers ? this.read().messages.find((m) => m.from === 'agent' && ['say', 'ask', 'show'].includes(m.kind) && m.id === answers) : undefined;
+        /* Any message of the thread, however old: not only those a screen shows at first. */
+        const asked = typeof answers === 'string' && answers ? this.#model().messages.find((m) => m.from === 'agent' && ['say', 'ask', 'show'].includes(m.kind) && m.id === answers) : undefined;
         /* Ticked: only choices of a question that lets several be ticked, kept in its order. */
         let ticked;
         if (picked !== undefined) {
@@ -528,7 +675,7 @@ export class Parley {
        application is told (person-reacted, with `wakes`: the set's hint) and
        decides whether to tell the agent now. Resolves with read(). */
     react(to, reaction) {
-        const target = this.read().messages.find((m) => m.from === 'agent' && m.id === to && ['say', 'ask', 'show'].includes(m.kind));
+        const target = this.#model().messages.find((m) => m.from === 'agent' && m.id === to && ['say', 'ask', 'show'].includes(m.kind));
         if (!target) throw new RangeError('No such message of the agent.');
         const standing = target.reaction?.id ?? null;
         const kind = reaction === null || reaction === undefined || reaction === '' ? null : String(reaction);
