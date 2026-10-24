@@ -138,6 +138,15 @@ to another message of the agent: `re` (its id) and `quote` (its words). When
 the person dictated part of it: `via: "voice"`, and `parley read` says it may
 hold recognition mistakes.
 
+When the person said it by tapping something the agent drew -- a person of a
+```family, a zone of a ```picture -- `about`: `{label, ref?, picture?, box?}`,
+the label as written, the ref as written (the application's, opaque), the
+picture's path and the zone (`[x, y, w, h]`, fractions of the picture from its
+top left). "Talk about it" sends "Let's talk about Anna." with it; an answer to
+a question about one `?` zone (a choice, or what is typed in reply) carries
+that zone. `parley read` adds `(about "Anna" [app:people/12], the zone 0.2 0.3
+0.18 0.36 of /work/wedding.jpg)`. An older agent reads the text alone.
+
 A REACTION of the person to a message of the agent is a line of its own:
 `{id, at, text: "", reaction, to, quote, toAt}` (`to`: the message, `quote`
 and `toAt`: its words and its time, so that the agent knows which one;
@@ -191,7 +200,7 @@ whole, from the moment it was started: what was posted before is in
 
 | Action | Gives |
 |---|---|
-| `say(text, answers?, files?, {via?, picked?})` | what `read()` gives, after writing; `answers` may be any message of the agent (a question is answered, another replied to); `picked`: the choices ticked of a question with `many`; `replies`: the answers to questions asked together (the text may then be empty: it is made of them) |
+| `say(text, answers?, files?, {via?, picked?})` | what `read()` gives, after writing; `answers` may be any message of the agent (a question is answered, another replied to); `picked`: the choices ticked of a question with `many`; `replies`: the answers to questions asked together (the text may then be empty: it is made of them); `about`: what they tapped to say it (a person of a family, a zone of a picture) |
 | `react(to, reaction)` | a reaction of the set (`REACTIONS`) on a message of the agent, or `null` to take it back; what `read()` gives |
 | `read()` | `messages` (each of the person's says `seen`, and `seenAt` when known, `via` when dictated; each of the agent's may carry `short`, `reaction` (`{id, at, seen}`, the one standing), `files` for a gallery (`[{path, title, open}]`), and `refs`: the paths it cites that `reach` opens; a question it closed, `closed: {text, at}`), `waiting` (questions neither answered nor closed), `status`, `steps` (every `status` and `doing`, in order: `{id, kind, state, note, at}`), `files` (every file shown, and every one cited that can be opened, `cited: true`), `unread`, `pulse` |
 | `invite(lang, {install?, shared?})` | the invitation, a text |
@@ -323,6 +332,36 @@ the newest message of the agent (nothing seems left below it). The text in
 brackets of a picture is its title, under it. Files shown at once are one
 gallery, each its title under it (no title: the name of the file without its
 extension and dashes); the name of the file on hover and in the detailed view.
+
+Three kinds of block are drawn by the library itself, and the agent is told to
+use them only when the topic calls for it:
+
+- **Formulas**: `$...$` and `\(...\)` in a line, `$$...$$` and `\[...\]` on
+  lines of their own; never in code; a `$` that opens before a space or closes
+  after one, or before a digit, is text ("5 $", "$5 and $6"). Drawn by KaTeX,
+  Parley's own copy (`ui/vendor/katex/`, its version and licence beside it),
+  loaded on the first formula only; `math: { url, css }` names another copy,
+  `math: false` keeps formulas as written. KaTeX draws with no trust (no
+  link, class, style or picture of the agent's) and bounded sizes; what it drew
+  is copied into the page through a list of what a formula may hold (its spans,
+  MathML, the SVG of stretched brackets; class, style without an address, the
+  attributes that place things). One it cannot read is shown as its source.
+- **A family**, ```family: one line per person or couple (`A + B`), children
+  indented two spaces under their parents, `(dates)`, `, note` (a couple's:
+  their marriage, its year under their rings), `[Name](ref)` for what the
+  application opens; `# A | B | C` names the generations; `A ~ B : word`, six at
+  most, a link of another kind, dashed with its word. Drawn as SVG made node by
+  node, in the screen's colours. A block that cannot be read is shown as code.
+- **Zones on a picture**, ```picture: a picture as Markdown writes it, then a
+  zone a line: a label (plain, `[label](ref)`, or `?`), `x y w h` as fractions
+  of the picture from its top left, and a line about it; twenty at most. The
+  picture is shown only from a path the application opens, as any picture.
+
+A tap on a person or a zone opens a small card: its label, its line, a button
+for its ref when the application names one (`refs: { label(ref), open(ref) }`:
+the word on the button, or null for none; what opening it does), and "Talk
+about it". A `?` zone asks "What is it?" and Reply. A ref is the
+application's: Parley shows it nowhere and reads nothing in it.
 
 ## Reactions, the media, the viewer
 

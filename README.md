@@ -58,7 +58,7 @@ arrived. See [docs/protocol.md](docs/protocol.md).
 
 | Action | Does |
 |---|---|
-| `say(text, answers, files, {via, picked})` | writes what the person said (`answers`: the message it answers or replies to; `via: 'voice'`: dictated; `picked`: the choices ticked; `replies`: the answers to questions asked together) |
+| `say(text, answers, files, {via, picked})` | writes what the person said (`answers`: the message it answers or replies to; `via: 'voice'`: dictated; `picked`: the choices ticked; `replies`: the answers to questions asked together; `about`: the person or zone they tapped) |
 | `react(to, reaction)` | puts a reaction of the set on a message of the agent, or takes it back (`null`) |
 | `read()` | the exchange: messages, open questions, status, steps (states and what it did, in order), files, unread |
 | `invite(lang, { install, shared })` | the text that asks an agent to use Parley, in English, saying the person's language |
@@ -146,6 +146,8 @@ gives it. Without a slot, nothing of it is shown.
 | `touch` | true on a touch screen (default: any coarse pointer) | the box is never focused by the page, only by a finger: the keyboard never comes up by itself, and a tap on a button of the box leaves it open |
 | `back` | `true` (the default), `false`, or `{ open(name, close), closed(token) }`: the page's own steps | what opens over the thread (the large picture, the media, the reactions, the search, the menu) takes a step of the history, and Back closes the one on top, as on a phone; `false` leaves the history alone; an object hands each step to the page, so that one Back works for the whole page |
 | `draft` | a name for this thread (the application's conversation, say) | what is being written in the box is kept on this device as it is typed, and found again when the thread is shown again (another one looked at meanwhile, the page reloaded); sent, it is let go |
+| `refs` | `{ label(ref), open(ref) }`: the word on the button of a person or a zone the agent linked (`[Anna](app:people/12)`), or null for none; what opening it does | a card on a tap on a person of a family or a zone of a picture: its label, its line, that button, "Talk about it" |
+| `math` | `{ url, css }`: another copy of KaTeX (default: Parley's own, `ui/vendor/katex/`, loaded on the first formula); `false`: formulas as written | formulas, `$...$` and `$$...$$` |
 | `attach` | `{ upload(file, name) }`, resolving with `{ path, name, size }`: where the agent finds the file | a button beside the box picks files; they are shown above it until sent; on Send each is uploaded, then the message goes with them (files alone are a message); in the thread, by name in the person's bubble |
 
 Lines of the application -- what happened around the agent, such as its

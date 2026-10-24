@@ -1,0 +1,4 @@
+KaTeX 0.16.47 (MIT, see LICENSE), from the npm package "katex", unmodified:
+dist/katex.mjs, dist/katex.min.css, dist/fonts/*.woff2 (the style sheet also
+names .woff and .ttf files: a browser that reads woff2 never asks for them).
+Loaded by parley-ui.js on the first formula only.

@@ -598,3 +598,70 @@ mark.parley-found[data-now="true"] { outline: 2px solid var(--parley-ask); }
 .parley .parley-questions-modify:hover { color: var(--parley-action); }
 /* Narrow: the tabs say their number, the one shown its label too. */
 @container parley (max-width: 34rem) { .parley-questions-tab:not([aria-selected="true"]):not([data-summary]) .parley-questions-label { display: none; } }
+
+/* FORMULAS, drawn by KaTeX in the text's colour; its source, as code, until then or when it cannot be read. */
+.parley-math { overflow-wrap: normal; }
+.parley-math .katex { font-size: 1.1em; }
+.parley-math[data-display="true"] { display: block; overflow-x: auto; overflow-y: hidden; padding: .3em 0; text-align: center; }
+.parley-math[data-display="true"] .katex-display { margin: 0; }
+.parley-math-source { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .9em; color: var(--parley-dim); }
+
+/* A FAMILY: a warm paper, the generations in bands, serif names, golden rings and words. */
+.parley {
+  --parley-family-paper: #fbf8f1; --parley-family-band: #f3eee2; --parley-family-card: #ffffff; --parley-family-ink: #1f2a44; --parley-family-dim: #5a6170;
+  --parley-family-gold: #9a7430; --parley-family-inlaw: #b08a4a; --parley-family-born: #3e6b5a; --parley-family-line: #8c8270; --parley-family-gen: #8a8069;
+  --parley-serif: Spectral, Georgia, "Noto Serif", "DejaVu Serif", serif;
+}
+@media (prefers-color-scheme: dark) {
+  .parley:not([data-theme="light"]) { --parley-family-paper: #1a1814; --parley-family-band: #24211b; --parley-family-card: #2b2822; --parley-family-ink: #f1eadb; --parley-family-dim: #b9b09d;
+    --parley-family-gold: #dcb76e; --parley-family-inlaw: #c9a25e; --parley-family-born: #86bba4; --parley-family-line: #8f8775; --parley-family-gen: #a89e88; }
+}
+.parley[data-theme="dark"] { --parley-family-paper: #1a1814; --parley-family-band: #24211b; --parley-family-card: #2b2822; --parley-family-ink: #f1eadb; --parley-family-dim: #b9b09d;
+  --parley-family-gold: #dcb76e; --parley-family-inlaw: #c9a25e; --parley-family-born: #86bba4; --parley-family-line: #8f8775; --parley-family-gen: #a89e88; }
+.parley-family { position: relative; margin: 0; border-radius: 14px; background: var(--parley-family-paper); border: 1px solid var(--parley-line); }
+.parley-family-scroll { overflow-x: auto; border-radius: 14px; }
+.parley-family svg { display: block; width: 100%; max-width: calc(var(--parley-family-width) * 1.1); height: auto; margin: 0 auto; }
+.parley-family-band { fill: var(--parley-family-band); }
+.parley-family-gen { font: 600 10.5px system-ui, sans-serif; letter-spacing: .12em; text-transform: uppercase; fill: var(--parley-family-gen); paint-order: stroke; stroke: var(--parley-family-band); stroke-width: 5px; stroke-linejoin: round; }
+.parley-family-lines line, .parley-family-lines path { stroke: var(--parley-family-line); stroke-width: 1.8; fill: none; }
+.parley-family-links path { stroke: var(--parley-family-gold); stroke-width: 1.3; stroke-dasharray: 5 4; fill: none; }
+.parley-family-word { font: italic 400 13px var(--parley-serif); fill: var(--parley-family-gold); text-anchor: middle; paint-order: stroke; stroke: var(--parley-family-paper); stroke-width: 4px; stroke-linejoin: round; }
+.parley-family-ring { fill: none; stroke: var(--parley-family-gold); stroke-width: 1.8; }
+.parley-family-ring-first { fill: var(--parley-family-paper); }
+.parley-family-person { cursor: pointer; outline: none; }
+.parley-family-card { fill: var(--parley-family-card); stroke: var(--parley-family-born); stroke-width: 1.5; }
+.parley-family-bar { fill: var(--parley-family-born); }
+.parley-family-person[data-inlaw="true"] .parley-family-card { stroke: var(--parley-family-inlaw); }
+.parley-family-person[data-inlaw="true"] .parley-family-bar { fill: var(--parley-family-inlaw); }
+.parley-family-person:focus-visible .parley-family-card, .parley-family-person[data-picked="true"] .parley-family-card { stroke: var(--parley-action); stroke-width: 3; }
+.parley-family-name { font: 600 17px var(--parley-serif); fill: var(--parley-family-ink); text-anchor: middle; }
+.parley-family-dates { font: italic 400 13.5px var(--parley-serif); fill: var(--parley-family-dim); text-anchor: middle; }
+/* Narrow: the tree keeps a size that reads and scrolls sideways, as a wide table does; a fade says there is more. */
+@container parley (max-width: 40rem) {
+  .parley-family svg { min-width: calc(var(--parley-family-width) * .8); }
+  .parley-family-scroll { -webkit-mask-image: linear-gradient(to right, #000 88%, transparent); mask-image: linear-gradient(to right, #000 88%, transparent); }
+}
+
+/* ZONES ON A PICTURE: each outlined, light over dark and dark over light; what the agent asks about, dashed, with "?". */
+.parley-zoned { margin: 0; max-width: 34rem; }
+.parley-zoned-frame { position: relative; }
+.parley-zoned-frame img { display: block; width: 100%; height: auto; border-radius: 10px; cursor: zoom-in; }
+.parley-zoned .parley-caption { display: block; margin-top: .25em; }
+.parley .parley-zone { position: absolute; margin: 0; padding: 0; min-height: 0; background: transparent; cursor: pointer;
+  border: 2px solid rgba(255, 255, 255, .8); border-radius: 12px; box-shadow: 0 0 0 1.5px rgba(0, 0, 0, .45), inset 0 0 0 1px rgba(0, 0, 0, .25); }
+.parley .parley-zone:hover, .parley .parley-zone[data-picked="true"] { border-color: #ffffff; border-width: 3px; box-shadow: 0 0 0 2px rgba(0, 0, 0, .5); }
+.parley .parley-zone[data-unknown="true"] { border: 3px dashed var(--parley-ask); box-shadow: 0 0 0 2px rgba(0, 0, 0, .3); }
+.parley-zone-ask { position: absolute; top: -.85em; right: -.85em; width: 1.7em; height: 1.7em; border-radius: 50%; display: grid; place-items: center;
+  background: var(--parley-ask); color: var(--parley-bg); font-weight: 800; box-shadow: 0 1px 4px rgba(0, 0, 0, .4); }
+
+/* The card of a person or a zone: under it, one at a time. */
+.parley-zone-card { position: absolute; z-index: 3; transform: translateX(-50%); margin-top: 6px; width: max-content; max-width: min(21rem, 80vw); box-sizing: border-box;
+  padding: .6em .75em .65em; border-radius: 12px; background: var(--parley-bg); color: var(--parley-text); border: 1px solid var(--parley-line); box-shadow: 0 8px 24px rgba(0, 0, 0, .3); text-align: left; }
+.parley-zone-card[data-side="end"] { transform: translateX(-80%); }
+.parley-zone-card[data-side="start"] { transform: translateX(-20%); }
+.parley-zone-card-name { font-weight: 700; font-size: 1.05em; }
+.parley-family .parley-zone-card-name { font-family: var(--parley-serif); }
+.parley .parley-zone-card-line { color: var(--parley-dim); margin-top: .1em; font-size: .95em; }
+.parley-zone-card-acts { display: flex; gap: .45em; margin-top: .55em; flex-wrap: wrap; }
+.parley .parley-zone-card-acts button { min-height: 2.3em; padding: 0 .85em; border-radius: 999px; font-size: .92em; }
+.parley .parley-zone-card-main { border-color: var(--parley-action); background: var(--parley-action); color: var(--parley-on-action); font-weight: 650; }

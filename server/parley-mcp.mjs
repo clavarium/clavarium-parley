@@ -91,6 +91,13 @@ const repliesText = (m) => `\n${m.replies.slice(0, GROUP_MAX).filter((r) => r &&
     return t && t.length ? `${head}: ${t.length > 1 ? 'they ticked ' : ''}${t.map((c) => `"${c}"`).join(', ')}` : `${head}, in their own words: ${plain(r.text, 2000)}`;
 }).join('\n')}`;
 const answerText = (m) => { if (Array.isArray(m.replies)) return repliesText(m); const t = ticked(m); return t ? `they ticked ${t.length === 0 ? 'none' : t.map((c) => `"${c}"`).join(', ')}${plain(m.text).trim() && plain(m.text).trim() !== t.join('\n') ? `; they added: ${plain(m.text)}` : ''}` : plain(m.text); };
+/* What they tapped to say it: a person of a family, a zone of a picture. */
+const aboutText = (m) => {
+    const a = m.about;
+    if (!a || typeof a !== 'object' || !plain(a.label, 120).trim()) return '';
+    const box = Array.isArray(a.box) && a.box.length === 4 && a.box.every((n) => typeof n === 'number') ? a.box.join(' ') : '';
+    return ` (about "${plain(a.label, 120).replace(/\s+/g, ' ')}"${a.ref ? ` [${plain(a.ref, 300).replace(/\s+/g, '')}]` : ''}${box && a.picture ? `, the zone ${box} of ${plain(a.picture, 1000)}` : ''})`;
+};
 const reacted = (m) => {
     const name = plain(m.reaction, 30).replace(/[^a-z0-9-]/g, '');
     const target = `your message${m.toAt ? ` of ${plain(m.toAt, 40).slice(0, 16).replace('T', ' ')}` : ''}${m.quote ? ` "${plain(m.quote, 200).replace(/\s+/g, ' ')}"` : ''}`;
@@ -265,7 +272,7 @@ export function bridge(dir, { how = 'run `parley read`' } = {}) {
             const closed = new Set(posted.filter((m) => m.kind === 'close').map((m) => m.answers));
             const open = posted.filter((m) => m.kind === 'ask' && typeof m.id === 'string' && !answered.has(m.id) && !closed.has(m.id));
             const pending = open.length === 0 ? '' : `\nOpen questions (one they answered another way: close it with parley close ID "the answer you understood"):${open.slice(-10).map((m) => `\n  [${m.id.slice(0, ID_SHOWN)}] ${plain(m.text, 200).replace(/\s+/g, ' ')}`).join('')}`;
-            const fromThem = (m) => (m.reaction ? reacted(m) : `${m.answers ? `They answered your question "${plain(m.question, 200)}": ` : m.re ? `They replied to your message "${plain(m.quote, 200)}"${m.via === 'voice' ? ` (${DICTATED})` : ''}: ` : m.via === 'voice' ? `They wrote (${DICTATED}): ` : 'They wrote: '}${m.answers ? answerText(m) : plain(m.text)}${attached(m)}`);
+            const fromThem = (m) => (m.reaction ? reacted(m) : `${m.answers ? `They answered your question "${plain(m.question, 200)}": ` : m.re ? `They replied to your message "${plain(m.quote, 200)}"${m.via === 'voice' ? ` (${DICTATED})` : ''}: ` : m.via === 'voice' ? `They wrote (${DICTATED}): ` : 'They wrote: '}${m.answers ? answerText(m) : plain(m.text)}${aboutText(m)}${attached(m)}`);
             if (all) {
                 const theirs = written.flatMap((m, i) => (m ? [{ at: String(m.at ?? ''), text: `${fromThem(m)}${i >= seen ? ' (new)' : ''}` }] : []));
                 const mine = lines(OUT).filter((m) => m && ['say', 'ask', 'show', 'close'].includes(m.kind)).map((m) => ({ at: String(m.at ?? ''),
@@ -280,7 +287,7 @@ export function bridge(dir, { how = 'run `parley read`' } = {}) {
             if (fresh.length === 0) return `No new message.${pending}`;
             /* What they wrote is work: said, so that their screen shows it moving (or still, said so). */
             const next = stale() || (standing()?.state === 'working' ? '' : '\nWhen you start on it, say so: parley doing "what you do"; when you finish: parley status done.');
-            return `${fresh.map((m) => (m.reaction ? reacted(m) : `${m.answers ? `Answer to your question "${plain(m.question, 200)}": ` : m.re ? `Reply to your message "${plain(m.quote, 200)}"${m.via === 'voice' ? ` (${DICTATED})` : ''}: ` : m.via === 'voice' ? `Message (${DICTATED}): ` : 'Message: '}${m.answers ? answerText(m) : plain(m.text)}${attached(m)}`)).join('\n')}${pending}${next}`;
+            return `${fresh.map((m) => (m.reaction ? reacted(m) : `${m.answers ? `Answer to your question "${plain(m.question, 200)}": ` : m.re ? `Reply to your message "${plain(m.quote, 200)}"${m.via === 'voice' ? ` (${DICTATED})` : ''}: ` : m.via === 'voice' ? `Message (${DICTATED}): ` : 'Message: '}${m.answers ? answerText(m) : plain(m.text)}${aboutText(m)}${attached(m)}`)).join('\n')}${pending}${next}`;
         },
     };
 }
@@ -288,15 +295,17 @@ export function bridge(dir, { how = 'run `parley read`' } = {}) {
 /* ---- MCP ---- */
 /* How an agent is asked to write, in every text it reads: the screen renders Markdown. */
 export const WRITING = 'The chat renders Markdown: write as you do in your terminal -- short lists, a bold label per point, one idea per line, a heading or a short title when long, one key sentence in a "> [!IMPORTANT]" block (an action, a decision, a blocker). Tables, code blocks and mermaid diagrams are shown; ==text== is highlighted; [ok] [todo] [blocked] [warn] are small badges; a picture from a shared folder is shown where you put it, its text in brackets as its title under it, and pictures on one line side by side: ![Home page, before](/work/before.png) ![Home page, after](/work/after.png).';
+/* Formulas, families, zones on pictures: drawn by the screen, and only when the topic calls for them. */
+export const RICH = 'Only when the topic calls for it, never as decoration: a formula as $x^2$, or $$...$$ on lines of its own; an algorithm as short pseudo-code and, if it helps, a mermaid flowchart; a family as a ```family block -- one line per person or couple "A + B", children indented two spaces under them, "(dates)", ", note", an optional first line "# Grandparents | Parents | Children", and at most a few "A ~ B : brothers" for another kind of link; zones on a picture as a ```picture block -- first line ![title](/work/photo.jpg), then one line per zone: a label or ?, x y w h as fractions of the picture from its top left, a short line. [Label](ref) links what the application can open. Ask about one ? at a time: the answer comes back with its zone.';
 export const GALLERY = 'Pictures that go together (before and after, several pages) are shown at once, as one gallery: give each a title that says what it is ("Home page, before"); the file name is not a title.';
 export const SHORTER = 'For anything longer than a few lines, give a short version too (short): a title of one or two lines, shown first, the rest one tap away. Whatever asks them for an action or a decision, or says you are blocked, MUST be in the short version.';
 /* Which form of question, when: one line an agent keeps. */
 export const ASKING = 'Which form: one choice for a decision; several to tick when they pick which items to do, such as which batches to launch; no choices for an open question. They can always answer in their own words.';
 export const GROUPING = `Several decisions you need at once: ask them together, as one card (${GROUP_MAX} questions at most, never more); each one choice, several to tick, or free.`;
 export const TOOLS = [
-    { name: 'tell', description: `Tell the person you work for something: where you are, what you did, what you found. They read it on their own screen, not in this terminal. It does not wait for an answer. ${WRITING} ${SHORTER}`,
+    { name: 'tell', description: `Tell the person you work for something: where you are, what you did, what you found. They read it on their own screen, not in this terminal. It does not wait for an answer. ${WRITING} ${SHORTER} ${RICH}`,
         inputSchema: { type: 'object', properties: { text: { type: 'string', description: 'What to tell them, in Markdown.' }, short: { type: 'string', description: 'Optional, for a long text: its title, one or two lines.' } }, required: ['text'] } },
-    { name: 'ask', description: `Ask the person you work for a question, instead of asking it in the terminal. It does NOT wait: it posts the question and returns at once. Stop or go on with something else; you will be told in the terminal when a message arrives, then call read. A question they answered another way (a message typed later): close it with close. ${ASKING} Several to tick: many: true. ${GROUPING} Together: questions, instead of question and choices. ${WRITING}`,
+    { name: 'ask', description: `Ask the person you work for a question, instead of asking it in the terminal. It does NOT wait: it posts the question and returns at once. Stop or go on with something else; you will be told in the terminal when a message arrives, then call read. A question they answered another way (a message typed later): close it with close. ${ASKING} Several to tick: many: true. ${GROUPING} Together: questions, instead of question and choices. ${WRITING} ${RICH}`,
         inputSchema: { type: 'object', properties: { question: { type: 'string' }, choices: { type: 'array', items: { type: 'string' }, description: 'Optional: the answers they can pick from.' }, many: { type: 'boolean', description: 'Optional, with two choices or more: they may tick several, sent together; read lists those ticked.' },
             questions: { type: 'array', maxItems: GROUP_MAX, description: `Optional: 2 to ${GROUP_MAX} questions asked together, as one card, answered with one Send; read gives each answer by its id. question is then an optional introduction.`,
                 items: { type: 'object', properties: { id: { type: 'string', description: 'Short, letters, digits, - or _: the answer names it.' }, label: { type: 'string', description: 'A word or two for its tab, in their language.' }, question: { type: 'string' }, choices: { type: 'array', items: { type: 'string' } }, many: { type: 'boolean' } }, required: ['question'] } }, short: { type: 'string', description: 'Optional, for a long question: its title, one or two lines.' } } } },

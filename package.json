@@ -22,7 +22,8 @@
     "./ui": "./ui/parley-ui.js",
     "./ui.css": "./ui/parley-ui.css",
     "./ui/texts/*": "./ui/texts/*",
-    "./server": "./server/parley-mcp.mjs"
+    "./server": "./server/parley-mcp.mjs",
+    "./ui/vendor/*": "./ui/vendor/*"
   },
   "scripts": {
     "test": "node --test \"test/*.test.mjs\"",

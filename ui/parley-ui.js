@@ -3,7 +3,7 @@
  *   import { mount } from './parley-ui.js';
  *   mount(element, { load, send, words, open, terminal, remind, view, onView, locale,
  *                    voice, autoSend, onAutoSend, replies, enter, touch, attach, act,
- *                    markdown, picture, diagram, highlight, agentName, agentTool, react, reactions, back });
+ *                    markdown, picture, diagram, highlight, math, refs, agentName, agentTool, react, reactions, back });
  *
  *   load()                 resolves with what parley-host.mjs read() gives;
  *                          the application may add lines of its own to its
@@ -78,6 +78,15 @@
  *                          { type, alias, content } as Prism.tokenize
  *                          gives) to colour a code block; spans are made
  *                          here from it, never its markup
+ *   math                   { url, css }: another copy of KaTeX for formulas
+ *                          ($...$, $$...$$, \(...\), \[...\]); default:
+ *                          Parley's own, ui/vendor/katex/, loaded on the first
+ *                          formula; false: formulas shown as written
+ *   refs                   { label(ref), open(ref) }: a person of a ```family
+ *                          or a zone of a ```picture may carry a ref, as the
+ *                          agent wrote it ([Anna](app:people/12)); label names
+ *                          the button of its card (null: none), open opens it.
+ *                          Parley reads nothing in a ref.
  *
  * TWO VERSIONS OF A MESSAGE. An agent may give a long message a short one
  * (`short`: a title of one or two lines). The simple view shows the short
@@ -282,7 +291,9 @@ export function safeLink(href) {
     try { const u = new URL(raw); return u.protocol === 'http:' || u.protocol === 'https:' ? u.href : null; } catch { return null; }
 }
 
-const ESCAPABLE = /[\\`*_{}[\]()#+\-.!|~=<>"']/;
+const ESCAPABLE = /[\\`*_{}[\]()#+\-.!|~=<>"'$]/;
+/* A formula is read as it was written, up to this many characters; a longer one stays text. */
+export const MATH_MAX = 4000;
 const URL_AT = /^https?:\/\/[^\s<>()[\]"'`]+(?:\([^\s<>()]*\)[^\s<>()[\]"'`]*)*/i;
 const PAIRS = [['**', 'strong'], ['__', 'strong'], ['~~', 'del'], ['==', 'mark'], ['*', 'em'], ['_', 'em']];
 
@@ -295,7 +306,20 @@ export function inline(text, depth = 0) {
     let i = 0;
     while (i < s.length) {
         const c = s[i];
+        /* A formula, \( ... \) or \[ ... \]: read before an escaped bracket, when it closes. */
+        if (c === '\\' && (s[i + 1] === '(' || s[i + 1] === '[')) {
+            const end = s.indexOf(s[i + 1] === '(' ? '\\)' : '\\]', i + 2);
+            const tex = end > 0 ? s.slice(i + 2, end).trim() : '';
+            if (tex && tex.length <= MATH_MAX) { flush(); out.push({ t: 'math', tex, display: s[i + 1] === '[' }); i = end + 2; continue; }
+        }
         if (c === '\\' && ESCAPABLE.test(s[i + 1] ?? '')) { buffer += s[i + 1]; i += 2; continue; }
+        /* $...$ and $$...$$: not "$ 5", nor "5 $", nor before a digit, so that a price stays text. */
+        if (c === '$') {
+            const two = s[i + 1] === '$';
+            const m = (two ? /^\$\$([^$]+?)\$\$/ : /^\$(?![\s$])([^$\n]+?)(?<![\s\\])\$(?!\d)/).exec(s.slice(i));
+            if (m && m[1].trim() && m[1].length <= MATH_MAX) { flush(); out.push({ t: 'math', tex: m[1].trim(), display: two }); i += m[0].length; continue; }
+            buffer += two ? '$$' : '$'; i += two ? 2 : 1; continue;
+        }
         if (c === '\n') { flush(); out.push({ t: 'br' }); i += 1; continue; }
         if (c === '`') {
             const run = /^`+/.exec(s.slice(i))[0];
@@ -367,7 +391,9 @@ function cells(line) {
     if (cell.trim() || !l.endsWith('|')) out.push(cell);
     return out.map((x) => x.trim());
 }
-const startsBlock = (line, next) => FENCE.test(line) || HEADING.test(line) || RULE.test(line) || QUOTE.test(line) || ITEM.test(line) || (line.includes('|') && next !== undefined && DELIMITER.test(next) && next.includes('-'));
+/* A formula on lines of its own: $$ ... $$ or \[ ... \], opened at the start of a line. */
+const MATH_OPEN = /^ {0,3}(\$\$|\\\[)/;
+const startsBlock = (line, next) => MATH_OPEN.test(line) || FENCE.test(line) || HEADING.test(line) || RULE.test(line) || QUOTE.test(line) || ITEM.test(line) || (line.includes('|') && next !== undefined && DELIMITER.test(next) && next.includes('-'));
 
 /* The blocks of a text; each top block says on which line it starts (`line`). */
 export function markdown(text, depth = 0) {
@@ -387,6 +413,22 @@ export function markdown(text, depth = 0) {
             i += 1;
             blocks.push({ t: 'code', lang: m[2].toLowerCase().replace(/[^a-z0-9+#.-]/g, '').slice(0, 30), text: body.join('\n'), line: at });
             continue;
+        }
+        if ((m = MATH_OPEN.exec(line))) {
+            const close = m[1] === '$$' ? '$$' : '\\]';
+            const first = line.trim().slice(2);
+            const body = [];
+            let rest = '';
+            let k = i;
+            let done = false;
+            for (let piece = first; k < lines.length && k - i < 200; piece = lines[++k]?.trim() ?? '') {
+                const end = piece.indexOf(close);
+                if (end >= 0) { body.push(piece.slice(0, end)); rest = piece.slice(end + 2).trim(); done = true; break; }
+                body.push(piece);
+            }
+            const tex = body.join('\n').trim();
+            /* Closed, alone on its lines, not too long: a formula; otherwise the lines are read as text. */
+            if (done && !rest && tex && tex.length <= MATH_MAX) { blocks.push({ t: 'math', tex, display: true, line: at }); i = k + 1; continue; }
         }
         if ((m = HEADING.exec(line))) { blocks.push({ t: 'h', level: m[1].length, c: inline(m[2] ?? '', depth), line: at }); i += 1; continue; }
         if (RULE.test(line) && !ITEM.exec(line)?.[3]) { blocks.push({ t: 'hr', line: at }); i += 1; continue; }
@@ -453,7 +495,7 @@ export function markdown(text, depth = 0) {
     return blocks;
 }
 /* All the text of a run of inlines, as it reads. */
-export const plainOf = (nodes) => (nodes ?? []).map((n) => (n.t === 'text' || n.t === 'code' ? n.v : n.t === 'br' ? '\n' : n.t === 'img' ? n.alt : n.t === 'badge' ? `[${n.kind}]` : plainOf(n.c))).join('');
+export const plainOf = (nodes) => (nodes ?? []).map((n) => (n.t === 'math' ? n.tex : n.t === 'text' || n.t === 'code' ? n.v : n.t === 'br' ? '\n' : n.t === 'img' ? n.alt : n.t === 'badge' ? `[${n.kind}]` : plainOf(n.c))).join('');
 /* About how many lines a text takes in a reading column. */
 export const linesOf = (text) => String(text ?? '').split('\n').reduce((n, l) => n + Math.max(1, Math.ceil(l.length / 90)), 0);
 
@@ -819,6 +861,191 @@ function copying(b, text, words, select) {
 }
 
 /* THE PAGE, MADE FROM THE DATA OF markdown(): element by element, text as text. */
+/* RICHER BLOCKS, each only when the topic calls for it, each read here and
+   drawn here: a formula (KaTeX, loaded on the first one), a family (```family),
+   zones on a picture (```picture). Nothing of the agent's text becomes markup:
+   names, words and lines are text in nodes made one by one. */
+
+/* A name, plain or as a link to what the application can open ([Jeanne](ref)), and its dates in brackets. */
+const NAMED = /^(?:\[([^[\]\n]{1,80})\]\(\s*([^\s()<>]{1,300})\s*\)|([^()[\]\n]{1,80}?))\s*(?:\(([^()\n]{1,40})\))?$/;
+const named = (text) => {
+    const m = NAMED.exec(String(text ?? '').trim());
+    if (!m) return null;
+    const name = (m[1] ?? m[3] ?? '').trim();
+    return name ? { name, ref: m[2] ?? null, dates: (m[4] ?? '').trim() } : null;
+};
+export const FAMILY_MAX = 60;
+export const FAMILY_LINKS_MAX = 6;
+export const ZONES_MAX = 20;
+
+/* A FAMILY: one line per person or couple ("A + B"); their children indented
+   under them, two spaces a generation; "(dates)"; ", note" (a couple's: about
+   their marriage). "# A | B | C" names the generations, top to bottom.
+   "A ~ B : word" is a link of another kind (brothers, a godmother, friends),
+   six at most. Null when a line cannot be read: the block is then shown as
+   it was written. */
+export function familyOf(text) {
+    const roots = [];
+    const stack = [];
+    const links = [];
+    let bands = [];
+    let count = 0;
+    for (const raw of String(text ?? '').replace(/\t/g, '  ').split('\n')) {
+        if (!raw.trim()) continue;
+        const head = /^\s*#\s*(.*)$/.exec(raw);
+        if (head) { bands = head[1].split('|').map((s) => s.trim().slice(0, 40)).slice(0, 12); continue; }
+        const link = /^\s*(.+?)\s+~\s+(.+?)\s*:\s*(.+)$/.exec(raw);
+        if (link) {
+            const a = named(link[1]); const b = named(link[2]);
+            if (!a || !b) return null;
+            if (links.length < FAMILY_LINKS_MAX) links.push({ a: a.name, b: b.name, word: link[3].trim().slice(0, 30) });
+            continue;
+        }
+        const depth = Math.floor(/^ */.exec(raw)[0].length / 2);
+        let line = raw.trim();
+        let note = '';
+        const comma = line.search(/,\s(?![^(]*\))/);
+        if (comma > 0) { note = line.slice(comma + 1).trim().slice(0, 120); line = line.slice(0, comma); }
+        const people = line.split(/\s\+\s/).map(named);
+        if (people.length > 2 || people.some((p) => !p)) return null;
+        while (stack.length > depth) stack.pop();
+        if (depth > stack.length) return null;
+        const node = { people: people.map((p, k) => ({ ...p, inlaw: depth > 0 && k === 1 })), note, children: [], depth };
+        (stack.length ? stack.at(-1).children : roots).push(node);
+        stack.push(node);
+        count += people.length;
+        if (count > FAMILY_MAX) return null;
+    }
+    return roots.length ? { roots, links, bands } : null;
+}
+
+/* ZONES ON A PICTURE: its first line a picture as Markdown writes it, then
+   one line per zone: a label (plain, [label](ref), or "?" for what the agent
+   asks about), x y w h as fractions of the picture from its top left, and a
+   line about it. A ref is the application's: shown nowhere, opened by it. */
+const ZONE = /^(.+?)\s+(0|1|0?\.\d+|1\.0+)\s+(0|1|0?\.\d+|1\.0+)\s+(0|1|0?\.\d+|1\.0+)\s+(0|1|0?\.\d+|1\.0+)(?:\s+(.*))?$/;
+export function zonesOf(text) {
+    const [first, ...rest] = String(text ?? '').split('\n').filter((l) => l.trim());
+    const pic = /^!\[([^\]\n]{0,300})\]\(\s*<?([^\s()<>]{1,2000})>?\s*\)$/.exec(first?.trim() ?? '');
+    if (!pic) return null;
+    const zones = [];
+    for (const l of rest) {
+        const m = ZONE.exec(l.trim());
+        if (!m) return null;
+        const [x, y, w, h] = m.slice(2, 6).map(Number);
+        if (!(w > 0 && h > 0) || x + w > 1.001 || y + h > 1.001) return null;
+        const unknown = m[1].trim() === '?';
+        const who = unknown ? { name: '?', ref: null } : named(m[1]);
+        if (!who) return null;
+        zones.push({ label: who.name, ref: who.ref, unknown, box: [x, y, w, h], line: (m[6] ?? '').trim().slice(0, 160) });
+        if (zones.length >= ZONES_MAX) break;
+    }
+    return { alt: pic[1], src: pic[2], zones };
+}
+/* The one zone a question asks about ("?"), when it has exactly one: its answer goes back with it. */
+export function askedZone(text) {
+    const found = [];
+    for (const b of markdown(text)) {
+        if (b.t !== 'code' || b.lang !== 'picture') continue;
+        const z = zonesOf(b.text);
+        for (const one of z?.zones ?? []) if (one.unknown) found.push({ label: '?', picture: z.src, box: one.box });
+    }
+    return found.length === 1 ? found[0] : null;
+}
+
+/* A FORMULA, AS KATEX DREW IT, COPIED INTO THE PAGE through a list of what it
+   may hold: its spans, the MathML that says it to a screen reader, the SVG of
+   stretched brackets; class, style without addresses, and the attributes of
+   MathML and SVG that place things. Anything else is left out, so that a
+   formula cannot carry a link, a script or an address to load. */
+const MATHML = 'http://www.w3.org/1998/Math/MathML';
+const SVGNS = 'http://www.w3.org/2000/svg';
+const MATH_TAGS = new Set(['math', 'semantics', 'annotation', 'mrow', 'mi', 'mo', 'mn', 'ms', 'mtext', 'mspace', 'msup', 'msub', 'msubsup', 'mfrac', 'msqrt', 'mroot', 'mover', 'munder', 'munderover', 'mtable', 'mtr', 'mtd', 'mlabeledtr', 'mpadded', 'mphantom', 'mstyle', 'menclose', 'merror']);
+const SVG_TAGS = new Set(['svg', 'path', 'line', 'g', 'rect']);
+const KEPT = new Set(['class', 'style', 'aria-hidden', 'encoding', 'mathvariant', 'stretchy', 'fence', 'separator', 'lspace', 'rspace', 'width', 'height', 'viewbox', 'preserveaspectratio', 'd', 'x', 'y', 'x1', 'y1', 'x2', 'y2', 'stroke-width', 'displaystyle', 'scriptlevel', 'columnalign', 'rowalign', 'rowspacing', 'columnspacing', 'columnlines', 'rowlines', 'frame', 'minsize', 'maxsize', 'accent', 'accentunder', 'linethickness', 'depth', 'voffset', 'notation', 'mathcolor', 'mathbackground', 'symmetric', 'largeop', 'movablelimits', 'form', 'display']);
+const UNSAFE = /url\s*\(|expression|javascript:|data:|@import|[<>\\]/i;
+export function mathCopy(node, budget = { left: 20000 }) {
+    if (budget.left-- <= 0) return null;
+    if (node.nodeType === 3) return String(node.data ?? node.textContent ?? '');
+    if (node.nodeType !== 1) return null;
+    const tag = String(node.localName ?? node.tagName ?? '').toLowerCase();
+    const ns = MATH_TAGS.has(tag) ? MATHML : SVG_TAGS.has(tag) ? SVGNS : tag === 'span' ? null : undefined;
+    if (ns === undefined) return null;
+    const out = ns ? document.createElementNS(ns, tag) : document.createElement('span');
+    const names = typeof node.getAttributeNames === 'function' ? node.getAttributeNames() : [];
+    for (const name of names) {
+        const value = String(node.getAttribute(name) ?? '');
+        if (!KEPT.has(name.toLowerCase()) || value.length > 2000 || UNSAFE.test(value)) continue;
+        out.setAttribute(name, value);
+    }
+    for (const child of node.childNodes ?? []) { const c = mathCopy(child, budget); if (c !== null) out.append(c); }
+    return out;
+}
+
+/* KATEX, LOADED ON THE FIRST FORMULA: Parley's own copy (ui/vendor/katex/),
+   or the one the application names ({ url, css }); false: formulas stay as
+   they were written. Its style sheet is added once to the page. It draws into
+   a node of its own, with no trust (no links, no classes or styles of the
+   agent's, no pictures) and limits on sizes and macros; what it drew is then
+   copied through mathCopy. A formula it cannot read: its source, as code. */
+export const KATEX = 'vendor/katex/katex.mjs';
+const MATH_DRAWN_MAX = 500;
+export const MATH_OPTIONS = Object.freeze({ throwOnError: true, trust: false, strict: 'ignore', maxSize: 50, maxExpand: 500, output: 'htmlAndMathml' });
+export function mathFrom(given) {
+    if (given === false || typeof document === 'undefined') return null;
+    let url;
+    try { url = String(given?.url ?? new URL(`./${KATEX}`, import.meta.url).href); } catch { return null; }
+    const css = String(given?.css ?? url.replace(/[^/]*$/, 'katex.min.css'));
+    let loading = null;
+    const drawn = new Map();
+    return async (tex, display) => {
+        loading ??= import(url).then((m) => {
+            if (!document.querySelector?.('link[data-parley-katex]')) { const l = document.createElement('link'); l.rel = 'stylesheet'; l.href = css; l.setAttribute('data-parley-katex', ''); document.head?.append(l); }
+            const k = m?.default ?? m;
+            if (typeof k?.render !== 'function') throw new Error('not KaTeX');
+            return k;
+        });
+        const katex = await loading;
+        const key = `${display ? 'D' : 'i'}${tex}`;
+        let raw = drawn.get(key);
+        if (!raw) {
+            raw = document.createElement('span');
+            katex.render(String(tex).slice(0, MATH_MAX), raw, { ...MATH_OPTIONS, displayMode: display });
+            if (drawn.size >= MATH_DRAWN_MAX) drawn.clear();
+            drawn.set(key, raw);
+        }
+        const copy = el('span', 'parley-math-drawn');
+        for (const child of raw.childNodes) { const c = mathCopy(child); if (c !== null) copy.append(c); }
+        return copy;
+    };
+}
+
+/* A drawing as a picture needs a size of its own: Mermaid gives width="100%"
+   and its size only in viewBox, and a picture without one is drawn 0 by 0 in
+   a box that fits its content. Its root is given the size of its viewBox. */
+export function sized(svg) {
+    return String(svg).replace(/<svg\b[^>]*>/i, (tag) => {
+        const box = /\bviewBox\s*=\s*"\s*[-\d.]+[\s,]+[-\d.]+[\s,]+([\d.]+)[\s,]+([\d.]+)\s*"/i.exec(tag);
+        const width = /\swidth\s*=\s*"([^"]*)"/i.exec(tag)?.[1];
+        if (!box || (width && !/%$/.test(width.trim()))) return tag;
+        const w = Math.round(Number(box[1])); const h = Math.round(Number(box[2]));
+        if (!(w > 0 && h > 0)) return tag;
+        const bare = tag.replace(/\s(width|height)\s*=\s*"[^"]*"/gi, '');
+        return bare.replace(/^<svg\b/i, `<svg width="${w}" height="${h}"`);
+    });
+}
+
+/* THE FAMILY, LAID OUT: each couple over its children, the generations in bands. */
+const FW = 124, FH = 58, FGAP = 36, FSIB = 22, FROOT = 44, FBAND = FH + 32, FROW = FBAND + 40, FPAD = 12;
+const ownWidth = (n) => n.people.length * FW + (n.people.length - 1) * FGAP;
+function widthOf(n) { const kids = n.children.reduce((s, c) => s + widthOf(c), 0) + FSIB * Math.max(0, n.children.length - 1); n.w = Math.max(ownWidth(n), kids); return n.w; }
+function placeAt(n, left) {
+    n.x = left + (n.w - ownWidth(n)) / 2;
+    const kids = n.children.reduce((s, c) => s + c.w, 0) + FSIB * Math.max(0, n.children.length - 1);
+    let x = left + (n.w - kids) / 2;
+    for (const c of n.children) { placeAt(c, x); x += c.w + FSIB; }
+}
+
 function painter(ctx) {
     const { words, refs, open, picture, diagram, highlight, cache } = ctx;
     const fileOf = (path) => (refs.has(path) ? { path, open: refs.get(path) } : null);
@@ -837,6 +1064,7 @@ function painter(ctx) {
                 else if (f && open) { const holder = el('span'); inlines(n.c, holder); into.append(pathLink(f, holder)); }
                 else inlines(n.c, into);
             } else if (n.t === 'img') into.append(imageOf(n));
+            else if (n.t === 'math') into.append(formula(n));
         }
         return into;
     }
@@ -921,10 +1149,169 @@ function painter(ctx) {
             Promise.resolve().then(() => diagram(block.text)).then((svg) => {
                 if (typeof svg !== 'string' || !/^\s*(<\?xml[^>]*>\s*)?<svg[\s>]/i.test(svg)) throw new Error('not a drawing');
                 /* A picture runs nothing and loads nothing: the drawing is shown as one. */
-                const url = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml' }));
+                const url = URL.createObjectURL(new Blob([sized(svg)], { type: 'image/svg+xml' }));
                 cache.set(key, url); ctx.urls.add(url); show(url);
             }).catch(() => { cache.set(key, null); failed(); });
         }
+        return fig;
+    }
+    /* A FORMULA: its source first, in case KaTeX is not there or cannot read it; drawn once it is. */
+    function formula(n) {
+        const holder = el(n.display ? 'div' : 'span', 'parley-math');
+        holder.dataset.display = String(Boolean(n.display));
+        holder.title = n.tex;
+        holder.append(el('code', 'parley-math-source', n.tex));
+        if (!ctx.math) return holder;
+        Promise.resolve().then(() => ctx.math(n.tex, Boolean(n.display))).then((drawn) => { if (drawn) { holder.replaceChildren(drawn); holder.dataset.drawn = 'true'; } else holder.dataset.failed = 'true'; }, () => { holder.dataset.failed = 'true'; });
+        return holder;
+    }
+    /* THE SMALL CARD of a person or a zone: its name, a line, the application's
+       button for its ref (only when the application names one), and "Talk
+       about it" -- or, for what the agent asks about, the question and Reply. */
+    function card(z, about, at) {
+        const c = el('div', 'parley-zone-card'); c.setAttribute('role', 'dialog'); c.setAttribute('aria-label', z.unknown ? said(words, 'what-is-it') : z.label);
+        c.append(el('p', 'parley-zone-card-name', z.unknown ? said(words, 'what-is-it') : z.label));
+        if (z.line) c.append(el('p', 'parley-zone-card-line', z.line));
+        const row = el('div', 'parley-zone-card-acts');
+        if (z.unknown) { if (ctx.answer) row.append(button(said(words, 'reply'), 'parley-zone-card-main', () => ctx.answer(about))); }
+        else {
+            let word = null;
+            try { word = z.ref && ctx.targets?.label ? ctx.targets.label(z.ref) : null; } catch { word = null; }
+            if (typeof word === 'string' && word.trim()) row.append(button(word.trim().slice(0, 40), 'parley-zone-card-main', () => { try { ctx.targets.open?.(z.ref); } catch { /* the application's business */ } }));
+            if (ctx.talk) row.append(button(said(words, 'talk-about'), 'parley-zone-card-talk', () => ctx.talk(about)));
+        }
+        if (row.childNodes.length) c.append(row);
+        c.style.left = `${at.x}%`; c.style.top = `${at.y}%`;
+        c.dataset.side = at.x > 62 ? 'end' : at.x < 38 ? 'start' : 'middle';
+        return c;
+    }
+    /* One card open at a time, in a block; a second tap on the same closes it. */
+    function picker(holder, items) {
+        let open2 = null;
+        const show = (key) => {
+            const was = holder.querySelector('.parley-zone-card'); was?.parentNode?.removeChild(was);
+            for (const it of items.values()) it.node.removeAttribute('data-picked');
+            if (open2 === key || !items.has(key)) { open2 = null; return; }
+            const it = items.get(key);
+            it.node.dataset.picked = 'true';
+            /* Where it is drawn now (a tree scrolled sideways), else where it was laid out. */
+            let at = it.at;
+            const r = it.node.getBoundingClientRect?.(); const h = holder.getBoundingClientRect?.();
+            if (r && h && h.width > 0 && h.height > 0) at = { x: ((r.left + r.width / 2 - h.left) / h.width) * 100, y: ((r.bottom - h.top) / h.height) * 100 };
+            const c = card(it.z, it.about, at);
+            /* Once its button did what it says, the card has done its work. */
+            for (const b of c.querySelectorAll('button')) b.addEventListener('click', () => { if (open2 === key) show(key); });
+            holder.append(c);
+            open2 = key;
+        };
+        return show;
+    }
+    const sv = (tag, attrs = {}, text) => { const e = document.createElementNS(SVGNS, tag); for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, String(v)); if (text !== undefined) e.textContent = text; return e; };
+    /* A FAMILY, drawn: the generations in bands, couples joined by two rings,
+       children under them, links of another kind dashed with their word. */
+    function family(block) {
+        const tree = block.text.length <= 20_000 ? familyOf(block.text) : null;
+        if (!tree) return code(block);
+        const { roots, links, bands } = tree;
+        const all = [];
+        let total = FPAD;
+        let depth = 0;
+        const walk = (n) => { depth = Math.max(depth, n.depth); n.people.forEach((p, k) => all.push({ p, n, k })); n.children.forEach(walk); };
+        for (const r of roots) { widthOf(r); placeAt(r, total); total += r.w + FROOT; walk(r); }
+        const W = total - FROOT + FPAD;
+        const byName = new Map();
+        for (const o of all) if (!byName.has(o.p.name)) byName.set(o.p.name, o);
+        const cx = (o) => o.n.x + o.k * (FW + FGAP) + FW / 2;
+        const drawn = links.map((l) => ({ ...l, A: byName.get(l.a), B: byName.get(l.b) })).filter((l) => l.A && l.B && l.A !== l.B);
+        const lift = (l) => 22 + Math.min(58, Math.abs(cx(l.A) - cx(l.B)) * 0.09);
+        const TOP = Math.max(12, ...drawn.filter((l) => l.A.n.depth === 0 && l.B.n.depth === 0).map((l) => lift(l) - 6));
+        const bandTop = (d) => TOP + d * FROW;
+        const cardTop = (d) => bandTop(d) + 24;
+        const H = bandTop(depth) + FBAND + 6;
+        const fig = el('figure', 'parley-family');
+        const svg = sv('svg', { viewBox: `0 0 ${W} ${H}`, role: 'group' });
+        svg.setAttribute('aria-label', said(words, 'family'));
+        fig.style.setProperty?.('--parley-family-width', `${W}px`);
+        const back = sv('g'); const names = sv('g'); const lines = sv('g', { class: 'parley-family-lines' }); const people = sv('g'); const extra = sv('g', { class: 'parley-family-links' });
+        for (let d = 0; d <= depth; d += 1) {
+            back.append(sv('rect', { x: 2, y: bandTop(d), width: W - 4, height: FBAND, rx: 14, class: 'parley-family-band' }));
+            if (bands[d]) names.append(sv('text', { x: 16, y: bandTop(d) + 15, class: 'parley-family-gen' }, bands[d]));
+        }
+        const items = new Map();
+        for (const n of new Set(all.map((o) => o.n))) {
+            const top = cardTop(n.depth); const mid = top + FH / 2;
+            n.people.forEach((p, k) => {
+                const x = n.x + k * (FW + FGAP);
+                const g = sv('g', { class: 'parley-family-person', tabindex: 0, role: 'button' });
+                g.setAttribute('aria-label', p.dates ? `${p.name}, ${p.dates}` : p.name);
+                if (p.inlaw) g.dataset.inlaw = 'true';
+                g.append(sv('rect', { x, y: top, width: FW, height: FH, rx: 12, class: 'parley-family-card' }));
+                g.append(sv('rect', { x: x + 10, y: top, width: FW - 20, height: 4, rx: 2, class: 'parley-family-bar' }));
+                g.append(sv('text', { x: x + FW / 2, y: top + (p.dates ? 27 : 35), class: 'parley-family-name' }, p.name.length > 16 ? `${p.name.slice(0, 15)}…` : p.name));
+                if (p.dates) g.append(sv('text', { x: x + FW / 2, y: top + 45, class: 'parley-family-dates' }, p.dates));
+                people.append(g);
+                const others = drawn.filter((l) => l.A.p === p || l.B.p === p).map((l) => `${l.word} : ${(l.A.p === p ? l.B : l.A).p.name}`);
+                const key = `${n.depth}:${x}`;
+                items.set(key, { node: g, z: { label: p.name, ref: p.ref, line: [p.dates, n.note, ...others].filter(Boolean).join(' · ') }, about: { label: p.name, ...(p.ref ? { ref: p.ref } : {}) }, at: { x: ((x + FW / 2) / W) * 100, y: ((top + FH + 6) / H) * 100 } });
+                g.addEventListener('click', () => show(key));
+                g.addEventListener('keydown', (event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); show(key); } });
+            });
+            if (n.people.length === 2) {
+                const x1 = n.x + FW; const x2 = x1 + FGAP; const c = (x1 + x2) / 2;
+                lines.append(sv('line', { x1, y1: mid, x2, y2: mid }));
+                people.append(sv('circle', { cx: c - 4, cy: mid, r: 6, class: 'parley-family-ring parley-family-ring-first' }), sv('circle', { cx: c + 4, cy: mid, r: 6, class: 'parley-family-ring' }));
+                const year = /\b(1[0-9]\d\d|20\d\d)\b/.exec(n.note)?.[1];
+                if (year) people.append(sv('text', { x: c, y: mid + 22, class: 'parley-family-word' }, year));
+            }
+            const from = n.people.length === 2 ? n.x + FW + FGAP / 2 : n.x + FW / 2;
+            const start = n.people.length === 2 ? mid + (/\b(1[0-9]\d\d|20\d\d)\b/.test(n.note) ? 28 : 8) : top + FH;
+            const bus = top + FH + (FROW - FH) / 2 + 2;
+            for (const c of n.children) {
+                const to = c.x + FW / 2; const r = Math.min(12, Math.abs(to - from) / 2); const sgn = Math.sign(to - from);
+                lines.append(sv('path', { d: sgn ? `M${from} ${start} V${bus - r} Q${from} ${bus} ${from + sgn * r} ${bus} H${to - sgn * r} Q${to} ${bus} ${to} ${bus + r} V${cardTop(c.depth)}` : `M${from} ${start} V${cardTop(c.depth)}` }));
+            }
+        }
+        for (const l of drawn) {
+            let A = l.A; let B = l.B;
+            if (A.n.depth > B.n.depth) [A, B] = [B, A];
+            const ax = cx(A); const bx = cx(B);
+            let d; let lx; let ly;
+            if (A.n.depth === B.n.depth) { const y = cardTop(A.n.depth); const h = lift(l); d = `M${ax} ${y} C${ax} ${y - h * 1.3} ${bx} ${y - h * 1.3} ${bx} ${y}`; lx = (ax + bx) / 2; ly = y - h + 2; }
+            else { const y1 = cardTop(A.n.depth) + FH; const y2 = cardTop(B.n.depth); const my = (y1 + y2) / 2; d = `M${ax} ${y1} C${ax} ${my + 30} ${bx} ${my - 30} ${bx} ${y2}`; lx = (ax + bx) / 2 + (bx > ax ? 26 : -26); ly = my + 4; }
+            extra.append(sv('path', { d }), sv('text', { x: lx, y: ly, class: 'parley-family-word' }, l.word));
+        }
+        svg.append(back, lines, extra, names, people);
+        const scroller = el('div', 'parley-family-scroll'); scroller.append(svg);
+        fig.append(scroller);
+        const show = picker(fig, items);
+        return fig;
+    }
+    /* A PICTURE WITH ZONES: shown only from a path the application opens, as any picture; the zones over it. */
+    function zoned(block) {
+        const z = block.text.length <= 20_000 ? zonesOf(block.text) : null;
+        const f = z && z.src.startsWith('/') ? fileOf(z.src) : null;
+        const url = f && picture && PICTURE.test(z.src) ? ctx.pictureUrl(f) : null;
+        if (!url) return code(block);
+        const fig = el('figure', 'parley-zoned');
+        const frame = el('div', 'parley-zoned-frame');
+        const img = el('img'); img.src = url; img.alt = z.alt || nameOf(z.src); img.decoding = 'async'; img.dataset.zoom = url; img.dataset.name = nameOf(z.src); img.dataset.title = z.alt || '';
+        img.addEventListener('click', () => ctx.zoom(img));
+        frame.append(img);
+        const items = new Map();
+        z.zones.forEach((one, k) => {
+            const [x, y, w, h] = one.box;
+            const b = el('button', 'parley-zone'); b.type = 'button';
+            b.style.left = `${x * 100}%`; b.style.top = `${y * 100}%`; b.style.width = `${w * 100}%`; b.style.height = `${h * 100}%`;
+            b.setAttribute('aria-label', one.unknown ? said(words, 'what-is-it') : one.label);
+            if (one.unknown) { b.dataset.unknown = 'true'; b.append(el('span', 'parley-zone-ask', '?')); }
+            const key = String(k);
+            items.set(key, { node: b, z: one, about: { label: one.label, ...(one.ref ? { ref: one.ref } : {}), picture: z.src, box: one.box }, at: { x: (x + w / 2) * 100, y: Math.min(100, (y + h) * 100) } });
+            b.addEventListener('click', (event) => { event.stopPropagation(); show(key); });
+            frame.append(b);
+        });
+        fig.append(frame);
+        if (z.alt) fig.append(el('figcaption', 'parley-caption', z.alt));
+        const show = picker(frame, items);
         return fig;
     }
     function blocks(list, into) {
@@ -940,7 +1327,8 @@ function painter(ctx) {
         }
         if (b.t === 'h') { const h = el(`h${Math.min(6, b.level + 2)}`, `parley-h parley-h${b.level}`); return inlines(b.c, h); }
         if (b.t === 'hr') return el('hr');
-        if (b.t === 'code') return b.lang === 'mermaid' ? drawing(b) : code(b);
+        if (b.t === 'math') return formula(b);
+        if (b.t === 'code') return b.lang === 'mermaid' ? drawing(b) : b.lang === 'family' ? family(b) : b.lang === 'picture' ? zoned(b) : code(b);
         if (b.t === 'quote') return blocks(b.c, el('blockquote'));
         if (b.t === 'alert') {
             const box = el('div', 'parley-callout'); box.dataset.kind = b.kind; box.setAttribute('role', 'note');
@@ -1397,8 +1785,9 @@ function card(file, words, open, size, title) {
 export function mount(root, { load, send, words = {}, open, terminal, remind, view: first = 'simple', onView, every = 3000, locale,
     voice: speaking, autoSend = false, onAutoSend, replies: ready = [], enter = 'auto', touch, attach, act,
     markdown: rich = false, picture, diagram, highlight, agentName, agentTool, react, reactions: offered = REACTIONS,
-    receivedAfter = RECEIVED_MS, noAnswerAfter = NO_ANSWER_MS, back = true, draft: draftKey = '' } = {}) {
+    receivedAfter = RECEIVED_MS, noAnswerAfter = NO_ANSWER_MS, back = true, draft: draftKey = '', math: mathGiven, refs: zoneRefs } = {}) {
     const steps = stepper(back);
+    const formula = mathFrom(mathGiven);
     /* The set of reactions offered: well formed, each with an icon this file has. */
     const reactions = (Array.isArray(offered) ? offered : REACTIONS).filter((r) => r && /^[a-z][a-z0-9-]{0,29}$/.test(r.id) && typeof r.icon === 'string').slice(0, 12);
     let as = VIEWS.includes(first) ? first : 'simple';
@@ -1519,6 +1908,8 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
     let dictatedNow = false;
     const say = async (text, answers, files, via, given = {}) => {
         problem.hidden = true;
+        /* An answer to a question about one zone of a picture goes back with that zone. */
+        if (answers && !given.about) { const asked = latest?.messages?.find((m) => m.id === answers && m.from === 'agent'); const zone = asked?.kind === 'ask' ? askedZone(asked.text) : null; if (zone) given = { ...given, about: zone }; }
         const more = { ...(via ? { via } : {}), ...given };
         const extra = Object.keys(more).length > 0;
         try { await send(text, answers, ...(files?.length || extra ? [files?.length ? files : undefined] : []), ...(extra ? [more] : [])); await refresh(); return true; } catch (error) { problem.textContent = said(words, 'not-sent', { error: String(error?.message ?? error) }); problem.hidden = false; return false; }
@@ -1653,7 +2044,13 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
     function body(item, v) {
         if (!rich) return [el('p', 'parley-text', item.text)];
         const refs = new Map(item.refs.map((r) => [r.path, r.open]));
-        const paint2 = painter({ words, refs, open, picture: picture ? pictureUrl : null, pictureUrl, diagram, highlight, cache, urls, zoom: zoomFrom });
+        const paint2 = painter({ words, refs, open, picture: picture ? pictureUrl : null, pictureUrl, diagram, highlight, cache, urls, zoom: zoomFrom, math: formula, targets: zoneRefs,
+            ...(send ? {
+                /* "Talk about it": said at once, with what it is about. */
+                talk: (about) => { void say(said(words, 'talk-text', { name: about.label }), undefined, undefined, undefined, { about }); },
+                /* What the agent asks about: what is typed next answers it, with its zone. */
+                answer: (about) => { replyTo = { id: item.id, text: said(words, 'what-is-it'), auto: false, about }; dismissed.delete(item.id); paintReply(); focusBox(); },
+            } : {}) });
         const blocks = markdown(item.text);
         const whole2 = () => paint2.blocks(blocks, el('div', 'parley-md'));
         /* Folded: the short version cut to a title; opened: all of it, nothing lost. */
@@ -2342,9 +2739,10 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
         const text = box.value.trim();
         if ((!text && pending.length === 0) || uploading) return;
         const answers = replyTo?.id;
+        const about = replyTo?.about ? { about: replyTo.about } : {};
         const answered = () => { if (replyTo && replyTo.id === answers) { dismissed.add(answers); replyTo = null; paintReply(); } };
         const via = dictatedNow ? 'voice' : undefined;
-        if (pending.length === 0) { clearBox(text); dictatedNow = false; if (await say(text, answers, undefined, via)) answered(); else dictatedNow = Boolean(via); return; }
+        if (pending.length === 0) { clearBox(text); dictatedNow = false; if (await say(text, answers, undefined, via, about)) answered(); else dictatedNow = Boolean(via); return; }
         /* The files go first, one after the other; the message only once they all went. */
         uploading = true; go.disabled = clip.disabled = true;
         problem.hidden = false; problem.dataset.kind = 'sending'; problem.textContent = said(words, 'sending-files');
@@ -2361,7 +2759,7 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
             return;
         }
         problem.hidden = true; problem.dataset.kind = '';
-        const sent = await say(text, answers, files, via);
+        const sent = await say(text, answers, files, via, about);
         if (sent) dictatedNow = false;
         uploading = false; go.disabled = clip.disabled = false;
         if (sent) { answered(); pending = []; paintPending(); if (box.value.trim() === text) clearBox(text); }

@@ -9,7 +9,7 @@
 import { readFileSync, realpathSync, existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { bridge, findFolder, STATES, VERSION, FOLDER, WRITING, SHORTER, GALLERY, ASKING, GROUPING, GROUP_MAX } from '../server/parley-mcp.mjs';
+import { bridge, findFolder, STATES, VERSION, FOLDER, WRITING, SHORTER, GALLERY, ASKING, GROUPING, GROUP_MAX, RICH } from '../server/parley-mcp.mjs';
 
 /* How to work with the person, in a few lines: what an agent comes back to
    when it forgot. Its words are accepted as they are. */
@@ -36,6 +36,8 @@ export const GUIDE = `How to work with the person through Parley
 
 4. Anything that needs their action or decision
    goes in the short version (--short), first line.
+   A formula, a family, zones on a picture: only when
+   the topic calls for it (parley --help says how).
 
 5. After a restart: parley read --all
 
@@ -78,6 +80,16 @@ export const HELP = `parley: talk with the person you work for. They read and an
                                        ended; prints nothing (--stop-check: Claude Code's Stop hook)
 
 ${wrap(WRITING)}
+
+${wrap(RICH)}
+  parley ask - "My brother" "A cousin" <<'EOF'
+  Who is this, on the right?
+  \`\`\`picture
+  ![Wedding, 1952](/work/albums/wedding-1952.jpg)
+  [Anna](app:people/12)   0.20 0.30 0.18 0.36  the bride
+  ?                       0.69 0.33 0.19 0.34
+  \`\`\`
+  EOF
 
 ${wrap(SHORTER)}
 

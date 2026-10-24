@@ -78,6 +78,7 @@ class FakeElement extends FakeNode {
     querySelectorAll(selector) { const out = []; const walk = (n) => { for (const c of n.children) { if (c.matches(selector)) out.push(c); walk(c); } }; walk(this); return out; }
     querySelector(selector) { return this.querySelectorAll(selector)[0] ?? null; }
     getBoundingClientRect() { return { top: 0, left: 0, width: 0, height: 0, bottom: 0, right: 0 }; }
+    getAttributeNames() { return [...this.attributes.keys()]; }
     scrollIntoView() {}
     setSelectionRange() {}
     focus() { globalThis.document.activeElement = this; }

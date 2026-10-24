@@ -127,6 +127,18 @@ export const fill = (word, values = {}) => String(word ?? '').replace(/\{([a-z]+
 const NOT_SHOWN = /[\u0000-\u0008\u000B-\u001F\u007F-\u009F​-‏‪-‮⁠-⁤⁦-⁩﻿]/gu;
 export const clean = (text, max = TEXT_MAX) => String(text ?? '').replace(/\r/g, '').replace(NOT_SHOWN, '').slice(0, max);
 const oneLine = (text, max) => clean(text, max).replace(/\s+/g, ' ').trim();
+/* What a message is about, when the person tapped it on the screen: a person
+   of a family, a zone of a picture. Its label, the application's ref as it was
+   written (opaque), the picture, and the zone as fractions of it. */
+export function aboutOf(about) {
+    if (!about || typeof about !== 'object') return undefined;
+    const label = oneLine(about.label, 120);
+    if (!label) return undefined;
+    const ref = oneLine(about.ref, 300);
+    const picture = oneLine(about.picture, 1000);
+    const box = Array.isArray(about.box) && about.box.length === 4 && about.box.every((n) => typeof n === 'number' && Number.isFinite(n) && n >= 0 && n <= 1) ? about.box.map((n) => Math.round(n * 1000) / 1000) : null;
+    return { label, ...(ref ? { ref } : {}), ...(picture.startsWith('/') ? { picture } : {}), ...(box ? { box } : {}) };
+}
 const cutQ = (text) => { const line = oneLine(text, 400); return line.length > 60 ? `${line.slice(0, 59)}…` : line; };
 /* THE PATHS A MESSAGE CITES: a whole path standing on its own (after a space,
    a bracket, a quote) or the target of a Markdown link or picture. Each is
@@ -415,7 +427,7 @@ export class Parley {
             const seen = i < written.length - unread;
             return { from: 'person', id: String(m.id ?? ''), at: String(m.at ?? ''), kind: 'say', text: clean(m.text), choices: [], seen, ...(seen && seenAt(i) ? { seenAt: seenAt(i) } : {}),
                 ...(m.answers ? { answers: String(m.answers), question: oneLine(m.question, 300) } : {}), ...(m.answers && Array.isArray(m.picked) ? { picked: m.picked.slice(0, 8).map((x) => oneLine(x, 200)).filter(Boolean) } : {}),
-                ...(m.answers && Array.isArray(m.replies) ? { replies: m.replies.slice(0, GROUP_MAX).filter((r) => r && typeof r === 'object' && typeof r.id === 'string').map((r) => ({ id: oneLine(r.id, 30), ...(oneLine(r.label, 40) ? { label: oneLine(r.label, 40) } : {}), ...(Array.isArray(r.picked) ? { picked: r.picked.slice(0, 8).map((x) => oneLine(x, 200)).filter(Boolean) } : { text: clean(r.text).slice(0, 2000) }) })) } : {}), ...(m.re ? { re: String(m.re), quote: oneLine(m.quote, 300) } : {}), ...(Array.isArray(m.files) && m.files.length ? { files: this.#files(m.files) } : {}), ...(m.via === 'voice' ? { via: 'voice' } : {}) };
+                ...(m.answers && Array.isArray(m.replies) ? { replies: m.replies.slice(0, GROUP_MAX).filter((r) => r && typeof r === 'object' && typeof r.id === 'string').map((r) => ({ id: oneLine(r.id, 30), ...(oneLine(r.label, 40) ? { label: oneLine(r.label, 40) } : {}), ...(Array.isArray(r.picked) ? { picked: r.picked.slice(0, 8).map((x) => oneLine(x, 200)).filter(Boolean) } : { text: clean(r.text).slice(0, 2000) }) })) } : {}), ...(m.re ? { re: String(m.re), quote: oneLine(m.quote, 300) } : {}), ...(Array.isArray(m.files) && m.files.length ? { files: this.#files(m.files) } : {}), ...(m.via === 'voice' ? { via: 'voice' } : {}), ...(aboutOf(m.about) ? { about: aboutOf(m.about) } : {}) };
         })())).filter(Boolean);
         for (const m of agent) if (reactions.has(m.id)) m.reaction = reactions.get(m.id);
         const answered = new Set(person.map((m) => m.answers).filter(Boolean));
@@ -449,9 +461,10 @@ export class Parley {
        application ({ path, name?, size? }: `path` as the agent sees it); a
        message may be files alone. `picked`: the choices ticked, for a question
        that lets several be ticked (`many`); the text, when empty, says them,
-       one per line, for an agent that reads the text alone. The application
-       is told (person-wrote), and decides how to tell the agent. */
-    say(text, answers, files = [], { via, picked, replies } = {}) {
+       one per line, for an agent that reads the text alone. `about`: what
+       they tapped to say it (aboutOf). The application is told (person-wrote),
+       and decides how to tell the agent. */
+    say(text, answers, files = [], { via, picked, replies, about } = {}) {
         const given = Array.isArray(files) ? files : [];
         if (given.length > FILES_MAX) throw new RangeError(`${FILES_MAX} files at most in one message.`);
         const attached = given.map((f) => ({ path: oneLine(f?.path, 1000), name: oneLine(f?.name, 200), size: Number.isInteger(f?.size) && f.size >= 0 ? f.size : undefined, note: oneLine(f?.note, NOTE_MAX) }));
@@ -492,6 +505,8 @@ export class Parley {
         if (!said && attached.length === 0) throw new RangeError('Write something.');
         const entry = { id: randomUUID(), at: this.#now().toISOString(), text: said };
         if (via === 'voice') entry.via = 'voice';
+        const tapped = aboutOf(about);
+        if (tapped) entry.about = tapped;
         if (attached.length) entry.files = attached.map((f) => ({ path: f.path, name: f.name || f.path.split('/').pop(), ...(f.size === undefined ? {} : { size: f.size }), ...(f.note ? { note: f.note } : {}) }));
         /* A question is answered; any other message of the agent is replied to, quoted. */
         if (asked?.kind === 'ask') {
