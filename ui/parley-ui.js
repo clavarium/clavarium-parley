@@ -1397,7 +1397,7 @@ function card(file, words, open, size, title) {
 export function mount(root, { load, send, words = {}, open, terminal, remind, view: first = 'simple', onView, every = 3000, locale,
     voice: speaking, autoSend = false, onAutoSend, replies: ready = [], enter = 'auto', touch, attach, act,
     markdown: rich = false, picture, diagram, highlight, agentName, agentTool, react, reactions: offered = REACTIONS,
-    receivedAfter = RECEIVED_MS, noAnswerAfter = NO_ANSWER_MS, back = true } = {}) {
+    receivedAfter = RECEIVED_MS, noAnswerAfter = NO_ANSWER_MS, back = true, draft: draftKey = '' } = {}) {
     const steps = stepper(back);
     /* The set of reactions offered: well formed, each with an icon this file has. */
     const reactions = (Array.isArray(offered) ? offered : REACTIONS).filter((r) => r && /^[a-z][a-z0-9-]{0,29}$/.test(r.id) && typeof r.icon === 'string').slice(0, 12);
@@ -2222,12 +2222,19 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
        chat; on a touch screen Enter is a new line and the button sends. */
     const keyboard = mediaQuery('(pointer: fine)');
     /* The box grows with what is in it, up to a few lines, then scrolls. */
+    /* WHAT IS BEING WRITTEN, KEPT: with `draft` (a name for this thread), the box is kept on this device as
+       it is typed, and found again when the thread is shown again -- another thread looked at meanwhile, or
+       the page reloaded. Sent, it is let go. */
+    const DRAFT = draftKey ? `parley-draft:${draftKey}` : '';
+    const keepDraft = () => { if (!DRAFT) return; try { if (box.value.trim()) localStorage.setItem(DRAFT, box.value); else localStorage.removeItem(DRAFT); } catch { /* a private window: kept as long as the page */ } };
     const grow = () => {
         box.style.height = '';
         /* No higher than it is while what it holds fits: no pixel won or lost by rounding. */
         const full = box.scrollHeight + 2;
         if (full > box.getBoundingClientRect().height + 1) box.style.height = `${full}px`;
+        keepDraft();
     };
+    if (DRAFT) { try { const kept = localStorage.getItem(DRAFT); if (kept) { box.value = kept.slice(0, TEXT_MAX); queueMicrotask(grow); } } catch { /* as above */ } }
     box.addEventListener('input', () => { grow(); if (!box.value.trim()) dictatedNow = false; });
     /* The page puts the cursor in the box only where no keyboard comes up
        with it; on a touch screen, only the person's finger does. */

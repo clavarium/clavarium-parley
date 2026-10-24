@@ -145,6 +145,7 @@ gives it. Without a slot, nothing of it is shown.
 | `enter` | `'auto'`, `'send'` or `'newline'` | Enter sends with a keyboard (`auto`), is a new line on a touch screen; Shift+Enter a new line and Ctrl+Enter sends, always |
 | `touch` | true on a touch screen (default: any coarse pointer) | the box is never focused by the page, only by a finger: the keyboard never comes up by itself, and a tap on a button of the box leaves it open |
 | `back` | `true` (the default), `false`, or `{ open(name, close), closed(token) }`: the page's own steps | what opens over the thread (the large picture, the media, the reactions, the search, the menu) takes a step of the history, and Back closes the one on top, as on a phone; `false` leaves the history alone; an object hands each step to the page, so that one Back works for the whole page |
+| `draft` | a name for this thread (the application's conversation, say) | what is being written in the box is kept on this device as it is typed, and found again when the thread is shown again (another one looked at meanwhile, the page reloaded); sent, it is let go |
 | `attach` | `{ upload(file, name) }`, resolving with `{ path, name, size }`: where the agent finds the file | a button beside the box picks files; they are shown above it until sent; on Send each is uploaded, then the message goes with them (files alone are a message); in the thread, by name in the person's bubble |
 
 Lines of the application -- what happened around the agent, such as its
