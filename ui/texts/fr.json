@@ -142,5 +142,6 @@
   "dictated": "Dicté",
   "side-now": "En cours",
   "side-machine": "Sa machine",
-  "side-nothing": "Rien en cours."
+  "side-nothing": "Rien en cours.",
+  "history-changed": "Historique modifié ici : original affiché"
 }

@@ -14,6 +14,8 @@ Parley is three small things that agree on one folder.
 
 The two `.jsonl` files only grow. Nothing is edited, nothing is deleted. There is no
 address, no port and no key: whoever can read and write the folder is a side.
+The agent can still rewrite them: an application that must not trust that keeps
+its own copy (see "The application's own copy").
 
 The command finds the folder as git finds a repository: `--dir`, else
 `$PARLEY_DIR`, else the nearest `.parley` from where the agent stands.
@@ -132,6 +134,7 @@ finds it. An answer may therefore come two minutes or two days later.
 | `agent-doing` | the agent ran `doing` | `message` (its `text`: one line) |
 | `agent-closed` | the agent ran `close` | `message` (`answers`: the question; `text`: the answer it understood) |
 | `person-reacted` | `react()` wrote a reaction | `message` (the line), `reaction` (null: taken back), `wakes` (`false`, `true` or `'now'`: the set's hint), `unread` |
+| `history-changed` | with a keep folder: a line kept changed or went in the bridge folder, or one was slipped in | `altered`: what was noted, as in `read()` |
 
 Events of the agent are announced by `listen()`, each line once, once it is
 whole, from the moment it was started: what was posted before is in
@@ -143,6 +146,7 @@ whole, from the moment it was started: what was posted before is in
 | `react(to, reaction)` | a reaction of the set (`REACTIONS`) on a message of the agent, or `null` to take it back; what `read()` gives |
 | `read()` | `messages` (each of the person's says `seen`, and `seenAt` when known, `via` when dictated; each of the agent's may carry `short`, `reaction` (`{id, at, seen}`, the one standing), `files` for a gallery (`[{path, title, open}]`), and `refs`: the paths it cites that `reach` opens; a question it closed, `closed: {text, at}`), `waiting` (questions neither answered nor closed), `status`, `steps` (every `status` and `doing`, in order: `{id, kind, state, note, at}`), `files` (every file shown, and every one cited that can be opened, `cited: true`), `unread`, `pulse` |
 | `invite(lang, {install?, shared?})` | the invitation, a text |
+| `read().altered` | with a keep folder only: what changed in the bridge folder after it was kept, oldest first (see below) |
 | `unread()` | how many of the person's messages the agent has not read |
 
 `reach(path)`, given by the application, says how the person opens a file
@@ -171,6 +175,40 @@ buttons too (a commit it names): each, where it first stands in the text,
 calls `act(id, line)`; the rest stays text. A line of
 the application takes no step and does not hide that the person's last
 message is not read yet.
+
+## The application's own copy
+
+The bridge folder is the agent's: it can rewrite or delete any line of both
+files, the person's included, and nothing in the folder shows it. An
+application that must not trust that gives the host a folder of its own, out
+of the agent's reach: `new Parley(dir, { keep })`, one per bridge folder.
+
+- Each whole line of `from-agent.jsonl` is copied there, as written, the
+  first time it is read (`keep/from-agent.jsonl`); each line of
+  `to-agent.jsonl` as the host writes it (`keep/to-agent.jsonl`): those are
+  the person's, and a line there that the host never wrote is none of theirs.
+  The first time, with no copy yet, the bridge is taken as it is: a thread
+  begun before it was kept.
+- What is kept is what `read()` gives, what `unread()` counts, what
+  `listen()` announces (each line once, by its place in the copy). Nothing
+  kept is ever rewritten: a correction is a new line.
+- At each read the copy is compared with the bridge file: each line kept is
+  looked for again, in order. A line kept that is not found is `changed` (a line of
+  its id stands there instead) or `gone`; a line found among them that is not
+  kept is `added` (slipped in, or a forged line of the person). After the last
+  line found again, what is new is the agent's next lines, taken as usual --
+  but a line repeating the id of one kept, which is a change.
+- Each is noted once, in `keep/altered.jsonl`, and announced
+  (`history-changed`). `read().altered`: `[{side: "agent"|"person", kind:
+  "changed"|"gone"|"added", line, id, was, at}]` -- `line` its place in the
+  copy (from 1; null when added), `was` the time the line says (where it
+  happened), `at` when it was noticed.
+- The screen puts one line in the thread after the last message at or before
+  `was`, in the person's words (`history-changed`: "History changed here:
+  original shown"); several side by side are one line.
+
+Without `keep`, nothing of this: the bridge folder is all there is.
+`pulse.json`, `read.json` and the files the person attached are not copied.
 
 ## What the screen makes of the states
 

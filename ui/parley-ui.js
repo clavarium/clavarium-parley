@@ -180,7 +180,7 @@ export const KEYS = Object.freeze(['send', 'placeholder', 'empty', 'view', 'simp
     'zoom-in', 'zoom-out', 'zoom-actual', 'zoom-fit', 'zoom-actual-short', 'zoom-fit-short', 'close', 'previous', 'next', 'search', 'found', 'newest', 'dictation', 'auto-send-off',
     'react', 'react-remove', 'react-agree', 'react-go', 'react-disagree', 'react-unclear', 'react-stop', 'react-redo', 'react-later', 'react-love',
     'react-agree-hint', 'react-go-hint', 'react-disagree-hint', 'react-unclear-hint', 'react-stop-hint', 'react-redo-hint', 'react-later-hint', 'react-love-hint',
-    'decide', 'media', 'media-pictures', 'media-files', 'media-none', 'see-in-thread', 'done-end', 'done-end-note', 'dictated', 'side-now', 'side-machine', 'side-nothing']);
+    'decide', 'media', 'media-pictures', 'media-files', 'media-none', 'see-in-thread', 'done-end', 'done-end-note', 'dictated', 'side-now', 'side-machine', 'side-nothing', 'history-changed']);
 /* THE REACTIONS offered by default, each with its Lucide icon; their words
    are "react-<id>" (shown under the icon) and "react-<id>-hint" (on hover).
    The same ids as REACTIONS of parley-host.mjs, which says which wake. */
@@ -468,6 +468,16 @@ export function view(data, { words = {}, view: as = 'simple', now = Date.now(), 
     const answered = new Set(all.filter((m) => m.from === 'person').map((m) => m.answers).filter(Boolean));
     /* Simple shows nothing the person cannot act on: a file that cannot be opened, a trace, are in the detailed view only. */
     const messages = all.filter((m) => detailed || !((m.kind === 'show' && (Array.isArray(m.files) && m.files.length ? !m.files.some((f) => f && typeof f.open === 'string') : typeof m.open !== 'string')) || (m.from === 'system' && levelOf(m.level) === 'trace')));
+    /* WHAT CHANGED IN THE BRIDGE FOLDER after the application kept it (read().altered): the copy
+       kept is what is shown, and one line says so where it happened -- two changes side by side, one line. */
+    for (const a of (Array.isArray(data?.altered) ? data.altered : []).filter((x) => x && typeof x === 'object')) {
+        const t = stamp(a.was) ?? stamp(a.at);
+        if (t === null) continue;
+        let i = messages.findIndex((m) => (stamp(m.at) ?? -Infinity) > t);
+        if (i < 0) i = messages.length;
+        if (messages[i - 1]?.altered || messages[i]?.altered) continue;
+        messages.splice(i, 0, { from: 'system', kind: 'system', altered: true, id: `altered:${String(a.side ?? '')}:${String(a.line ?? a.was ?? '')}`, at: new Date(t).toISOString(), text: said(words, 'history-changed'), level: 'news', tone: 'warn', actions: [] });
+    }
     const status = data?.status ?? null;
     const state = (s) => said(words, ['working', 'waiting', 'done'].includes(s) ? s : 'working');
     /* A state of waiting, or done, is not a step: it is said once, at the end. */

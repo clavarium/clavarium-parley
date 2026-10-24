@@ -17,6 +17,7 @@
  *   agent-doing   {message}
  *   agent-closed  {message}         (a question it closed, answered another way)
  *   person-reacted {message, reaction, wakes, unread}   react(to, reaction)
+ *   history-changed {altered}       (with a keep folder: a line kept changed or went)
  *
  * The pulse of the agent's tool (pulse.json) is not announced: read() gives it.
  *
@@ -30,7 +31,7 @@
  * as text. Showing it as text, never building it, is the application's part.
  */
 import { appendFileSync, readFileSync, writeFileSync, mkdirSync, copyFileSync, existsSync, statSync, lstatSync, openSync, readSync, closeSync, readdirSync } from 'node:fs';
-import { randomUUID } from 'node:crypto';
+import { randomUUID, createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 
 export const TEXT_MAX = 16000;
@@ -168,6 +169,95 @@ function pulseOf(dir, now) {
 }
 function lineCount(file) { try { if (lstatSync(file).isSymbolicLink()) return 0; return readFileSync(file, 'utf8').split('\n').filter(Boolean).length; } catch { return 0; } }
 
+/* THE APPLICATION'S OWN COPY: `keep`, a folder the agent cannot reach. The
+   bridge folder is the agent's own: it can rewrite any line there, the
+   person's too, and a screen that reads only that folder would show the new
+   words as if they had always been said. With a keep folder, each line is
+   copied there once it is whole and read (the agent's), or as it is written
+   (the person's: this side writes them, so a line of theirs that this side
+   did not write is no line of theirs). What is kept is what is shown. A line
+   kept that changed or went from the bridge folder, or one slipped in among
+   lines already kept, is noted once, with when it was noticed. Nothing kept
+   is rewritten: a correction is a new line. */
+const KEPT = new Map();
+const statOf = (st) => `${st.size}:${st.mtimeMs}:${st.ctimeMs}:${st.ino}`;
+const keptStat = (file) => { try { return statOf(statSync(file)); } catch { return null; } };
+/* A file of the keep folder: { lines, ids, seen }, or null when there is none yet. Read once,
+   then from memory while the file is as this process left it. `seen`: how the bridge file
+   was when last compared, so that a bridge file that did not move is not read again. */
+function kept(file) {
+    const stamp = keptStat(file);
+    if (stamp === null) { KEPT.delete(file); return null; }
+    const known = KEPT.get(file);
+    if (known?.stamp === stamp) return known;
+    let text;
+    try { text = readFileSync(file, 'utf8'); } catch { return null; }
+    const entry = { stamp, lines: text.split('\n').filter(Boolean), ids: null, seen: null };
+    KEPT.set(file, entry);
+    return entry;
+}
+function keep(file, add, { whole = false } = {}) {
+    const before = whole ? null : kept(file);
+    if (whole) writeFileSync(file, add.map((l) => `${l}\n`).join(''));
+    else if (add.length) appendFileSync(file, add.map((l) => `${l}\n`).join(''));
+    const entry = { stamp: keptStat(file), lines: [...(before?.lines ?? []), ...add], ids: null, seen: before?.seen ?? null };
+    KEPT.set(file, entry);
+    return entry;
+}
+const idsOf = (entry) => (entry.ids ??= new Set(entry.lines.map(idOf).filter(Boolean)));
+/* The whole lines of a bridge file, as written (a line not ended yet waits): none when it is
+   gone, or is a link (all it held is gone from there); null when too big to compare, or when
+   it is as it was when last compared (`seen`). */
+function bridgeLines(file, seen) {
+    try {
+        const st = lstatSync(file);
+        if (st.isSymbolicLink() || !st.isFile()) return seen === 'none' ? null : { lines: [], stamp: 'none' };
+        const stamp = statOf(st);
+        if (stamp === seen || st.size > 16 * FILE_MAX) return null;
+        const text = readFileSync(file, 'utf8');
+        return { lines: text.slice(0, text.lastIndexOf('\n') + 1).split('\n').filter(Boolean), stamp };
+    } catch { return seen === 'none' ? null : { lines: [], stamp: 'none' }; }
+}
+const idOf = (line) => { const id = parsed(line)?.id; return typeof id === 'string' ? id : ''; };
+const atOf = (line) => { const at = parsed(line)?.at; return typeof at === 'string' ? at : ''; };
+const hashOf = (line) => createHash('sha256').update(line).digest('hex').slice(0, 16);
+/* The newest lines kept, FILE_MAX characters of them, parsed: what lines() gives of a bridge file. */
+function tail(list) {
+    let size = 0, from = list.length;
+    while (from > 0 && size + list[from - 1].length + 1 <= FILE_MAX) size += list[--from].length + 1;
+    return list.slice(from).map(parsed).filter(Boolean);
+}
+/* What changed in a bridge file, against what is kept of it: the lines kept that are not
+   there in their order any more (`lost`, by place; `changed` when a line of the same id
+   stands there instead), the lines that are new at its end (`fresh`, taken: the agent's
+   side only), and the lines that are neither (`added`: slipped in, or the person's that
+   this side never wrote). A line kept is found again in order, even after a line before it
+   went: what follows it is still in place. */
+function compare(entry, now, { takes }) {
+    const lines = entry.lines, ids = idsOf(entry);
+    const out = { lost: [], changed: new Set(), fresh: [], added: [] };
+    let from = lines.length;
+    if (!(now.length >= lines.length && lines.every((l, i) => now[i] === l))) {
+        const where = new Map();
+        now.forEach((l, k) => { if (!where.has(l)) where.set(l, []); where.get(l).push(k); });
+        const used = new Set();
+        let j = 0;
+        lines.forEach((l, i) => { const k = where.get(l)?.find((x) => x >= j); if (k === undefined) out.lost.push(i); else { used.add(k); j = k + 1; } });
+        const lostIds = new Map(out.lost.map((i) => [idOf(lines[i]), i]).filter(([id]) => id));
+        now.forEach((l, k) => {
+            if (used.has(k) || k >= j) return;
+            const id = idOf(l);
+            if (lostIds.has(id)) out.changed.add(lostIds.get(id)); else out.added.push(l);
+        });
+        from = j;
+        for (const l of now.slice(from)) { const id = idOf(l); if (lostIds.has(id)) { out.changed.add(lostIds.get(id)); continue; } (takes && !(id && ids.has(id)) ? out.fresh : out.added).push(l); }
+        return out;
+    }
+    /* Only grown: what is new is the agent's; a line repeating the id of one kept is not new. */
+    for (const l of now.slice(from)) { const id = idOf(l); (takes && !(id && ids.has(id)) ? out.fresh : out.added).push(l); }
+    return out;
+}
+
 /* Puts the bridge in `dir`: the two files, and the MCP server for an agent
    that is given it that way. Resolves with how that server is declared to an
    agent. `as`: where that folder is seen FROM THE AGENT, when that is not
@@ -180,15 +270,18 @@ export function install(dir, { as = dir } = {}) {
 }
 
 export class Parley {
-    #dir; #on; #reach; #now; #reactions;
+    #dir; #on; #reach; #now; #reactions; #keep;
 
     /* `on(event)`: told what happens (see the top of this file).
        `reach(path)`: how the person opens a file the agent showed -- a
        reference of the application's (a link, a path) or null when it
        cannot be opened from their screen. Every path, by default. */
     /* `reactions`: the set offered, [{ id, wakes }] (REACTIONS by default). */
-    constructor(dir, { on, reach = (path) => path, now = () => new Date(), reactions = REACTIONS } = {}) {
-        this.#dir = dir; this.#on = on; this.#reach = reach; this.#now = now;
+    /* `keep`: a folder of the application's, out of the agent's reach, where
+       the thread is kept as it was read (see THE APPLICATION'S OWN COPY);
+       one per bridge folder. Without it, the bridge folder is all there is. */
+    constructor(dir, { on, reach = (path) => path, now = () => new Date(), reactions = REACTIONS, keep } = {}) {
+        this.#dir = dir; this.#on = on; this.#reach = reach; this.#now = now; this.#keep = typeof keep === 'string' && keep ? keep : null;
         this.#reactions = (Array.isArray(reactions) ? reactions : REACTIONS).filter((r) => r && REACTION_ID.test(r.id));
     }
 
@@ -228,8 +321,58 @@ export class Parley {
         });
     }
 
+    /* With a keep folder: compares one bridge file with what is kept of it,
+       keeps what is new (the agent's lines only: the person's are kept as
+       they are written), notes once what changed (history-changed), and gives
+       the lines kept, as written. */
+    #sync(name) {
+        const own = `${this.#keep}/${name}`;
+        let entry = kept(own);
+        if (entry === null) {
+            /* First sight: the bridge is taken as it is (a thread begun before it was kept). */
+            mkdirSync(this.#keep, { recursive: true });
+            const now = bridgeLines(`${this.#dir}/${name}`);
+            entry = keep(own, now?.lines ?? [], { whole: true });
+            entry.seen = now?.stamp ?? null;
+            return entry.lines;
+        }
+        const now = bridgeLines(`${this.#dir}/${name}`, entry.seen);
+        if (now === null) return entry.lines;
+        const side = name === 'from-agent.jsonl' ? 'agent' : 'person';
+        const found = compare(entry, now.lines, { takes: side === 'agent' });
+        if (found.fresh.length) entry = keep(own, found.fresh);
+        entry.seen = now.stamp;
+        const at = this.#now().toISOString();
+        const notes = [
+            ...found.lost.map((i) => ({ key: `${side}:${i}`, side, kind: found.changed.has(i) ? 'changed' : 'gone', line: i + 1, id: idOf(entry.lines[i]), was: atOf(entry.lines[i]), at })),
+            ...found.added.map((l) => ({ key: `${side}+${hashOf(l)}`, side, kind: 'added', line: null, id: idOf(l), was: atOf(l), at })),
+        ];
+        if (notes.length) this.#note(notes);
+        return entry.lines;
+    }
+    /* Each change noted once, in the keep folder: what the screen says, where it happened. */
+    #note(notes) {
+        const file = `${this.#keep}/altered.jsonl`;
+        const known = new Set((kept(file)?.lines ?? []).map((l) => parsed(l)?.key));
+        const added = notes.filter((n) => !known.has(n.key) && known.add(n.key));
+        if (!added.length) return;
+        keep(file, added.map((n) => JSON.stringify(n)));
+        this.#tell({ type: 'history-changed', altered: added.map(({ key, ...n }) => n) });
+    }
+    /* What was noted: [{side, kind, line, id, was, at}], oldest first. */
+    #altered() { return (kept(`${this.#keep}/altered.jsonl`)?.lines ?? []).map(parsed).filter(Boolean).map(({ key, ...n }) => n); }
+    /* The lines of one side, parsed: what is kept, with a keep folder; the bridge file, without. */
+    #lines(name) { return this.#keep ? tail(this.#sync(name)) : lines(`${this.#dir}/${name}`); }
+    /* A line of the person's, written: kept first, so that a bridge refusing it says so. */
+    #write(list) {
+        const text = list.map((l) => JSON.stringify(l));
+        if (this.#keep) { this.#sync('to-agent.jsonl'); keep(`${this.#keep}/to-agent.jsonl`, text); }
+        mkdirSync(this.#dir, { recursive: true });
+        appendFileSync(`${this.#dir}/to-agent.jsonl`, text.map((l) => `${l}\n`).join(''));
+    }
+
     /* How many messages of the person the agent has not read. */
-    unread() { return Math.max(0, lineCount(`${this.#dir}/to-agent.jsonl`) - readCount(this.#dir)); }
+    unread() { return Math.max(0, (this.#keep ? this.#sync('to-agent.jsonl').length : lineCount(`${this.#dir}/to-agent.jsonl`)) - readCount(this.#dir)); }
 
     /* Both sides, in the order they were written; how many questions wait;
        where the agent says it is; its steps -- every state it said and every
@@ -238,11 +381,11 @@ export class Parley {
        not read (each says `seen`). Saying what it does means it works: a
        `doing` after "done" or "waiting" makes the status "working" again. */
     read() {
-        const all = lines(`${this.#dir}/from-agent.jsonl`).map((m) => this.#fromAgent(m));
+        const all = this.#lines('from-agent.jsonl').map((m) => this.#fromAgent(m));
         const agent = all.filter((m) => m.kind !== 'close');
         const closes = new Map(all.filter((m) => m.kind === 'close').map((m) => [m.answers, { text: m.text, at: m.at }]));
         const unread = this.unread();
-        const written = lines(`${this.#dir}/to-agent.jsonl`);
+        const written = this.#lines('to-agent.jsonl');
         /* When each of the person's messages was read: the first read that reached it. */
         const reads = readTimes(this.#dir);
         const seenAt = (i) => reads.find((r) => r.lines > i)?.at ?? null;
@@ -280,6 +423,8 @@ export class Parley {
             files: [...shown, ...cites].sort((a, b) => String(a.at).localeCompare(String(b.at))).slice(-LISTED_MAX),
             unread,
             pulse: pulseOf(this.#dir, this.#now()),
+            /* With a keep folder: what changed in the bridge folder after it was kept. */
+            ...(this.#keep ? { altered: this.#altered() } : {}),
         };
     }
 
@@ -304,8 +449,7 @@ export class Parley {
             if (asked?.kind === 'ask') { entry.answers = asked.id; entry.question = oneLine(asked.text, 300); }
             else if (asked) { entry.re = asked.id; entry.quote = oneLine(asked.text || asked.path, 300); }
         }
-        mkdirSync(this.#dir, { recursive: true });
-        appendFileSync(`${this.#dir}/to-agent.jsonl`, `${JSON.stringify(entry)}\n`);
+        this.#write([entry]);
         const now = this.read();
         this.#tell({ type: 'person-wrote', message: now.messages.find((m) => m.id === entry.id) ?? { from: 'person', ...entry }, unread: now.unread });
         return now;
@@ -328,8 +472,7 @@ export class Parley {
         /* Another one replaces it: the one standing is taken back first, said so. */
         if (standing !== null && kind === null) lines2.push({ id: randomUUID(), ...base, reaction: standing, removed: true });
         if (kind !== null) lines2.push({ id: randomUUID(), ...base, reaction: kind });
-        mkdirSync(this.#dir, { recursive: true });
-        appendFileSync(`${this.#dir}/to-agent.jsonl`, lines2.map((l) => `${JSON.stringify(l)}\n`).join(''));
+        this.#write(lines2);
         const now = this.read();
         const set = this.#reactions.find((r) => r.id === (kind ?? standing));
         this.#tell({ type: 'person-reacted', message: lines2.at(-1), reaction: kind, wakes: kind === null ? false : set?.wakes ?? false, unread: now.unread });
@@ -351,6 +494,19 @@ export class Parley {
         let offset = size();
         let rest = Buffer.alloc(0);
         const TYPES = { say: 'agent-said', ask: 'agent-asked', show: 'agent-showed', status: 'agent-status', doing: 'agent-doing', close: 'agent-closed' };
+        const tell = (m) => { const message = this.#fromAgent(m); this.#tell({ type: TYPES[message.kind], message }); };
+        if (this.#keep) {
+            /* Kept: each line once it is kept, by its place in the copy, which only grows -- whatever the agent does to its file. */
+            let known = this.#sync('from-agent.jsonl').length;
+            const timer = setInterval(() => {
+                let all;
+                try { all = this.#sync('from-agent.jsonl'); } catch { return; }
+                for (const line of all.slice(known)) { const m = parsed(line); if (m) tell(m); }
+                known = all.length;
+            }, every);
+            timer.unref?.();
+            return () => clearInterval(timer);
+        }
         const look = () => {
             const now = size();
             if (now < offset) { offset = 0; rest = Buffer.alloc(0); }        /* the file was started again */
@@ -367,9 +523,7 @@ export class Parley {
             rest = all.subarray(end + 1);
             for (const line of all.subarray(0, end).toString('utf8').split('\n')) {
                 const m = line ? parsed(line) : undefined;
-                if (!m) continue;
-                const message = this.#fromAgent(m);
-                this.#tell({ type: TYPES[message.kind], message });
+                if (m) tell(m);
             }
         };
         const timer = setInterval(look, every);

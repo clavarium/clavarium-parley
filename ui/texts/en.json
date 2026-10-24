@@ -142,5 +142,6 @@
   "dictated": "Dictated",
   "side-now": "Now",
   "side-machine": "Its machine",
-  "side-nothing": "Nothing under way."
+  "side-nothing": "Nothing under way.",
+  "history-changed": "History changed here: original shown"
 }

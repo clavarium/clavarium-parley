@@ -54,6 +54,7 @@ arrived. See [docs/protocol.md](docs/protocol.md).
 | `agent-status` | `working`, `waiting` or `done`, and a note | show it; ring a phone on `waiting` |
 | `agent-doing` | one line: what it is doing now | show it while it works; nothing more |
 | `person-reacted` | the reaction, and whether the set says it wakes (`false`, `true`, `'now'`) | tell the agent now, later, or with the next message |
+| `history-changed` | with a keep folder: the lines kept that changed or went in the bridge folder, or were slipped in | nothing: the screen says it; alert someone, or log it |
 
 | Action | Does |
 |---|---|
@@ -84,6 +85,7 @@ are, changes, or does not use.
     const parley = new Parley('/path/to/work/.parley', {
         on: (event) => { /* person-wrote: get WAKE to the agent, your way; agent-asked: alert, or not */ },
         reach: (path) => (path.startsWith('/work/') ? path : null),   // what the person can open
+        keep: '/path/to/state/chat-copy',   // optional: your own copy of the thread, out of the agent's reach
     });
     parley.listen();
     typeInTheAgentsTerminal(parley.invite('fr', { install: 'npm install -g /path/to/clavarium-parley-0.10.0.tgz', shared: '/work' }));
@@ -93,6 +95,13 @@ and in a page:
     import { mount } from 'clavarium-parley/ui';
     mount(element, { load, send, words: texts('fr', operatorsOwn), open, terminal, view: 'simple',
         voice: yourDictation, replies: yourReadyAnswers });
+
+The agent can write in its folder, the person's lines too. Given `keep`, a
+folder of its own that the agent cannot reach, the application's side keeps
+every line there as it reads it (the person's as it writes them), shows that
+copy, and notes any line kept that changed or went in the bridge folder:
+the screen says "History changed here: original shown" where it happened.
+See [the protocol](docs/protocol.md#the-applications-own-copy).
 
 The command is installed from the archive `npm pack` makes, by the
 application or by the agent: `npm install -g clavarium-parley-0.10.0.tgz`,
