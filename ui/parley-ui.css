@@ -570,3 +570,31 @@ mark.parley-found[data-now="true"] { outline: 2px solid var(--parley-ask); }
 .parley-pick-box .parley-sign { width: 1em; height: 1em; stroke-width: 3.2; }
 .parley-pick-text { min-width: 0; overflow-wrap: anywhere; }
 .parley .parley-picks .parley-picks-send { align-self: flex-start; min-width: 8em; margin-top: .2em; border-color: var(--parley-action); background: var(--parley-action); color: var(--parley-on-action); font-weight: 650; }
+/* ---- questions asked together: one card, a step each, a summary, one Send ---- */
+.parley-questions { display: flex; flex-direction: column; gap: .35em; margin-top: .35em; }
+.parley-questions-tabs { display: flex; flex-wrap: wrap; gap: .35em; margin-bottom: .35em; }
+.parley .parley-questions-tab { display: inline-flex; align-items: center; gap: .45em; min-height: 2.6em; padding: 0 .85em; border-radius: 999px; font-size: .9em; color: var(--parley-dim); background: transparent; }
+.parley .parley-questions-tab[data-done="true"] { color: var(--parley-text); }
+.parley .parley-questions-tab[aria-selected="true"] { border-color: var(--parley-ask); box-shadow: inset 0 0 0 1px var(--parley-ask); color: var(--parley-text); font-weight: 650; }
+.parley-questions-n { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 1.55em; height: 1.55em; box-sizing: border-box; border: 1.5px solid currentColor; border-radius: 50%; font-size: .85em; font-weight: 700; }
+.parley-questions-tab[data-done="true"] .parley-questions-n { border-color: var(--parley-action); background: var(--parley-action); color: var(--parley-on-action); }
+.parley-questions-n .parley-sign { width: .95em; height: .95em; stroke-width: 3; }
+.parley-questions-step { font-size: .8em; font-weight: 650; color: var(--parley-dim); }
+.parley-questions-question { font-weight: 650; white-space: pre-wrap; overflow-wrap: anywhere; }
+.parley-questions-hint { font-size: .85em; color: var(--parley-dim); }
+.parley-questions .parley-choices { margin-top: .2em; }
+.parley .parley-questions .parley-choices button[aria-pressed="true"] { display: inline-flex; align-items: center; gap: .4em; box-shadow: 0 0 0 2px var(--parley-bg), 0 0 0 4px var(--parley-action); }
+.parley .parley-questions .parley-choices button[aria-pressed="true"] .parley-sign { width: 1.1em; height: 1.1em; stroke-width: 3; }
+.parley-questions-free { width: 100%; max-width: 34em; box-sizing: border-box; min-height: 5.5em; margin-top: .2em; padding: .6em .8em; font: inherit; border-radius: 10px; border: 1px solid var(--parley-line); background: var(--parley-bg); color: var(--parley-text); resize: vertical; }
+.parley-questions-free:focus-visible { outline: 2px solid var(--parley-action); outline-offset: 2px; }
+.parley-questions-nav { display: flex; flex-wrap: wrap; align-items: center; gap: .6em; margin-top: .5em; }
+.parley .parley-questions-next, .parley .parley-questions-send { min-width: 8em; border-color: var(--parley-action); background: var(--parley-action); color: var(--parley-on-action); font-weight: 650; }
+.parley .parley-questions-back { background: transparent; }
+.parley-questions-summary { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: .15em .8em; align-items: baseline; max-width: 42em; margin: .2em 0 0; }
+.parley-questions-asked { grid-column: 1 / -1; margin-top: .45em; font-size: .9em; color: var(--parley-dim); overflow-wrap: anywhere; }
+.parley-questions-answer { margin: 0; font-weight: 650; white-space: pre-wrap; overflow-wrap: anywhere; }
+.parley-questions-answer[data-missing="true"] { font-weight: 500; font-style: italic; color: var(--parley-ask); }
+.parley .parley-questions-modify { min-height: 2.4em; padding: 0 .35em; border: 0; background: transparent; color: var(--parley-dim); text-decoration: underline; text-underline-offset: .22em; text-decoration-thickness: 1px; }
+.parley .parley-questions-modify:hover { color: var(--parley-action); }
+/* Narrow: the tabs say their number, the one shown its label too. */
+@container parley (max-width: 34rem) { .parley-questions-tab:not([aria-selected="true"]):not([data-summary]) .parley-questions-label { display: none; } }

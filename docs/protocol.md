@@ -26,6 +26,7 @@ The command finds the folder as git finds a repository: `--dir`, else
 |---|---|---|---|
 | `parley tell [--short TITLE] TEXT` | `tell(text, short?)` | `{kind:"say", text, short?}` | at once |
 | `parley ask [--short TITLE] [--pick-many] QUESTION [CHOICE ...]` | `ask(question, choices?, many?, short?)` | `{kind:"ask", text, choices, many?, short?}` (`many: true` only when given, with two choices or more) | at once: it never waits for the answer |
+| `parley ask [--short TITLE] --group -`, the questions as JSON on standard input | `ask({short?, question?, questions: [{id?, label?, question, choices?, many?}]})` | `{kind:"ask", text, choices: [], questions, intro?, short?}` | at once: 2 to 5 questions, one card, one Send |
 | `parley close ID ANSWER` | `close(id, answer)` | `{kind:"close", answers, text}` | at once; ID is the question's, or its first 8 characters or more |
 | `parley show PATH [NOTE]` | `show(path, note?)` | `{kind:"show", path, text}`, the path made whole | at once; refused if there is no such file |
 | `parley show A="title" B="title" [NOTE]` | `show({files: [{path, title}], note?})` (or `paths`) | `{kind:"show", path, text, files: [{path, title?}]}`, twelve at most, `path` the first | at once: one gallery, each with its title |
@@ -42,6 +43,21 @@ Which form of question, when: one choice for a decision (`choices`); several
 to tick when the person picks which items to do, such as which batches to
 launch (`choices` and `many`, `--pick-many`); no choices for an open question.
 Under choices, "Other answer…" lets the person answer in their own words.
+Several decisions it needs at once: one grouped question (5 at most, never
+more).
+
+**Questions asked together.** `questions`: 2 to 5, each `{id, label?,
+question, choices, many?}` -- `id` letters, digits, `-` or `_` (30 at most;
+`q1`, `q2`... when not given), unique; `label` a word or two for its tab (40);
+`many` as for one question, with two choices or more. `question`, when given
+with them, is their introduction (`intro`). `text` says them all, numbered,
+with their choices: what an older screen shows and an older reader reads; its
+own `choices` stay empty, so that no button answers one of them for all. The
+screen shows one card: a tab and a step each ("Question 2/3"; one choice moves
+on, boxes to tick, or a field for their own words; "Other answer…" under
+choices), a summary where each answer can be modified, and one "Send the 3
+answers", which waits for every one. What was started is kept while the thread
+is drawn again.
 
 `TEXT` is Markdown, 16,000 characters at most; `short` is its short version, a title of one or two lines (200 characters), which a screen shows first: whatever asks the person for an action or a decision, or says the agent is blocked, belongs in it. A question is closed (`close`) when the person answered it another way (a message typed later): the screen says the answer the agent understood, and the person may still answer with the question's buttons. `STATE` is `working`, `waiting` or `done`. `doing` says what the agent is
 doing now, at each new step; it means it works: a `doing` after `done` or
@@ -94,8 +110,26 @@ a question that let several choices be ticked: `picked`, the choices ticked
 (an array, in the question's order, one at least), and `text` says them too,
 one per line; `parley read` says `they ticked "A", "B"`.
 
+When it answers questions asked together: `replies`, one per question, in
+the order asked, `{id, label?, picked}` (choices it has: one, or several where
+it says `many`) or `{id, label?, text}` (their own words); every question
+answered. `text` says them, one line each (`1. When: Tomorrow`), and
+`question` is the introduction (or the short version, or "3 questions").
+`parley read` gives each by its id:
+
+    Answer to your question "Before I go on:":
+      1. [when] When: "Tomorrow"
+      2. [which] Batches: they ticked "A", "C"
+      3. [note] Note, in their own words: No deploy on Friday.
+
+The host refuses an id, a choice or a second choice the questions do not
+have, two answers to one, both a choice and words, and a question left
+unanswered. An answer typed in the box answers them all, as plain text.
+
 Old and new sides keep working together: `many` and `picked` are added
-fields, never a change of one there before. An older screen ignores `many`
+fields, never a change of one there before (`questions`, `intro` and
+`replies` too: an older screen shows the text, every question in it, and
+answers it with what is typed; an older agent reads the text of the answer). An older screen ignores `many`
 and shows single choices: one tap answers with one choice, a plain answer.
 An older agent's side ignores `picked` and reads the text, the choices one
 per line. A screen sends `picked` only for a question that says `many`; the
@@ -157,7 +191,7 @@ whole, from the moment it was started: what was posted before is in
 
 | Action | Gives |
 |---|---|
-| `say(text, answers?, files?, {via?, picked?})` | what `read()` gives, after writing; `answers` may be any message of the agent (a question is answered, another replied to); `picked`: the choices ticked of a question with `many` (the text may then be empty: it is made of them) |
+| `say(text, answers?, files?, {via?, picked?})` | what `read()` gives, after writing; `answers` may be any message of the agent (a question is answered, another replied to); `picked`: the choices ticked of a question with `many`; `replies`: the answers to questions asked together (the text may then be empty: it is made of them) |
 | `react(to, reaction)` | a reaction of the set (`REACTIONS`) on a message of the agent, or `null` to take it back; what `read()` gives |
 | `read()` | `messages` (each of the person's says `seen`, and `seenAt` when known, `via` when dictated; each of the agent's may carry `short`, `reaction` (`{id, at, seen}`, the one standing), `files` for a gallery (`[{path, title, open}]`), and `refs`: the paths it cites that `reach` opens; a question it closed, `closed: {text, at}`), `waiting` (questions neither answered nor closed), `status`, `steps` (every `status` and `doing`, in order: `{id, kind, state, note, at}`), `files` (every file shown, and every one cited that can be opened, `cited: true`), `unread`, `pulse` |
 | `invite(lang, {install?, shared?})` | the invitation, a text |

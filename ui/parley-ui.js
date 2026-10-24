@@ -16,7 +16,10 @@
  *                          in reply); `files`, what `attach` gave back for
  *                          the files they attached; `picked`, the choices
  *                          ticked of a question that lets several be ticked
- *                          (the text says them too, one per line)
+ *                          (the text says them too, one per line); `replies`,
+ *                          the answers to questions asked together, one per
+ *                          question: { id, picked } or { id, text } (the text
+ *                          says them all, one line each)
  *   words                  the words of the screen: texts(lang, own) of
  *                          parley-host.mjs, or any object with those keys
  *   open(file)             optional: opens a file the agent showed or cited
@@ -178,7 +181,8 @@ export const KEYS = Object.freeze(['send', 'placeholder', 'empty', 'view', 'simp
     'attach', 'remove-file', 'sending-files', 'attach-where', 'draw-open', 'draw-again', 'drawn-from', 'draw-marked', 'draw-colour', 'draw-undo', 'draw-clear', 'draw-cancel', 'draw-done', 'draw-note', 'draw-hint',
     'copy', 'copied', 'see-details', 'see-more', 'see-less', 'note', 'tip', 'important', 'warning', 'caution', 'badge-ok', 'badge-todo', 'badge-blocked', 'badge-warn',
     'waits-you', 'waits-you-note', 'busy', 'pulse', 'state-sent', 'state-read', 'state-working', 'state-done', 'sent-at', 'read-at', 'done-at',
-    'reply', 'other-answer', 'replying', 'not-a-reply', 'in-reply', 'closed', 'you', 'agent', 'drop', 'picture', 'diagram', 'not-shown', 'grouped',
+    'reply', 'other-answer', 'group-count', 'group-step', 'group-next', 'group-back', 'group-review', 'group-check', 'group-modify', 'group-send', 'group-several', 'group-own', 'group-missing',
+    'replying', 'not-a-reply', 'in-reply', 'closed', 'you', 'agent', 'drop', 'picture', 'diagram', 'not-shown', 'grouped',
     'zoom-in', 'zoom-out', 'zoom-actual', 'zoom-fit', 'zoom-actual-short', 'zoom-fit-short', 'close', 'previous', 'next', 'search', 'found', 'newest', 'dictation', 'auto-send-off',
     'react', 'react-remove', 'react-agree', 'react-go', 'react-disagree', 'react-unclear', 'react-stop', 'react-redo', 'react-later', 'react-love',
     'react-agree-hint', 'react-go-hint', 'react-disagree-hint', 'react-unclear-hint', 'react-stop-hint', 'react-redo-hint', 'react-later-hint', 'react-love-hint',
@@ -215,6 +219,8 @@ export const PRESS_MS = 450;
 export const AUTO_SEND_MS = 1200;
 /* Send pressed while a phrase is still being written: sent once it is, or after this long with what is there. */
 export const WRITE_WAIT_MS = 15_000;
+/* Questions asked together: so many at most. */
+export const GROUP_MAX = 5;
 /* Ready answers: so many at most, each label so long. */
 export const REPLIES_MAX = 40;
 export const LABEL_MAX = 40;
@@ -525,7 +531,7 @@ export function view(data, { words = {}, view: as = 'simple', now = Date.now(), 
             shortCut: !person && typeof m.short === 'string' ? cut(m.short, 200) : '',
             refs: (Array.isArray(m.refs) ? m.refs : []).filter((r) => r && typeof r.path === 'string' && typeof r.open === 'string').slice(0, 20).map((r) => ({ path: r.path, open: r.open })),
             time: clock(t, locale), when: whole(t, locale), at: t,
-            label: open ? said(words, 'asks') : '',
+            label: open ? (m.kind === 'ask' && Array.isArray(m.questions) && m.questions.length > 1 ? `${said(words, 'asks')} · ${said(words, 'group-count', { count: Math.min(m.questions.length, GROUP_MAX) })}` : said(words, 'asks')) : '',
             file: show && !(Array.isArray(m.files) && m.files.length) ? { path: String(m.path ?? ''), open: reach, name: nameOf(m.path), shown: detailed ? String(m.path ?? '') : (m.text ? nameOf(m.path) : ''), picture: PICTURE.test(String(m.path ?? '')) } : null,
             /* Several files shown at once (or one with a title): one gallery, each with its title; simple shows those that open. */
             gallery: show && Array.isArray(m.files) ? m.files.slice(0, 12).filter((f) => f && typeof f.path === 'string' && (detailed || typeof f.open === 'string')).map((f) => ({ path: f.path, open: typeof f.open === 'string' ? f.open : null, name: nameOf(f.path), title: String(f.title || '') || titleOf(f.path), picture: PICTURE.test(f.path), shown: detailed ? f.path : '' })) : [],
@@ -541,11 +547,16 @@ export function view(data, { words = {}, view: as = 'simple', now = Date.now(), 
             choices: m.kind === 'ask' && !answered.has(m.id) ? (m.choices ?? []).map(String) : [],
             /* Several of its choices may be ticked, then sent together. */
             many: m.kind === 'ask' && m.many === true && Array.isArray(m.choices) && m.choices.length > 1,
+            /* Several questions asked together, while not answered: one card, a step each. */
+            questions: m.kind === 'ask' && !answered.has(m.id) && Array.isArray(m.questions) ? m.questions.filter((q) => q && typeof q.id === 'string' && typeof q.question === 'string' && q.question.trim()).slice(0, GROUP_MAX)
+                .map((q) => ({ id: q.id, label: cut(String(q.label ?? ''), 40), question: q.question, choices: (Array.isArray(q.choices) ? q.choices : []).map(String).slice(0, 8), many: q.many === true && Array.isArray(q.choices) && q.choices.length > 1 })) : [],
             open,
             closed: m.kind === 'ask' && m.closed && !answered.has(m.id) ? said(words, 'closed', { answer: cut(m.closed.text, 300) }) : '',
             reply: person && (m.answers || m.re) ? said(words, 'in-reply', { question: cut(m.question || m.quote, 90) }) : '',
             mark: '',
         };
+        if (item.questions.length < 2) item.questions = [];
+        else item.text = String(m.intro ?? '');
         if (person) {
             /* Where it is: sent; read; worked on; handled -- each with its time. */
             const seenAt = m.seen === false ? null : stamp(m.seenAt) ?? t;
@@ -677,7 +688,7 @@ export function view(data, { words = {}, view: as = 'simple', now = Date.now(), 
         items: items.map(({ at, type, key, ...item }) => item),
         unread: Number(data?.unread) || 0,
         /* The one question that waits, for what is typed to answer by default. */
-        asking: (() => { const open = all.filter((m) => openQuestion(m, answered)); return open.length === 1 ? { id: String(open[0].id ?? ''), text: cut(open[0].short || open[0].text, 90) } : null; })(),
+        asking: (() => { const open = all.filter((m) => openQuestion(m, answered)); return open.length === 1 ? { id: String(open[0].id ?? ''), text: cut(open[0].short || (Array.isArray(open[0].questions) && open[0].questions.length > 1 ? open[0].intro || said(words, 'group-count', { count: open[0].questions.length }) : open[0].text), 90) } : null; })(),
         files: detailed ? files.map((f) => ({ path: String(f.path ?? ''), name: nameOf(f.path), note: String(f.note ?? ''), open: typeof f.open === 'string' ? f.open : null, when: whole(stamp(f.at), locale) })) : [],
         summary: detailed ? `${said(words, 'files')} (${files.length})` : '',
         /* Detailed, on the side: what it does now and the steps of this turn; what the application says of its machine. */
@@ -1506,9 +1517,9 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
     watch?.observe(root);
     /* Part of what is in the box was dictated: the message says so (via: voice), once. */
     let dictatedNow = false;
-    const say = async (text, answers, files, via, picked) => {
+    const say = async (text, answers, files, via, given = {}) => {
         problem.hidden = true;
-        const more = { ...(via ? { via } : {}), ...(picked ? { picked } : {}) };
+        const more = { ...(via ? { via } : {}), ...given };
         const extra = Object.keys(more).length > 0;
         try { await send(text, answers, ...(files?.length || extra ? [files?.length ? files : undefined] : []), ...(extra ? [more] : [])); await refresh(); return true; } catch (error) { problem.textContent = said(words, 'not-sent', { error: String(error?.message ?? error) }); problem.hidden = false; return false; }
     };
@@ -1548,6 +1559,97 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
         if (opener.tagName !== 'BUTTON') opener.addEventListener('keydown', (event) => { if ((event.key === 'Enter' || event.key === ' ') && event.target === opener) { event.preventDefault(); flip(); } });
     }
     /* What the agent wrote: rendered, or as plain text. */
+    /* WHAT THE PERSON STARTED ANSWERING, by question: kept while the thread is drawn again. */
+    const drafts = new Map();
+    const draftOf = (id) => { if (!drafts.has(id)) drafts.set(id, { step: 0, answers: new Map(), ticked: new Set() }); return drafts.get(id); };
+    /* QUESTIONS ASKED TOGETHER: one card, a step each (one choice, several to tick, or their own
+       words), a summary where each can be changed, one Send. */
+    function groupCard(item) {
+        const qs = item.questions;
+        const d = draftOf(item.id);
+        const card = el('div', 'parley-questions'); card.dataset.draft = item.id;
+        const answerOf = (q) => { const a = d.answers.get(q.id); if (!a) return null; if (a.own) return a.text.trim() ? { text: a.text.trim() } : null; const picked = q.choices.filter((c) => a.picked.includes(c)); return picked.length ? { picked } : null; };
+        const slot = (q) => { if (!d.answers.has(q.id)) d.answers.set(q.id, { picked: [], own: q.choices.length === 0, text: '' }); return d.answers.get(q.id); };
+        const go = (step) => { d.step = Math.max(0, Math.min(qs.length, step)); paint2(); };
+        const paint2 = () => {
+            const tabs = el('div', 'parley-questions-tabs'); tabs.setAttribute('role', 'tablist');
+            qs.forEach((q, i) => {
+                const t = el('button', 'parley-questions-tab'); t.type = 'button'; t.setAttribute('role', 'tab');
+                const done = answerOf(q) !== null;
+                t.dataset.done = String(done); t.setAttribute('aria-selected', String(d.step === i));
+                const n = el('span', 'parley-questions-n'); if (done) n.append(icon('check', 'parley-sign')); else n.textContent = String(i + 1);
+                t.append(n, el('span', 'parley-questions-label', q.label || cut(q.question, 24)));
+                t.title = q.question;
+                t.addEventListener('click', () => go(i));
+                tabs.append(t);
+            });
+            const sum = button(said(words, 'group-review'), 'parley-questions-tab', () => go(qs.length)); sum.setAttribute('role', 'tab'); sum.setAttribute('aria-selected', String(d.step === qs.length)); sum.dataset.summary = 'true';
+            tabs.append(sum);
+            const nav = el('div', 'parley-questions-nav');
+            if (d.step > 0) nav.append(button(said(words, 'group-back'), 'parley-questions-back', () => go(d.step - 1)));
+            const parts = [tabs];
+            if (d.step < qs.length) {
+                const q = qs[d.step];
+                const a = slot(q);
+                parts.push(el('p', 'parley-questions-step', said(words, 'group-step', { n: d.step + 1, count: qs.length })), el('p', 'parley-questions-question', q.question));
+                if (q.choices.length && q.many) {
+                    parts.push(el('p', 'parley-questions-hint', said(words, 'group-several')));
+                    const picks = el('div', 'parley-choices parley-picks'); picks.setAttribute('role', 'group');
+                    for (const c of q.choices) {
+                        const b = el('button', 'parley-pick'); b.type = 'button'; b.setAttribute('role', 'checkbox'); b.setAttribute('aria-checked', String(!a.own && a.picked.includes(c)));
+                        const mark = el('span', 'parley-pick-box'); mark.setAttribute('aria-hidden', 'true'); mark.append(icon('check', 'parley-sign'));
+                        b.append(mark, el('span', 'parley-pick-text', c));
+                        b.addEventListener('click', () => { if (a.own) { a.own = false; a.picked = []; } a.picked = a.picked.includes(c) ? a.picked.filter((x) => x !== c) : [...a.picked, c]; paint2(); });
+                        picks.append(b);
+                    }
+                    parts.push(picks);
+                } else if (q.choices.length) {
+                    const row = el('div', 'parley-choices');
+                    for (const c of q.choices) {
+                        const b = button(c, '', () => { a.own = false; a.picked = [c]; go(d.step + 1); });
+                        const on = !a.own && a.picked.includes(c);
+                        b.setAttribute('aria-pressed', String(on));
+                        if (on) b.replaceChildren(icon('check', 'parley-sign'), c);
+                        row.append(b);
+                    }
+                    parts.push(row);
+                }
+                if (a.own) {
+                    const free = el('textarea', 'parley-questions-free'); free.rows = 3; free.value = a.text; free.placeholder = said(words, 'group-own'); free.dataset.draft = `${item.id}:${q.id}`;
+                    free.setAttribute('aria-label', q.question);
+                    free.addEventListener('input', () => { a.text = free.value; const tab = tabs.children[d.step]; const done = answerOf(q) !== null; if (tab && tab.dataset.done !== String(done)) paint2(); });
+                    parts.push(free);
+                } else if (q.choices.length) parts.push(button(said(words, 'other-answer'), 'parley-reply-to parley-other', () => { a.own = true; paint2(); card.querySelector('.parley-questions-free')?.focus({ preventScroll: true }); }));
+                nav.append(button(said(words, d.step === qs.length - 1 ? 'group-review' : 'group-next'), 'parley-questions-next', () => go(d.step + 1)));
+            } else {
+                parts.push(el('p', 'parley-questions-question', said(words, 'group-check')));
+                const list = el('dl', 'parley-questions-summary');
+                qs.forEach((q, i) => {
+                    const r = answerOf(q);
+                    const dd = el('dd', 'parley-questions-answer', r ? (r.picked ? r.picked.join(', ') : r.text) : said(words, 'group-missing'));
+                    if (!r) dd.dataset.missing = 'true';
+                    const edit = button(said(words, 'group-modify'), 'parley-questions-modify', () => go(i));
+                    edit.setAttribute('aria-label', `${said(words, 'group-modify')}: ${q.label || q.question}`);
+                    list.append(el('dt', 'parley-questions-asked', `${i + 1}. ${q.question}`), dd, edit);
+                });
+                parts.push(list);
+                const all = qs.map(answerOf);
+                const sendAll = button(said(words, 'group-send', { count: qs.length }), 'parley-questions-send', () => {
+                    if (all.some((r) => r === null)) return;
+                    const replies = qs.map((q, i) => ({ id: q.id, ...all[i] }));
+                    const text = qs.map((q, i) => `${i + 1}. ${q.label || cut(q.question, 60)}: ${all[i].picked ? all[i].picked.join(', ') : all[i].text}`).join('\n');
+                    for (const b of card.querySelectorAll('button')) b.disabled = true;
+                    void say(text, item.id, undefined, undefined, { replies }).then((ok) => { if (ok) drafts.delete(item.id); else paint2(); });
+                });
+                sendAll.disabled = all.some((r) => r === null);
+                nav.append(sendAll);
+            }
+            parts.push(nav);
+            card.replaceChildren(...parts);
+        };
+        paint2();
+        return card;
+    }
     function body(item, v) {
         if (!rich) return [el('p', 'parley-text', item.text)];
         const refs = new Map(item.refs.map((r) => [r.path, r.open]));
@@ -1707,16 +1809,17 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
         if (item.choices.length > 0 && item.many) {
             /* Several to tick: each a box with its words, then Send, which waits for one ticked at least. */
             const choices = el('div', 'parley-choices parley-picks'); choices.setAttribute('role', 'group');
-            const ticked = new Set();
+            /* What is ticked outlives the thread drawn again (a step of the agent, a minute passing). */
+            const ticked = draftOf(item.id).ticked;
             const go = button(said(words, 'send'), 'parley-picks-send', () => {
                 const picked = item.choices.filter((c) => ticked.has(c));
                 if (picked.length === 0) return;
                 for (const x of choices.querySelectorAll('button')) x.disabled = true;
-                void say(picked.join('\n'), item.id, undefined, undefined, picked).then((ok) => { if (!ok) for (const x of choices.querySelectorAll('button')) x.disabled = x === go && ticked.size === 0; });
+                void say(picked.join('\n'), item.id, undefined, undefined, { picked }).then((ok) => { if (ok) drafts.delete(item.id); else for (const x of choices.querySelectorAll('button')) x.disabled = x === go && ticked.size === 0; });
             });
-            go.disabled = true;
+            go.disabled = ticked.size === 0;
             for (const choice of item.choices) {
-                const b = el('button', 'parley-pick'); b.type = 'button'; b.setAttribute('role', 'checkbox'); b.setAttribute('aria-checked', 'false');
+                const b = el('button', 'parley-pick'); b.type = 'button'; b.setAttribute('role', 'checkbox'); b.setAttribute('aria-checked', String(ticked.has(choice)));
                 const mark = el('span', 'parley-pick-box'); mark.setAttribute('aria-hidden', 'true'); mark.append(icon('check', 'parley-sign'));
                 b.append(mark, el('span', 'parley-pick-text', choice));
                 b.addEventListener('click', () => {
@@ -1728,6 +1831,8 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
             }
             choices.append(go);
             bubble.append(choices);
+        } else if (item.questions.length > 1 && send) {
+            bubble.append(groupCard(item));
         } else if (item.choices.length > 0) {
             const choices = el('div', 'parley-choices');
             for (const choice of item.choices) choices.append(button(choice, '', () => { for (const x of choices.children) x.disabled = true; void say(choice, item.id); }));
@@ -1735,7 +1840,7 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
         }
         /* A question: answered by what is typed, once Reply is pressed; under choices, a quiet
            "Other answer…": their own words instead of one of them. */
-        if ((item.open || item.closed) && send) {
+        if ((item.open || item.closed) && send && item.questions.length < 2) {
             const other = item.choices.length > 0;
             const r = button(said(words, other ? 'other-answer' : 'reply'), other ? 'parley-reply-to parley-other' : 'parley-reply-to', () => { replyTo = { id: item.id, text: cut(item.short || item.text, 90), auto: false }; dismissed.delete(item.id); paintReply(); focusBox(); });
             bubble.append(r);
@@ -1994,7 +2099,10 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
         const firstLook = seenKeys === null;
         seenKeys = new Set([...(seenKeys ?? []), ...v.rows.map((row) => row.key).filter(Boolean)]);
         if (firstLook && !v.rows.length) seenKeys = new Set();
+        /* Typing in a card when the thread is drawn again: the cursor stays where it was. */
+        const typing = document.activeElement?.dataset?.draft ? { key: document.activeElement.dataset.draft, at: document.activeElement.selectionStart } : null;
         thread.replaceChildren(...made);
+        if (typing) { const back2 = thread.querySelectorAll('textarea').find((x) => x.dataset.draft === typing.key); if (back2) { back2.focus({ preventScroll: true }); try { back2.setSelectionRange(typing.at, typing.at); } catch { /* not a text field */ } } }
         for (const r of made) if (r.dataset.arrived) setTimeout(() => { delete r.dataset.arrived; }, 1700);
         watchChoices();
         if (v.empty) thread.append(el('p', 'parley-empty', v.empty));

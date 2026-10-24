@@ -44,7 +44,7 @@ test('MCP: ask takes many, a boolean, described; its description says which form
     const dir = folder(t);
     const ask = TOOLS.find((x) => x.name === 'ask');
     assert.equal(ask.inputSchema.properties.many.type, 'boolean');
-    assert.deepEqual(ask.inputSchema.required, ['question'], 'many is optional');
+    assert.equal(ask.inputSchema.required, undefined, 'question, or questions: neither is required by the schema, one is by the tool');
     assert.ok(ask.description.includes(ASKING));
     assert.match(ask.description, /many: true/);
     const input = new PassThrough();
@@ -143,8 +143,13 @@ test('the screen: choices to tick, Send waits for one; "Other answer…" under c
     assert.equal(boxes[0].getAttribute('aria-checked'), 'true');
     assert.equal(go.disabled, false);
     boxes[2].click(); boxes[2].click(); boxes[1].click(); boxes[1].click();
+    /* The thread drawn again (another view and back): what is ticked is kept. */
+    root.querySelector('button[data-view="detailed"]').click(); await settle(); await settle();
+    root.querySelector('button[data-view="simple"]').click(); await settle(); await settle();
+    assert.notEqual(said('q3').querySelector('.parley-picks-send'), go, 'drawn again');
+    assert.deepEqual(said('q3').querySelectorAll('.parley-pick').map((b) => b.getAttribute('aria-checked')), ['true', 'false', 'true'], 'the ticks kept');
     assert.equal(sent.length, 0, 'ticking sends nothing');
-    go.click();
+    said('q3').querySelector('.parley-picks-send').click();
     await settle();
     assert.deepEqual(sent, [['Docket\nWi-Fi', 'q3', undefined, { picked: ['Docket', 'Wi-Fi'] }]], 'in the question\'s order');
     /* Other answer: what is typed answers that question. */

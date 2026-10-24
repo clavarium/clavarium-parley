@@ -45,6 +45,10 @@ export const DOING_MAX = 200;
 /* Its chat says it works and nothing new came for this long: reminded, under what a verb returns. */
 export const STALE_SAID_MS = 10 * 60_000;
 export const CHOICES_MAX = 8;
+/* Questions asked together, as one card: so many at most, each with an id the answer names. */
+export const GROUP_MAX = 5;
+export const LABEL_MAX = 40;
+const GROUP_ID = /^[A-Za-z0-9_-]{1,30}$/;
 /* Files shown at once, as one gallery; the title of each. */
 export const SHOW_MAX = 12;
 export const TITLE_MAX = 120;
@@ -80,7 +84,13 @@ export const REACTION_MEANINGS = Object.freeze({
 });
 /* The choices they ticked, when a question let them tick several: the text says them too, for an older reader. */
 const ticked = (m) => (Array.isArray(m.picked) ? m.picked.filter((c) => typeof c === 'string' && c.trim()).slice(0, CHOICES_MAX).map((c) => plain(c, 200).replace(/\s+/g, ' ').trim()) : null);
-const answerText = (m) => { const t = ticked(m); return t ? `they ticked ${t.length === 0 ? 'none' : t.map((c) => `"${c}"`).join(', ')}${plain(m.text).trim() && plain(m.text).trim() !== t.join('\n') ? `; they added: ${plain(m.text)}` : ''}` : plain(m.text); };
+/* The answers to questions asked together: one line each, by its id and label. */
+const repliesText = (m) => `\n${m.replies.slice(0, GROUP_MAX).filter((r) => r && typeof r === 'object').map((r, i) => {
+    const t = ticked(r);
+    const head = `  ${i + 1}. [${plain(r.id, 30)}]${r.label ? ` ${plain(r.label, LABEL_MAX)}` : ''}`;
+    return t && t.length ? `${head}: ${t.length > 1 ? 'they ticked ' : ''}${t.map((c) => `"${c}"`).join(', ')}` : `${head}, in their own words: ${plain(r.text, 2000)}`;
+}).join('\n')}`;
+const answerText = (m) => { if (Array.isArray(m.replies)) return repliesText(m); const t = ticked(m); return t ? `they ticked ${t.length === 0 ? 'none' : t.map((c) => `"${c}"`).join(', ')}${plain(m.text).trim() && plain(m.text).trim() !== t.join('\n') ? `; they added: ${plain(m.text)}` : ''}` : plain(m.text); };
 const reacted = (m) => {
     const name = plain(m.reaction, 30).replace(/[^a-z0-9-]/g, '');
     const target = `your message${m.toAt ? ` of ${plain(m.toAt, 40).slice(0, 16).replace('T', ' ')}` : ''}${m.quote ? ` "${plain(m.quote, 200).replace(/\s+/g, ' ')}"` : ''}`;
@@ -134,6 +144,30 @@ export function bridge(dir, { how = 'run `parley read`' } = {}) {
         if (s?.state !== 'working' || Date.now() - Date.parse(s.at) < STALE_SAID_MS) return '';
         return `\nTheir screen still says you are working${s.note ? ` on "${s.note}"` : ''}, since ${Math.round((Date.now() - Date.parse(s.at)) / 60_000)} min: say what you do now (parley doing "..."), or that you stopped and they have nothing to do (parley status done), or, only if you need their answer or action, parley status waiting.`;
     };
+    /* SEVERAL QUESTIONS AT ONCE, one card: each one choice, several to tick, or free.
+       The text says them all, for a screen or a reader that knows nothing of `questions`. */
+    const group = (intro, questions, short) => {
+        if (!Array.isArray(questions) || questions.length < 2) throw new Error('questions asked together are two at least');
+        if (questions.length > GROUP_MAX) throw new Error(`${GROUP_MAX} questions at most at once`);
+        const seen = new Set();
+        const list = questions.map((q, i) => {
+            if (!q || typeof q !== 'object') throw new Error(`question ${i + 1} is not an object`);
+            const id = q.id === undefined ? `q${i + 1}` : plain(q.id, 60).trim();
+            if (!GROUP_ID.test(id)) throw new Error(`question ${i + 1}: its id is letters, digits, - or _ (30 at most)`);
+            if (seen.has(id)) throw new Error(`two questions have the id ${id}`);
+            seen.add(id);
+            const text = plain(q.question, 1000).trim();
+            if (!text) throw new Error(`question ${i + 1} is empty`);
+            const choices = Array.isArray(q.choices) ? q.choices.slice(0, CHOICES_MAX).map((c) => plain(c, 200).replace(/\s+/g, ' ').trim()).filter(Boolean) : [];
+            if (q.many === true && choices.length < 2) throw new Error(`question ${i + 1}: several choices to tick need two choices at least`);
+            const label = plain(q.label, LABEL_MAX * 2).replace(/\s+/g, ' ').trim().slice(0, LABEL_MAX);
+            return { id, ...(label ? { label } : {}), question: text, choices, ...(q.many === true ? { many: true } : {}) };
+        });
+        const lead = plain(intro, 2000).trim();
+        const text = `${lead ? `${lead}\n\n` : ''}${list.map((q, i) => `${i + 1}. ${q.question.replace(/\s+/g, ' ')}${q.choices.length ? ` (${q.many ? 'several: ' : ''}${q.choices.join(' / ')})` : ''}`).join('\n')}`;
+        post({ kind: 'ask', text, choices: [], questions: list, ...(lead ? { intro: lead } : {}), ...brief(short) });
+        return `Posted, ${list.length} questions as one card. Do not wait here: you will be told in the terminal when they answer; then ${how}.`;
+    };
     return {
         standing,
         tell(text, { short } = {}) {
@@ -143,7 +177,8 @@ export function bridge(dir, { how = 'run `parley read`' } = {}) {
         },
         /* `many`: several of its choices may be ticked, sent together; a screen
            that does not know it shows them as single choices, which still answer. */
-        ask(question, choices, { short, many = false } = {}) {
+        ask(question, choices, { short, many = false, questions } = {}) {
+            if (questions !== undefined) return group(question, questions, short);
             if (!plain(question).trim()) throw new Error('the question is empty');
             const picked = Array.isArray(choices) ? choices.slice(0, CHOICES_MAX).map((c) => plain(c, 200).trim()).filter(Boolean) : [];
             if (many === true && picked.length < 2) throw new Error('several choices to tick need two choices at least');
@@ -234,7 +269,7 @@ export function bridge(dir, { how = 'run `parley read`' } = {}) {
             if (all) {
                 const theirs = written.flatMap((m, i) => (m ? [{ at: String(m.at ?? ''), text: `${fromThem(m)}${i >= seen ? ' (new)' : ''}` }] : []));
                 const mine = lines(OUT).filter((m) => m && ['say', 'ask', 'show', 'close'].includes(m.kind)).map((m) => ({ at: String(m.at ?? ''),
-                    text: m.kind === 'close' ? `You closed a question, the answer you understood being: ${plain(m.text, 500)}` : m.kind === 'ask' ? `You asked them: ${plain(m.text)}${Array.isArray(m.choices) && m.choices.length ? ` (${m.many === true ? 'several could be ticked' : 'choices'}: ${m.choices.map((c) => plain(c, 200)).join(', ')})` : ''}`
+                    text: m.kind === 'close' ? `You closed a question, the answer you understood being: ${plain(m.text, 500)}` : m.kind === 'ask' && Array.isArray(m.questions) ? `You asked them ${m.questions.length} questions at once: ${plain(m.text)}` : m.kind === 'ask' ? `You asked them: ${plain(m.text)}${Array.isArray(m.choices) && m.choices.length ? ` (${m.many === true ? 'several could be ticked' : 'choices'}: ${m.choices.map((c) => plain(c, 200)).join(', ')})` : ''}`
                         : m.kind === 'show' ? (Array.isArray(m.files) && m.files.length > 1 ? `You showed them ${m.files.length} files: ${m.files.map((f) => `${plain(f?.path, 1000)}${f?.title ? ` "${plain(f.title, 120)}"` : ''}`).join(', ')}${m.text ? ` (${plain(m.text, 500)})` : ''}` : `You showed them a file: ${plain(m.path, 1000)}${m.text ? ` (${plain(m.text, 500)})` : ''}`) : `You told them: ${plain(m.text)}` }));
                 const both = [...mine, ...theirs].sort((a, b) => a.at.localeCompare(b.at)).slice(-ALL_ENTRIES).map((e) => `[${e.at.slice(0, 16).replace('T', ' ')}] ${e.text}`);
                 while (both.length > 1 && both.join('\n').length > ALL_CHARS) both.shift();
@@ -257,11 +292,14 @@ export const GALLERY = 'Pictures that go together (before and after, several pag
 export const SHORTER = 'For anything longer than a few lines, give a short version too (short): a title of one or two lines, shown first, the rest one tap away. Whatever asks them for an action or a decision, or says you are blocked, MUST be in the short version.';
 /* Which form of question, when: one line an agent keeps. */
 export const ASKING = 'Which form: one choice for a decision; several to tick when they pick which items to do, such as which batches to launch; no choices for an open question. They can always answer in their own words.';
+export const GROUPING = `Several decisions you need at once: ask them together, as one card (${GROUP_MAX} questions at most, never more); each one choice, several to tick, or free.`;
 export const TOOLS = [
     { name: 'tell', description: `Tell the person you work for something: where you are, what you did, what you found. They read it on their own screen, not in this terminal. It does not wait for an answer. ${WRITING} ${SHORTER}`,
         inputSchema: { type: 'object', properties: { text: { type: 'string', description: 'What to tell them, in Markdown.' }, short: { type: 'string', description: 'Optional, for a long text: its title, one or two lines.' } }, required: ['text'] } },
-    { name: 'ask', description: `Ask the person you work for a question, instead of asking it in the terminal. It does NOT wait: it posts the question and returns at once. Stop or go on with something else; you will be told in the terminal when a message arrives, then call read. A question they answered another way (a message typed later): close it with close. ${ASKING} Several to tick: many: true. ${WRITING}`,
-        inputSchema: { type: 'object', properties: { question: { type: 'string' }, choices: { type: 'array', items: { type: 'string' }, description: 'Optional: the answers they can pick from.' }, many: { type: 'boolean', description: 'Optional, with two choices or more: they may tick several, sent together; read lists those ticked.' }, short: { type: 'string', description: 'Optional, for a long question: its title, one or two lines.' } }, required: ['question'] } },
+    { name: 'ask', description: `Ask the person you work for a question, instead of asking it in the terminal. It does NOT wait: it posts the question and returns at once. Stop or go on with something else; you will be told in the terminal when a message arrives, then call read. A question they answered another way (a message typed later): close it with close. ${ASKING} Several to tick: many: true. ${GROUPING} Together: questions, instead of question and choices. ${WRITING}`,
+        inputSchema: { type: 'object', properties: { question: { type: 'string' }, choices: { type: 'array', items: { type: 'string' }, description: 'Optional: the answers they can pick from.' }, many: { type: 'boolean', description: 'Optional, with two choices or more: they may tick several, sent together; read lists those ticked.' },
+            questions: { type: 'array', maxItems: GROUP_MAX, description: `Optional: 2 to ${GROUP_MAX} questions asked together, as one card, answered with one Send; read gives each answer by its id. question is then an optional introduction.`,
+                items: { type: 'object', properties: { id: { type: 'string', description: 'Short, letters, digits, - or _: the answer names it.' }, label: { type: 'string', description: 'A word or two for its tab, in their language.' }, question: { type: 'string' }, choices: { type: 'array', items: { type: 'string' } }, many: { type: 'boolean' } }, required: ['question'] } }, short: { type: 'string', description: 'Optional, for a long question: its title, one or two lines.' } } } },
     { name: 'show', description: `Point the person you work for to a file you made (a report, a picture, a page), or to several at once, so that they can open them from their screen. ${GALLERY} Put them in a folder you share with them.`,
         inputSchema: { type: 'object', properties: { path: { type: 'string', description: 'The path of one file.' }, files: { type: 'array', items: { type: 'object', properties: { path: { type: 'string' }, title: { type: 'string', description: 'What it is, in their language: "Home page, before".' } }, required: ['path'] }, description: `Several files shown together (${SHOW_MAX} at most), each with its title.` }, paths: { type: 'array', items: { type: 'string' }, description: 'Several files, without titles (prefer files, with titles).' }, note: { type: 'string', description: 'One line on what it is, common to all.' } } } },
     { name: 'read', description: 'Read what was written to you since you last read: new instructions, answers to your questions, files they attached, their reactions to your messages (only "go ahead" authorizes what a message proposes; "stop" means stop now), and the questions still open with their ids. A message they dictated is said so: it may hold recognition mistakes. Call it when you are told a message arrived, and before you finish a task. With all: true, the whole exchange, both sides, oldest first: to pick up the thread after a restart.',
@@ -278,7 +316,7 @@ export function serve(dir, { input = process.stdin, output = process.stdout } = 
     const verbs = bridge(dir, { how: 'call read' });
     const call = (name, args = {}) => {
         if (name === 'tell') return verbs.tell(args.text, { short: args.short });
-        if (name === 'ask') return verbs.ask(args.question, args.choices, { short: args.short, many: args.many === true });
+        if (name === 'ask') return verbs.ask(args.question, args.choices, { short: args.short, many: args.many === true, ...(args.questions !== undefined ? { questions: args.questions } : {}) });
         if (name === 'close') return verbs.close(args.id, args.answer);
         if (name === 'show') return verbs.show(Array.isArray(args.files) ? args.files : Array.isArray(args.paths) ? args.paths : args.path, args.note);
         if (name === 'read') return verbs.read({ all: args.all === true });

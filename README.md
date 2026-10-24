@@ -15,7 +15,7 @@ application, any agent that can run a command.
 | The agent runs | To |
 |---|---|
 | `parley tell [--short "title"] "text"` | say where it is, what it did, in Markdown; a long text with its short version |
-| `parley ask "question" [choice ...]` | ask, with or without choices (`--pick-many`: several may be ticked); it does not wait |
+| `parley ask "question" [choice ...]` | ask, with or without choices (`--pick-many`: several may be ticked; `--group -`: up to 5 questions as one card); it does not wait |
 | `parley show path ["note"]` | point to a file it made; several at once, each with its title: `parley show a.png="Home, before" b.png="Home, after"`, one gallery |
 | `parley doing "text"` | say in one line what it is doing now, at each new step |
 | `parley read` | read what was written to it, answers and attached files included, and its questions still open |
@@ -58,7 +58,7 @@ arrived. See [docs/protocol.md](docs/protocol.md).
 
 | Action | Does |
 |---|---|
-| `say(text, answers, files, {via, picked})` | writes what the person said (`answers`: the message it answers or replies to; `via: 'voice'`: dictated; `picked`: the choices ticked) |
+| `say(text, answers, files, {via, picked})` | writes what the person said (`answers`: the message it answers or replies to; `via: 'voice'`: dictated; `picked`: the choices ticked; `replies`: the answers to questions asked together) |
 | `react(to, reaction)` | puts a reaction of the set on a message of the agent, or takes it back (`null`) |
 | `read()` | the exchange: messages, open questions, status, steps (states and what it did, in order), files, unread |
 | `invite(lang, { install, shared })` | the text that asks an agent to use Parley, in English, saying the person's language |
@@ -155,7 +155,8 @@ the application's `act(id, line)`; words of its text may be buttons too
 
 When the agent asks with choices, they are answered in its message, or in
 the person's own words ("Other answer…", under them); with `--pick-many`,
-each is a box to tick, then Send, and the agent reads those ticked; once
+each is a box to tick, then Send, and the agent reads those ticked; asked
+together (`--group`), they are one card, a step each, a summary, one Send; once
 that message has scrolled away (or a keyboard took the room), the same
 choices come first above the box, never twice on the screen. Every size is
 in `em` and `rem`: the page's text size is the box's.
@@ -184,7 +185,7 @@ Tried for real with version 0.2 (OpenCode, on hosted open models): the
 `show` and `status`, an answer given ten minutes later, and the two views in
 a real page.
 
-Not tried yet with a real agent: choices to tick (`--pick-many`, `many`) and "Other answer…" (tested here, the screen checked in a browser); version 0.10 -- Back closing what is open over the thread (tested here, and in an application's own end-to-end runs); "Received, thinking..." and "No answer yet" (tested here); version 0.8 -- several files shown at once with their titles, reactions, dictated messages, done said once, the media of a thread, the viewer, the side of the detailed view (tested here and in an application's own end-to-end runs, the screen checked on a real thread replayed); Markdown, short versions, `close` and the signs of each message (version 0.7, tested here and in an application's own end-to-end runs, the screen checked on a real thread replayed); `doing` and the line of what it does now
+Not tried yet with a real agent: questions asked together (`--group`), choices to tick (`--pick-many`, `many`) and "Other answer…" (tested here, the screen checked in a browser); version 0.10 -- Back closing what is open over the thread (tested here, and in an application's own end-to-end runs); "Received, thinking..." and "No answer yet" (tested here); version 0.8 -- several files shown at once with their titles, reactions, dictated messages, done said once, the media of a thread, the viewer, the side of the detailed view (tested here and in an application's own end-to-end runs, the screen checked on a real thread replayed); Markdown, short versions, `close` and the signs of each message (version 0.7, tested here and in an application's own end-to-end runs, the screen checked on a real thread replayed); `doing` and the line of what it does now
 (version 0.3, tested here with stand-ins); the box's slots (version 0.4:
 dictation, ready answers, the keyboard of a phone), tested in an
 application's own end-to-end runs with a recorded voice and an emulated

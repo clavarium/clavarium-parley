@@ -9,7 +9,7 @@
 import { readFileSync, realpathSync, existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { bridge, findFolder, STATES, VERSION, FOLDER, WRITING, SHORTER, GALLERY, ASKING } from '../server/parley-mcp.mjs';
+import { bridge, findFolder, STATES, VERSION, FOLDER, WRITING, SHORTER, GALLERY, ASKING, GROUPING, GROUP_MAX } from '../server/parley-mcp.mjs';
 
 /* How to work with the person, in a few lines: what an agent comes back to
    when it forgot. Its words are accepted as they are. */
@@ -31,6 +31,8 @@ export const GUIDE = `How to work with the person through Parley
    parley ask   -> a decision (give the choices)
                    which items to do: --pick-many, they tick several
                    an open question: no choices
+                   several decisions at once: --group, one card
+                   (5 questions at most, never more)
 
 4. Anything that needs their action or decision
    goes in the short version (--short), first line.
@@ -56,6 +58,10 @@ export const HELP = `parley: talk with the person you work for. They read and an
                                        ask them something; give the answers they can pick when you can,
                                        each with --choice (the question first; "-" for the question
                                        read from standard input); --pick-many: they may tick several
+  parley ask [--short "title"] --group - <<'EOF' ... EOF
+                                       several questions at once, one card, one Send: JSON on standard
+                                       input, {"question": "intro, optional", "questions": [{"id",
+                                       "label", "question", "choices"?, "many"?}]}, ${GROUP_MAX} at most
   parley close ID "answer"             close a question of yours they answered another way (a message
                                        typed later), saying the answer you understood; ID as read shows it
   parley show path ["note"]            point them to a file you made, so that they can open it
@@ -77,6 +83,12 @@ ${wrap(SHORTER)}
 
 ${wrap(ASKING)}
   parley ask --pick-many "Which batches do I launch?" --choice "Docket" --choice "Dictation"
+${wrap(GROUPING)}
+  parley ask --short "Three decisions" --group - <<'EOF'
+  {"questions": [{"id": "when", "label": "When", "question": "Deploy now?", "choices": ["Now", "Tomorrow"]},
+   {"id": "which", "label": "Batches", "question": "Which batches next?", "choices": ["A", "B"], "many": true},
+   {"id": "note", "label": "Note", "question": "Anything I must know first?"}]}
+  EOF
 
 ${wrap(GALLERY)}
   parley show before.png="Home page, before" after.png="Home page, after" "The new header"
@@ -180,6 +192,16 @@ export function run(argv, { env = process.env, cwd = process.cwd(), stdin = () =
             /* --pick-many, anywhere: several of its choices may be ticked. */
             const many = verb === 'ask' && rest.includes('--pick-many');
             if (many) rest.splice(rest.indexOf('--pick-many'), 1);
+            /* --group: the questions, as JSON on standard input. */
+            if (verb === 'ask' && rest.includes('--group')) {
+                rest.splice(rest.indexOf('--group'), 1);
+                if (rest.length !== 1 || rest[0] !== '-' || many) return { code: 64, out: '', err: 'Several questions at once: parley ask [--short "title"] --group - with their JSON on standard input.\n' };
+                let given;
+                try { given = JSON.parse(stdin()); } catch { return { code: 64, out: '', err: 'The questions are not JSON: {"question": "intro, optional", "questions": [{"id", "label", "question", "choices", "many"}]}.\n' }; }
+                const asked = Array.isArray(given) ? { questions: given } : given && typeof given === 'object' ? given : {};
+                said = verbs.ask(asked.question ?? asked.intro ?? '', undefined, { short: short ?? asked.short, questions: asked.questions ?? null });
+                return { code: 0, out: `${said}\n`, err: '' };
+            }
             if (verb === 'tell') said = verbs.tell(text(rest.join(' ')), { short });
             else {
                 /* Its answers: --choice "...", once each, anywhere; or, as before, the words after the question. */
