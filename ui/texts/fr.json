@@ -161,5 +161,11 @@
   "side-nothing": "Rien en cours.",
   "history-changed": "Historique modifié ici : original affiché",
   "earlier": "Messages plus anciens",
-  "media-earlier": "Plus anciens : charger"
+  "media-earlier": "Plus anciens : charger",
+  "panel": "Liste",
+  "panel-show": "Afficher {title}",
+  "panel-hide": "Masquer {title}",
+  "panel-empty": "Rien pour l'instant",
+  "panel-done": "Faits ({count})",
+  "panel-not-saved": "Non enregistré : {error}"
 }

@@ -161,5 +161,11 @@
   "side-nothing": "Nothing under way.",
   "history-changed": "History changed here: original shown",
   "earlier": "Earlier messages",
-  "media-earlier": "Older ones: load"
+  "media-earlier": "Older ones: load",
+  "panel": "List",
+  "panel-show": "Show {title}",
+  "panel-hide": "Hide {title}",
+  "panel-empty": "Nothing yet",
+  "panel-done": "Done ({count})",
+  "panel-not-saved": "Not saved: {error}"
 }

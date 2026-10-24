@@ -168,6 +168,35 @@ that message has scrolled away (or a keyboard took the room), the same
 choices come first above the box, never twice on the screen. Every size is
 in `em` and `rem`: the page's text size is the box's.
 
+## A panel beside the thread
+
+A list the application keeps -- its tasks, its batches, what the agent may
+start -- shown on the right of the thread. Parley does not know where it comes
+from: it shows items, and hands a tick or a click back to the application.
+
+    const chat = mount(element, { load, send, words,
+        side: { title: 'Batches', items, tick: (id, on) => save(id, on), open: (id) => showCard(id),
+                folded: kept[name] ?? false, onFold: (folded) => { kept[name] = folded; } } });
+    chat.side = { ...sameSlots, items: newer };     // given again when the list changed; null: no panel
+
+| `side` | The application gives | The panel shows |
+|---|---|---|
+| `title` | the list's name | above the list, and on the bar's button (its title) |
+| `items` | `[{ id, title, state, done, checked, owner, tone, tick }]`, 100 at most | each by its title; under it what is set of its state and owner, nothing for what is empty; those not done first, in the order given; those done folded under "Done (n)", struck through |
+| `tick(id, on)` | resolves once kept, refuses with a reason | a box to tick on each item not done (`tick: false`: none on that one); ticked at once, the reason said in one line when refused, the box as it was |
+| `open(id)` | opens the item where the application shows it | its title is a button |
+| `tone` | `'active'` (being done) or `'attention'` (waits for the person) | its state in colour |
+| `count` | a number (default: the items not done; `0`: none) | on the bar's button |
+| `action` | `{ label, run }` | one button under the list ("Start the list") |
+| `folded`, `onFold(folded)` | its first state; the person's choice, for the application to keep (per conversation, say); `handle.folded = v` sets it | |
+
+Wide (`PANEL_PX`, 860 pixels of the chat, and more), the panel is a column of
+its own on the right, from the bar to the box; the thread and the box keep
+theirs. Narrow, it never squeezes the thread: the bar's button opens it as a
+sheet over the thread, closed by Back, Escape, its own button or a tap
+elsewhere. `panelOf(side)` is the same list as plain data, as it will be
+shown.
+
 ## Words
 
 What an agent reads (the help, the MCP descriptions, the invitation, the
@@ -192,7 +221,7 @@ Tried for real with version 0.2 (OpenCode, on hosted open models): the
 `show` and `status`, an answer given ten minutes later, and the two views in
 a real page.
 
-Not tried yet with a real agent: a part of the thread (`read({ last | days | before | since })`,
+Not tried yet with a real agent: the panel beside the thread (tested here and in an application's own end-to-end runs, the screen checked in a browser, wide and on an emulated phone); a part of the thread (`read({ last | days | before | since })`,
 `search()`, "Earlier messages", `parley read --last` and `--before`; tested here
 and in an application's own end-to-end runs, on threads of 600 and 1,000
 messages); questions asked together (`--group`), choices to tick (`--pick-many`, `many`) and "Other answer…" (tested here, the screen checked in a browser); version 0.10 -- Back closing what is open over the thread (tested here, and in an application's own end-to-end runs); "Received, thinking..." and "No answer yet" (tested here); version 0.8 -- several files shown at once with their titles, reactions, dictated messages, done said once, the media of a thread, the viewer, the side of the detailed view (tested here and in an application's own end-to-end runs, the screen checked on a real thread replayed); Markdown, short versions, `close` and the signs of each message (version 0.7, tested here and in an application's own end-to-end runs, the screen checked on a real thread replayed); `doing` and the line of what it does now

@@ -4,7 +4,7 @@
  *   mount(element, { load, send, words, open, terminal, remind, view, onView, locale,
  *                    voice, autoSend, onAutoSend, replies, enter, touch, attach, act,
  *                    markdown, picture, diagram, highlight, math, refs, agentName, agentTool, react, reactions, back,
- *                    window, search });
+ *                    window, search, side });
  *
  *   load(options)          resolves with what parley-host.mjs read(options) gives;
  *                          the application may add lines of its own to its
@@ -102,6 +102,32 @@
  *                          agent wrote it ([Anna](app:people/12)); label names
  *                          the button of its card (null: none), open opens it.
  *                          Parley reads nothing in a ref.
+ *
+ * A PANEL BESIDE THE THREAD (`side`), optional: a list the application
+ * keeps -- its tasks, its batches -- shown on the right of the thread, never
+ * over it. Parley knows nothing of where the list comes from:
+ *   side                   { title, items, tick(id, on), open(id), folded,
+ *                          onFold(folded), count, action: { label, run } }
+ *                          items: [{ id, title, state, done, checked, owner,
+ *                          tone ('active' | 'attention'), tick: false }];
+ *                          those not done first, as given; those done
+ *                          folded under "Done (n)". What is set is said (a
+ *                          state, an owner), what is empty is not. `tick`
+ *                          gives each item not done a box to tick (its
+ *                          promise refused: said in one line, the box as it
+ *                          was); `open`, a click on its title. `count`: the
+ *                          number on the bar's button (default: those not
+ *                          done; 0: none). `action`: one button under the
+ *                          list ("Start the list"). Given again with
+ *                          `handle.side = {...}` (null: no panel).
+ *                          Wide (PANEL_PX and more): beside the thread,
+ *                          folded and unfolded from the bar; `folded` is
+ *                          its first state, the person's choice is told to
+ *                          onFold for the application to keep (per
+ *                          conversation, say), and `handle.folded = v`
+ *                          sets it. Narrow: a sheet over the thread, opened
+ *                          from the bar, closed by Back, Escape or a tap
+ *                          elsewhere.
  *
  * TWO VERSIONS OF A MESSAGE. An agent may give a long message a short one
  * (`short`: a title of one or two lines). The simple view shows the short
@@ -211,7 +237,7 @@ export const KEYS = Object.freeze(['send', 'placeholder', 'empty', 'view', 'simp
     'react', 'react-remove', 'react-agree', 'react-go', 'react-disagree', 'react-unclear', 'react-stop', 'react-redo', 'react-later', 'react-love',
     'react-agree-hint', 'react-go-hint', 'react-disagree-hint', 'react-unclear-hint', 'react-stop-hint', 'react-redo-hint', 'react-later-hint', 'react-love-hint',
     'decide', 'media', 'media-pictures', 'media-files', 'media-none', 'see-in-thread', 'done-end', 'done-end-note', 'dictated', 'side-now', 'side-machine', 'side-nothing', 'history-changed',
-    'earlier', 'media-earlier']);
+    'earlier', 'media-earlier', 'panel', 'panel-show', 'panel-hide', 'panel-empty', 'panel-done', 'panel-not-saved']);
 /* THE REACTIONS offered by default, each with its Lucide icon; their words
    are "react-<id>" (shown under the icon) and "react-<id>-hint" (on hover).
    The same ids as REACTIONS of parley-host.mjs, which says which wake. */
@@ -829,6 +855,35 @@ export function quick(data, replies = []) {
     return out;
 }
 
+/* THE PANEL BESIDE THE THREAD, as plain data: what the application gave
+   (`side`), kept to what is well formed. Parley knows nothing of where the
+   items come from: a title, a state, ticked or not, done or not, an owner.
+   Those not done first, in the order given; those done after. */
+export const PANEL_MAX = 100;
+export const PANEL_TITLE_MAX = 200;
+export const PANEL_PX = 860;
+export const PANEL_WAIT_MS = 8000;
+export const PANEL_TONES = Object.freeze(['active', 'attention']);
+export function panelOf(given) {
+    if (!given || typeof given !== 'object') return null;
+    const line = (v, most) => (typeof v === 'string' ? v.replace(/\s+/g, ' ').trim().slice(0, most) : '');
+    const seen = new Set();
+    const items = [];
+    for (const it of Array.isArray(given.items) ? given.items : []) {
+        if (items.length >= PANEL_MAX) break;
+        const id = typeof it?.id === 'string' || Number.isInteger(it?.id) ? String(it.id) : '';
+        const title = line(it?.title, PANEL_TITLE_MAX);
+        if (!id || !title || seen.has(id)) continue;
+        seen.add(id);
+        items.push({ id, title, state: line(it.state, 60), owner: line(it.owner, 80), done: it.done === true, checked: it.checked === true,
+            tickable: it.tick !== false && it.done !== true, tone: PANEL_TONES.includes(it.tone) ? it.tone : '' });
+    }
+    const open = items.filter((x) => !x.done);
+    const done = items.filter((x) => x.done);
+    const count = Number.isInteger(given.count) && given.count >= 0 ? given.count : open.length;
+    return { title: line(given.title, 60), open, done, count, action: given.action && typeof given.action.run === 'function' && line(given.action.label, 40) ? { label: line(given.action.label, 40), run: given.action.run } : null };
+}
+
 /* Does this key, pressed in the box, send? Shift+Enter is a new line and
    Ctrl+Enter sends, always; Enter alone as `enter` says ('auto': where there
    is a fine pointer, a keyboard is likely). A key that composes a character
@@ -886,6 +941,7 @@ const SIGNS = {
     right: [['path', { d: 'M9 5l7 7-7 7' }]],
     up: [['path', { d: 'M6 15l6-6 6 6' }]],
     file: [['path', { d: 'M6 3h8l5 5v13H6z' }], ['path', { d: 'M14 3v5h5' }]],
+    tasks: [['path', { d: 'M3.5 6.5l1.5 1.5 3-3M3.5 12.5l1.5 1.5 3-3M3.5 18.5l1.5 1.5 3-3M11 6.5h9.5M11 12.5h9.5M11 18.5h9.5' }]],
 };
 function sign(kind) {
     const svg = document.createElementNS(SVG, 'svg');
@@ -1835,7 +1891,7 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
     voice: speaking, autoSend = false, onAutoSend, replies: ready = [], enter = 'auto', touch, attach, act,
     markdown: rich = false, picture, diagram, highlight, agentName, agentTool, react, reactions: offered = REACTIONS,
     receivedAfter = RECEIVED_MS, noAnswerAfter = NO_ANSWER_MS, back = true, draft: draftKey = '', math: mathGiven, refs: zoneRefs,
-    window: shownAtFirst, search: searchAll } = {}) {
+    window: shownAtFirst, search: searchAll, side: sideGiven } = {}) {
     const steps = stepper(back);
     /* What is asked of load() at first, and for each page before it: { last } or { days }. */
     const span = windowOf(shownAtFirst);
@@ -1891,7 +1947,127 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
     prefs.addEventListener('keydown', (event) => { if (event.key === 'Escape' && !prefsMenu.hidden) { event.preventDefault(); showPrefs(false); prefsButton.focus(); } });
     const away = (event) => { if (!prefsMenu.hidden && !(event.target instanceof Node && prefs.contains(event.target))) showPrefs(false); };
     document.addEventListener('pointerdown', away);
-    top.append(status, prefs);
+    /* THE PANEL BESIDE THE THREAD (`side`): a list the application gives, a
+       tick and a click handed back to it. Wide: beside the thread, folded on
+       demand (the application keeps that choice: folded, onFold). Narrow: a
+       sheet over the thread, opened from the bar, never beside it. */
+    let side = null; let panel = null;
+    let panelFolded = false; let panelSheet = false; let panelDone = false; let panelProblem = '';
+    /* A tick sent and not yet given back by the application: shown as asked meanwhile. */
+    const ticking = new Map();
+    const panelBox = el('aside', 'parley-panel'); panelBox.hidden = true;
+    const panelButton = el('button', 'parley-panel-open'); panelButton.type = 'button'; panelButton.hidden = true;
+    const panelCount = el('span', 'parley-panel-count');
+    panelButton.append(sign('tasks'), panelCount);
+    const beside = () => root.clientWidth === 0 || root.clientWidth >= PANEL_PX;
+    const placePanel = () => {
+        const shown = Boolean(panel);
+        panelButton.hidden = !shown;
+        if (!shown) { panelBox.hidden = true; delete root.dataset.panel; delete panelBox.dataset.sheet; return; }
+        const wide = beside();
+        if (wide && panelSheet) { panelSheet = false; steps.closed('panel'); }
+        const open = wide ? !panelFolded : panelSheet;
+        panelBox.hidden = !open;
+        if (wide && open) root.dataset.panel = 'beside'; else root.dataset.panel = 'folded';
+        if (!wide && open) panelBox.dataset.sheet = 'true'; else delete panelBox.dataset.sheet;
+        panelButton.setAttribute('aria-expanded', String(open));
+        const word = panel.title || said(words, 'panel');
+        panelButton.title = open ? said(words, 'panel-hide', { title: word }) : said(words, 'panel-show', { title: word });
+        panelButton.setAttribute('aria-label', panelButton.title);
+        panelBox.setAttribute('aria-label', word);
+        panelCount.textContent = panel.count > 0 ? String(panel.count) : '';
+        panelCount.hidden = panel.count === 0;
+    };
+    const showSheet = (on) => {
+        if (on === panelSheet) return;
+        panelSheet = on;
+        if (on) steps.opened('panel', () => showSheet(false)); else steps.closed('panel');
+        paintPanel();
+    };
+    const panelFold = (folded) => {
+        if (!beside()) { showSheet(!folded); return; }
+        if (panelFolded === folded) return;
+        panelFolded = folded; placePanel();
+        try { side?.onFold?.(folded); } catch { /* the application's business */ }
+    };
+    panelButton.addEventListener('click', () => panelFold(beside() ? !panelFolded : panelSheet));
+    const awayFromSheet = (event) => { if (panelSheet && event.target instanceof Node && !panelBox.contains(event.target) && !panelButton.contains(event.target)) showSheet(false); };
+    document.addEventListener('pointerdown', awayFromSheet);
+    panelBox.addEventListener('keydown', (event) => { if (event.key === 'Escape' && panelSheet) { event.preventDefault(); showSheet(false); panelButton.focus(); } });
+    const checkedNow = (item) => (ticking.has(item.id) ? ticking.get(item.id).on : item.checked);
+    async function tickItem(item) {
+        if (!side?.tick || ticking.has(item.id)) return;
+        const on = !checkedNow(item);
+        ticking.set(item.id, { on, at: Date.now(), sent: false });
+        panelProblem = ''; paintPanel();
+        try { await side.tick(item.id, on); const t = ticking.get(item.id); if (t) t.sent = true; } catch (error) {
+            ticking.delete(item.id);
+            panelProblem = said(words, 'panel-not-saved', { error: String(error?.message ?? error) });
+        }
+        paintPanel();
+    }
+    function panelRow(item) {
+        const li = el('li', 'parley-panel-item'); li.dataset.id = item.id;
+        if (item.done) li.dataset.done = 'true';
+        if (item.tone) li.dataset.tone = item.tone;
+        const on = checkedNow(item);
+        li.dataset.checked = String(on);
+        if (side?.tick && item.tickable) {
+            const t = el('button', 'parley-panel-tick'); t.type = 'button'; t.setAttribute('role', 'checkbox'); t.setAttribute('aria-checked', String(on));
+            t.setAttribute('aria-label', item.title);
+            if (ticking.has(item.id) && !ticking.get(item.id).sent) t.dataset.busy = 'true';
+            t.append(icon('check', 'parley-sign'));
+            t.addEventListener('click', () => void tickItem(item));
+            li.append(t);
+        } else {
+            const mark = el('span', 'parley-panel-mark'); mark.setAttribute('aria-hidden', 'true');
+            if (item.done || on) mark.append(icon('check', 'parley-sign'));
+            li.append(mark);
+        }
+        const body = el('div', 'parley-panel-what');
+        const name = side?.open ? button(item.title, 'parley-panel-title', () => { if (panelSheet) showSheet(false); try { side.open(item.id); } catch { /* the application's business */ } }) : el('span', 'parley-panel-title', item.title);
+        body.append(name);
+        /* What is set, said; what is empty, not. */
+        const meta = [item.state, item.owner].filter(Boolean);
+        if (meta.length) body.append(el('span', 'parley-panel-meta', meta.join(' · ')));
+        li.append(body);
+        return li;
+    }
+    function paintPanel() {
+        if (!panel) { panelBox.replaceChildren(); placePanel(); return; }
+        const head = el('div', 'parley-panel-head');
+        const word = panel.title || said(words, 'panel');
+        const hide = el('button', 'parley-panel-fold'); hide.type = 'button'; hide.title = said(words, 'panel-hide', { title: word }); hide.setAttribute('aria-label', hide.title);
+        hide.append(sign(panelSheet ? 'close' : 'right'));
+        hide.addEventListener('click', () => panelFold(true));
+        head.append(el('h2', 'parley-panel-name', word), hide);
+        const parts = [head];
+        if (!panel.open.length && !panel.done.length) parts.push(el('p', 'parley-panel-empty', said(words, 'panel-empty')));
+        if (panel.open.length) { const ul = el('ul', 'parley-panel-list'); ul.append(...panel.open.map(panelRow)); parts.push(ul); }
+        if (panel.done.length) {
+            const opener = el('button', 'parley-panel-done'); opener.type = 'button'; opener.setAttribute('aria-expanded', String(panelDone));
+            opener.append(sign(panelDone ? 'up' : 'down'), el('span', '', said(words, 'panel-done', { count: panel.done.length })));
+            opener.addEventListener('click', () => { panelDone = !panelDone; paintPanel(); });
+            parts.push(opener);
+            if (panelDone) { const ul = el('ul', 'parley-panel-list'); ul.dataset.done = 'true'; ul.append(...panel.done.map(panelRow)); parts.push(ul); }
+        }
+        if (panel.action) parts.push(button(panel.action.label, 'parley-panel-action', () => { try { void Promise.resolve(panel.action.run()).catch(() => {}); } catch { /* the application's business */ } }));
+        if (panelProblem) { const p = el('p', 'parley-panel-problem', panelProblem); p.setAttribute('role', 'alert'); parts.push(p); }
+        panelBox.replaceChildren(...parts);
+        placePanel();
+    }
+    const setSide = (given, first = false) => {
+        const next = panelOf(given);
+        if (!next) { side = null; panel = null; ticking.clear(); if (panelSheet) showSheet(false); paintPanel(); return; }
+        side = given;
+        /* Its first word on folding, when it comes; then the person's, through the bar (or `handle.folded`). */
+        if (first || !panel) panelFolded = given.folded === true;
+        /* What the application says now wins over a tick it has taken; one it never answered is let go after a while. */
+        for (const item of [...next.open, ...next.done]) { const t = ticking.get(item.id); if (t && t.sent && (item.checked === t.on || Date.now() - t.at > PANEL_WAIT_MS)) ticking.delete(item.id); }
+        for (const [id, t] of ticking) if (t.sent && Date.now() - t.at > PANEL_WAIT_MS) ticking.delete(id);
+        panel = next; paintPanel();
+    };
+    top.append(status, panelButton, prefs);
     /* SEARCH IN THE THREAD: plain text, both sides; "n of m", previous, next. */
     const finder = el('div', 'parley-search'); finder.hidden = true; finder.setAttribute('role', 'search');
     const query = el('input', 'parley-search-box'); query.type = 'search'; query.placeholder = said(words, 'search'); query.setAttribute('aria-label', said(words, 'search'));
@@ -1952,11 +2128,12 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
     composer.append(quickRow, replyRow, pendingRow, form, problem);
     const reacting = reactionPicker();
     const shelf = mediaShelf();
-    root.replaceChildren(zoom.box, drawer.box, shelf.box, reacting.box, dropZone, top, finder, main, composer);
+    root.replaceChildren(zoom.box, drawer.box, shelf.box, reacting.box, dropZone, top, finder, main, panelBox, composer);
+    setSide(sideGiven, true);
     root.dataset.view = as;
     const narrow = () => root.clientWidth > 0 && root.clientWidth < NARROW_PX;
     let wasNarrow = narrow();
-    const watch = typeof ResizeObserver === 'function' ? new ResizeObserver(() => { if (narrow() !== wasNarrow) { wasNarrow = narrow(); repaint(); } }) : null;
+    const watch = typeof ResizeObserver === 'function' ? new ResizeObserver(() => { if (panel) placePanel(); if (narrow() !== wasNarrow) { wasNarrow = narrow(); repaint(); } }) : null;
     watch?.observe(root);
     /* Part of what is in the box was dictated: the message says so (via: voice), once. */
     let dictatedNow = false;
@@ -3122,8 +3299,11 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
         get listening() { return Boolean(stopping); },
         get attach() { return attach; }, set attach(a) { attach = a?.upload ? a : undefined; clip.hidden = !attach; if (!attach) { pending = []; paintPending(); } },
         /* What is open over the thread, closed (the page shows something else now). */
-        closeLayers() { for (const name of steps.open.reverse()) { if (name === 'zoom') zoom.close(); else if (name === 'media') shelf.close(); else if (name === 'react') reacting.close?.(); else if (name === 'search') closeSearch(); else if (name === 'prefs') showPrefs(false); } },
+        closeLayers() { for (const name of steps.open.reverse()) { if (name === 'zoom') zoom.close(); else if (name === 'media') shelf.close(); else if (name === 'react') reacting.close?.(); else if (name === 'search') closeSearch(); else if (name === 'prefs') showPrefs(false); else if (name === 'panel') showSheet(false); } },
+        /* The panel beside the thread: its list given again (null: no panel). */
+        get side() { return side; }, set side(given) { setSide(given); },
+        get folded() { return panel ? (beside() ? panelFolded : !panelSheet) : true; }, set folded(v) { panelFolded = Boolean(v); if (panelFolded && panelSheet) showSheet(false); placePanel(); },
         get layers() { return steps.open; },
-        destroy() { steps.destroy(); gone = true; quiet(); letGo([]); for (const u of urls) try { URL.revokeObjectURL(u); } catch { /* gone */ } document.removeEventListener('pointerdown', away); clearTimeout(hush); if (timer) clearInterval(timer); clearTimeout(hiding); unpress(); watch?.disconnect(); settle?.disconnect(); watchQuick?.disconnect(); seeing?.disconnect(); root.replaceChildren(); root.classList.remove('parley'); delete root.dataset.view; },
+        destroy() { steps.destroy(); gone = true; quiet(); letGo([]); for (const u of urls) try { URL.revokeObjectURL(u); } catch { /* gone */ } document.removeEventListener('pointerdown', away); document.removeEventListener('pointerdown', awayFromSheet); clearTimeout(hush); if (timer) clearInterval(timer); clearTimeout(hiding); unpress(); watch?.disconnect(); settle?.disconnect(); watchQuick?.disconnect(); seeing?.disconnect(); root.replaceChildren(); root.classList.remove('parley'); delete root.dataset.view; delete root.dataset.panel; },
     };
 }
