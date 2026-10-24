@@ -2776,12 +2776,29 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
        the page reloaded. Sent, it is let go. */
     const DRAFT = draftKey ? `parley-draft:${draftKey}` : '';
     const keepDraft = () => { if (!DRAFT) return; try { if (box.value.trim()) localStorage.setItem(DRAFT, box.value); else localStorage.removeItem(DRAFT); } catch { /* a private window: kept as long as the page */ } };
+    /* THE BOX IS NEVER COLLAPSED TO BE MEASURED. A tap in a word makes a phone's keyboard take it up again
+       to correct it (composition, then input): a box set to no height for a moment to be measured jumps
+       under the finger, and the browser may drop the keyboard. Where the browser sizes a field by its
+       content (field-sizing, in the style sheet), nothing is done here; elsewhere, a hidden copy with the
+       same width and text is measured, and the box is given a height only when that height changes. */
+    const sizedByCss = typeof CSS !== 'undefined' && typeof CSS.supports === 'function' && CSS.supports('field-sizing', 'content');
+    let mirror = null;
+    const measured = { value: null, width: -1 };
     const grow = () => {
-        box.style.height = '';
-        /* No higher than it is while what it holds fits: no pixel won or lost by rounding. */
-        const full = box.scrollHeight + 2;
-        if (full > box.getBoundingClientRect().height + 1) box.style.height = `${full}px`;
         keepDraft();
+        if (sizedByCss) return;
+        const width = box.getBoundingClientRect().width;
+        if (box.value === measured.value && width === measured.width) return;
+        if (!mirror) {
+            mirror = el('textarea', 'parley-box-mirror'); mirror.rows = 1; mirror.tabIndex = -1; mirror.readOnly = true; mirror.setAttribute('aria-hidden', 'true');
+            field.append(mirror);
+        }
+        measured.value = box.value; measured.width = width;
+        if (width > 0) mirror.style.width = `${width}px`;
+        mirror.value = box.value;
+        /* Border to border, as the box is measured; its own min and max heights still apply. */
+        const height = `${mirror.scrollHeight + 2}px`;
+        if (box.style.height !== height) box.style.height = height;
     };
     if (DRAFT) { try { const kept = localStorage.getItem(DRAFT); if (kept) { box.value = kept.slice(0, TEXT_MAX); queueMicrotask(grow); } } catch { /* as above */ } }
     box.addEventListener('input', () => { grow(); if (!box.value.trim()) dictatedNow = false; });

@@ -181,3 +181,52 @@ test('without a voice, neither a microphone nor its choice', (t) => {
     assert.ok(other.$('.parley-prefs-menu').contains(other.$('.parley-views')), 'the view is chosen in it');
     assert.equal(other.$('.parley-mic').hidden, true);
 });
+
+/* A tap in a word on a phone: its keyboard takes the word up again (composition, then input). */
+const correcting = (box) => {
+    const events = [];
+    const fire = (type, more = {}) => { const e = { type, bubbles: true, defaultPrevented: false, preventDefault() { this.defaultPrevented = true; }, stopPropagation() {}, ...more }; box.dispatchEvent(e); events.push(type); };
+    globalThis.document.dispatchEvent({ type: 'selectionchange', bubbles: false, preventDefault() {}, stopPropagation() {} });
+    fire('compositionstart'); fire('compositionupdate', { data: 'quick' });
+    box.value = 'The quikc brown fox'; fire('input', { isComposing: true });
+    box.value = 'The quick brown fox'; fire('input', { isComposing: true });
+    fire('compositionend', { data: 'quick' }); fire('input');
+    return events;
+};
+const watchHeights = (box) => {
+    const set = [];
+    const style = box.style;
+    box.style = new Proxy(style, { set(o, k, v) { if (k === 'height') set.push(v); o[k] = v; return true; } });
+    return set;
+};
+
+test('typing and a word taken up again by the keyboard never collapse the box to measure it: a hidden copy is measured, the box set only when its height changes', async (t) => {
+    const { root, $ } = chat(t);
+    await settle();
+    const idle = room(root);
+    const box = $('.parley-box');
+    const heights = watchHeights(box);
+    box.value = 'The quikc brown fox'; box.dispatchEvent({ type: 'input', bubbles: true, preventDefault() {}, stopPropagation() {} });
+    correcting(box);
+    assert.ok(!heights.includes(''), `never emptied: ${JSON.stringify(heights)}`);
+    assert.equal(heights.length, 1, 'set once: the height did not change');
+    assert.equal($('.parley-box-mirror').value, 'The quick brown fox', 'measured on its copy');
+    assert.equal($('.parley-box-mirror').getAttribute('aria-hidden'), 'true');
+    assert.equal(root.querySelectorAll('.parley-box').length, 1, 'one box to write in');
+    assert.deepEqual(room(root), idle, 'the copy takes no room');
+    assert.match(CSS, /\.parley-box-mirror \{[^}]*visibility: hidden[^}]*height: 0/);
+});
+
+test('where the browser sizes a field by its content, the box is sized by the style sheet alone', async (t) => {
+    globalThis.CSS = { supports: (property, value) => property === 'field-sizing' && value === 'content' };
+    t.after(() => { delete globalThis.CSS; });
+    const { $ } = chat(t);
+    await settle();
+    const box = $('.parley-box');
+    const heights = watchHeights(box);
+    box.value = 'One\nTwo\nThree'; box.dispatchEvent({ type: 'input', bubbles: true, preventDefault() {}, stopPropagation() {} });
+    correcting(box);
+    assert.deepEqual(heights, [], 'no height written');
+    assert.equal($('.parley-box-mirror'), null, 'no copy needed');
+    assert.match(CSS, /\.parley-box \{[^}]*field-sizing: content/);
+});
