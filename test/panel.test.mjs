@@ -49,6 +49,13 @@ test('panelOf: only what is well formed, those not done first, done after; an ow
     assert.equal(panelOf({ items: [], action: { label: 'Start the list', run: () => {} } }).action.label, 'Start the list');
 });
 
+test('panelOf: what an item is, in one plain line under its title; none when not given', () => {
+    const p = panelOf({ items: [{ id: 'a', title: 'Keyboard', text: '  It folds\n when the text is touched.  ' }, { id: 'b', title: 'Disk' }, { id: 'c', title: 'Long', text: 'x'.repeat(900) }] });
+    assert.equal(p.open[0].text, 'It folds when the text is touched.');
+    assert.equal(p.open[1].text, '');
+    assert.equal(p.open[2].text.length, 300);
+});
+
 test('no side given: no button, no panel, the chat as before', async (t) => {
     const { root, $ } = chat(t, undefined);
     await settle();

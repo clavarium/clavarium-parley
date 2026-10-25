@@ -108,8 +108,9 @@
  * over it. Parley knows nothing of where the list comes from:
  *   side                   { title, items, tick(id, on), open(id), folded,
  *                          onFold(folded), count, action: { label, run } }
- *                          items: [{ id, title, state, done, checked, owner,
+ *                          items: [{ id, title, text, state, done, checked, owner,
  *                          tone ('active' | 'attention'), tick: false }];
+ *                          `text`: what it is, for a person, under its title (two lines shown);
  *                          those not done first, as given; those done
  *                          folded under "Done (n)". What is set is said (a
  *                          state, an owner), what is empty is not. `tick`
@@ -863,6 +864,7 @@ export const PANEL_MAX = 100;
 export const PANEL_TITLE_MAX = 200;
 export const PANEL_PX = 860;
 export const PANEL_WAIT_MS = 8000;
+export const PANEL_TEXT_MAX = 300;
 export const PANEL_TONES = Object.freeze(['active', 'attention']);
 export function panelOf(given) {
     if (!given || typeof given !== 'object') return null;
@@ -875,7 +877,7 @@ export function panelOf(given) {
         const title = line(it?.title, PANEL_TITLE_MAX);
         if (!id || !title || seen.has(id)) continue;
         seen.add(id);
-        items.push({ id, title, state: line(it.state, 60), owner: line(it.owner, 80), done: it.done === true, checked: it.checked === true,
+        items.push({ id, title, text: line(it.text, PANEL_TEXT_MAX), state: line(it.state, 60), owner: line(it.owner, 80), done: it.done === true, checked: it.checked === true,
             tickable: it.tick !== false && it.done !== true, tone: PANEL_TONES.includes(it.tone) ? it.tone : '' });
     }
     const open = items.filter((x) => !x.done);
@@ -2027,6 +2029,7 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
         const body = el('div', 'parley-panel-what');
         const name = side?.open ? button(item.title, 'parley-panel-title', () => { if (panelSheet) showSheet(false); try { side.open(item.id); } catch { /* the application's business */ } }) : el('span', 'parley-panel-title', item.title);
         body.append(name);
+        if (item.text) body.append(el('span', 'parley-panel-text', item.text));
         /* What is set, said; what is empty, not. */
         const meta = [item.state, item.owner].filter(Boolean);
         if (meta.length) body.append(el('span', 'parley-panel-meta', meta.join(' · ')));

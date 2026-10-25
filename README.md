@@ -182,7 +182,7 @@ from: it shows items, and hands a tick or a click back to the application.
 | `side` | The application gives | The panel shows |
 |---|---|---|
 | `title` | the list's name | above the list, and on the bar's button (its title) |
-| `items` | `[{ id, title, state, done, checked, owner, tone, tick }]`, 100 at most | each by its title; under it what is set of its state and owner, nothing for what is empty; those not done first, in the order given; those done folded under "Done (n)", struck through |
+| `items` | `[{ id, title, text, state, done, checked, owner, tone, tick }]`, 100 at most | each by its title; under it its `text` (what it is, for a person: two lines shown), then what is set of its state and owner, nothing for what is empty; those not done first, in the order given; those done folded under "Done (n)", struck through |
 | `tick(id, on)` | resolves once kept, refuses with a reason | a box to tick on each item not done (`tick: false`: none on that one); ticked at once, the reason said in one line when refused, the box as it was |
 | `open(id)` | opens the item where the application shows it | its title is a button |
 | `tone` | `'active'` (being done) or `'attention'` (waits for the person) | its state in colour |
