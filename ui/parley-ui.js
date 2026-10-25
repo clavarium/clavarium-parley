@@ -1977,7 +1977,10 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
         if (wide && panelSheet) { panelSheet = false; steps.closed('panel'); }
         const open = wide ? !panelFolded : panelSheet;
         panelBox.hidden = !open;
-        if (wide && open) root.dataset.panel = 'beside'; else root.dataset.panel = 'folded';
+        /* Written only when it changes: it is seen at every change of size (a keyboard that comes or goes),
+           over the box being written in. */
+        const placed = wide && open ? 'beside' : 'folded';
+        if (root.dataset.panel !== placed) root.dataset.panel = placed;
         if (!wide && open) panelBox.dataset.sheet = 'true'; else delete panelBox.dataset.sheet;
         panelButton.setAttribute('aria-expanded', String(open));
         const word = panel.title || said(words, 'panel');
@@ -2930,13 +2933,20 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
     function closeSearch() { steps.closed('search'); searching = false; finder.hidden = true; query.value = ''; matches = []; afar = { q: '', matches: [] }; asked += 1; repaint(); sticky = true; bottom(); paintJump(); }
     searchButton.addEventListener('click', openSearch);
     mediaButton.addEventListener('click', () => { showPrefs(false); shelf.show(); });
+    /* A FIELD BEING WRITTEN IN IS THE BROWSER'S: a right click or a press in it (a word underlined by the
+       spellchecker, touched to be corrected) opens its own menu, and the keyboard stays where it is. The
+       handlers of the thread never prevent it, never move the focus, never mark anything for it. */
+    const typedIn = (target) => {
+        const field = target instanceof Element ? target.closest('input, textarea, select, [contenteditable]') : null;
+        return Boolean(field) && field.getAttribute('contenteditable') !== 'false';
+    };
     /* A right click on a message of the agent: its reactions. A long press of a
        finger or a pen fires the same event (Android): it is left to the browser,
        that selects the text to copy it; the reactions are the button's. */
     let pointer = '';
     thread.addEventListener('pointerdown', (event) => { pointer = event.pointerType ?? ''; });
     thread.addEventListener('contextmenu', (event) => {
-        if (!react || !reactions.length) return;
+        if (!react || !reactions.length || typedIn(event.target)) return;
         const by = event.pointerType || pointer;
         if (by ? by !== 'mouse' : touching) return;
         const bubble = event.target instanceof Element ? event.target.closest('.parley-said[data-from="agent"]') : null;
@@ -2958,7 +2968,7 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
     const unpress = () => { clearTimeout(pressing); pressing = undefined; };
     thread.addEventListener('pointerdown', (event) => {
         const bubble = event.target instanceof Element ? event.target.closest('.parley-said') : null;
-        if (!bubble || event.pointerType === 'mouse') return;
+        if (!bubble || event.pointerType === 'mouse' || typedIn(event.target)) return;
         unpress();
         pressing = setTimeout(() => {
             /* Its text stays the browser's to select: the reactions are its button's, in its corner. */

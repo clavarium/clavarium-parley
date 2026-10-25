@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { PassThrough } from 'node:stream';
 import { fakePage, fakeEvent } from './fake-dom.mjs';
 import { Parley, texts } from '../host/parley-host.mjs';
-import { mount, view, quick, KEYS } from '../ui/parley-ui.js';
+import { mount, view, quick, KEYS, PRESS_MS } from '../ui/parley-ui.js';
 import { run, HELP, GUIDE } from '../bin/parley.mjs';
 import { bridge, serve, TOOLS, GROUPING, GROUP_MAX } from '../server/parley-mcp.mjs';
 
@@ -260,6 +260,45 @@ test('the screen: an answer in one\'s own words is written in one box, kept with
     assert.equal(free.value, 'No deploy on Friday.');
     assert.equal(document.activeElement, free, 'given the focus back');
     assert.deepEqual(range, [3, 9], 'the cursor where it was');
+});
+
+test('the screen: a field being written in is the browser\'s -- a right click or a long press in it (a word underlined by the spellchecker, to correct it) opens no reactions, takes no focus, marks nothing; the panel is not written again over the box at every change of size', async (t) => {
+    const leave = fakePage();
+    const root = document.createElement('div');
+    document.body.append(root);
+    const at = (n) => new Date(Date.UTC(2026, 9, 24, 9, n)).toISOString();
+    const data = { messages: [{ from: 'agent', id: 'g', at: at(0), kind: 'ask', text: '1. Note ...', intro: 'Two things', choices: [], questions: [THREE[2], THREE[0]] }] };
+    const handle = mount(root, { load: async () => data, send: async () => {}, react: async () => {}, words: texts('en'), every: 0, touch: false });
+    t.after(() => { handle.destroy(); leave(); });
+    await settle(); await settle();
+    const $ = (s) => root.querySelector(s);
+    const picker = $('.parley-react');
+    for (const field of [$('.parley-questions-free'), $('.parley-box')]) {
+        field.focus();
+        const menu = fakeEvent('contextmenu', { target: field });
+        field.dispatchEvent(menu);
+        assert.equal(menu.defaultPrevented, false, `${field.className}: the browser's own menu`);
+        assert.equal(picker.hidden, true, `${field.className}: no reactions`);
+        assert.equal(document.activeElement, field, `${field.className}: the focus stays, so does the keyboard`);
+        field.dispatchEvent(fakeEvent('pointerdown', { target: field, pointerType: 'touch' }));
+        await new Promise((r) => setTimeout(r, PRESS_MS + 50));
+        assert.equal(root.querySelectorAll('.parley-said[data-reveal]').length, 0, `${field.className}: a press in it marks nothing`);
+        assert.equal(document.activeElement, field);
+    }
+    /* Out of the field, on the message itself: a right click still opens its reactions. */
+    const bubble = $('.parley-said[data-id="g"]');
+    const menu = fakeEvent('contextmenu', { target: bubble });
+    bubble.dispatchEvent(menu);
+    assert.equal(menu.defaultPrevented, true);
+    assert.equal(picker.hidden, false);
+    /* The panel: its place written once, not again while it stays. */
+    let writes = 0;
+    const set = root.setAttribute.bind(root);
+    root.setAttribute = (name, value) => { if (name === 'data-panel') writes += 1; set(name, value); };
+    handle.side = { title: 'Batches', items: [{ id: '1', title: 'One' }] };
+    handle.side = { title: 'Batches', items: [{ id: '1', title: 'One' }, { id: '2', title: 'Two' }] };
+    assert.equal(root.dataset.panel, 'beside');
+    assert.equal(writes, 1, 'written when it changed only');
 });
 
 test('the screen\'s data: answered, the card is gone and its text is read; no quick answers for it', () => {
