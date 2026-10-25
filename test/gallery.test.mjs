@@ -191,6 +191,28 @@ test('a long press of a finger is the browser\'s: it selects the text; the react
     for (const rule of css.match(/[^{}]+\{[^}]*\}/g)) if (/\.parley-(said|text|md|thread|row)\b/.test(rule.split('{')[0])) assert.doesNotMatch(rule, /user-select:\s*none|touch-callout:\s*none/, rule);
 });
 
+test('a short tap of a finger on a message shows its reaction button a while; a tap again hides it; the thread is plain otherwise', async (t) => {
+    const c = chat(t, { messages: [{ from: 'agent', id: 'a', at: at(0), kind: 'say', text: 'Tap me' }, { from: 'agent', id: 'b', at: at(1), kind: 'say', text: 'Or me' }] }, { touch: true });
+    await settle(); await settle();
+    const a = c.$('.parley-said[data-id="a"]'); const b = c.$('.parley-said[data-id="b"]');
+    const inside = a.querySelector('.parley-who') ?? a;
+    const tap = (el, x = 10) => { el.dispatchEvent(fakeEvent('pointerdown', { pointerType: 'touch', clientX: x, clientY: 10 })); el.dispatchEvent(fakeEvent('pointerup', { pointerType: 'touch', clientX: x, clientY: 10 })); };
+    assert.equal(a.dataset.reveal, undefined, 'nothing shown at first');
+    tap(inside);
+    assert.equal(a.dataset.reveal, 'true', 'its button and time shown');
+    tap(b.querySelector('.parley-who') ?? b);
+    assert.equal(a.dataset.reveal, undefined); assert.equal(b.dataset.reveal, 'true', 'one at a time');
+    tap(b.querySelector('.parley-who') ?? b);
+    assert.equal(b.dataset.reveal, undefined, 'a tap again hides it');
+    /* A finger that moved is a scroll, not a tap. */
+    inside.dispatchEvent(fakeEvent('pointerdown', { pointerType: 'touch', clientX: 10, clientY: 10 }));
+    inside.dispatchEvent(fakeEvent('pointerup', { pointerType: 'touch', clientX: 10, clientY: 60 }));
+    assert.equal(a.dataset.reveal, undefined);
+    /* On a touch screen the button is out of sight unless shown. */
+    const css = readFileSync(new URL('../ui/parley-ui.css', import.meta.url), 'utf8');
+    assert.match(css, /\(hover: none\), \(pointer: coarse\) \{[^@]*\.parley \.parley-react-open \{ pointer-events: none; \}/);
+});
+
 test('a decision it waits for on a message: Go ahead and Disagree under it, until the person reacts or writes', async (t) => {
     const said2 = { from: 'agent', id: 'p', at: at(0), kind: 'say', text: 'I propose to merge the branch.' };
     const waiting = { state: 'waiting', at: at(1), note: 'your decision' };

@@ -2969,6 +2969,22 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
         }, PRESS_MS);
     });
     for (const type of ['pointerup', 'pointercancel', 'pointerleave', 'scroll']) thread.addEventListener(type, unpress, { passive: true });
+    /* A short tap on a message, on a touch screen: its button and time shown a few seconds (a tap again, hidden). */
+    let tapped = null;
+    thread.addEventListener('pointerdown', (event) => { tapped = event.pointerType === 'mouse' ? null : { x: event.clientX, y: event.clientY, at: Date.now() }; }, { passive: true });
+    thread.addEventListener('pointerup', (event) => {
+        const was = tapped; tapped = null;
+        if (!was || event.pointerType === 'mouse' || Date.now() - was.at >= PRESS_MS || Math.hypot(event.clientX - was.x, event.clientY - was.y) > 10) return;
+        if (!(event.target instanceof Element) || event.target.closest('button, a, input, textarea, select, img, video, .parley-react')) return;
+        const bubble = event.target.closest('.parley-said');
+        if (!bubble || String(document.getSelection?.() ?? '').length > 0) return;
+        const on = bubble.dataset.reveal === 'true';
+        for (const other of thread.querySelectorAll('.parley-said[data-reveal]')) delete other.dataset.reveal;
+        clearTimeout(hiding);
+        if (on) { revealed = ''; return; }
+        bubble.dataset.reveal = 'true'; revealed = bubble.dataset.id ?? '';
+        hiding = setTimeout(() => { revealed = ''; for (const other of thread.querySelectorAll('.parley-said[data-reveal]')) delete other.dataset.reveal; }, 6000);
+    }, { passive: true });
     /* ---- the reply to a question ---- */
     function paintReply(v) {
         if (v) {
