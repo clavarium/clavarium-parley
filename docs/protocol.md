@@ -119,7 +119,7 @@ answered. `text` says them, one line each (`1. When: Tomorrow`), and
 `question` is the introduction (or the short version, or "3 questions").
 `parley read` gives each by its id:
 
-    Answer to your question "Before I go on:":
+    [3f2a91c0] Answer to your question "Before I go on:":
       1. [when] When: "Tomorrow"
       2. [which] Batches: they ticked "A", "C"
       3. [note] Note, in their own words: No deploy on Friday.

@@ -112,6 +112,8 @@ const reacted = (m) => {
 const brief = (short) => { const line = plain(short, SHORT_KEPT * 2).replace(/\s+/g, ' ').trim().slice(0, SHORT_KEPT); return line ? { short: line } : {}; };
 /* So many characters of a question's id are shown, and enough to close it. */
 export const ID_SHOWN = 8;
+/* A message's id as read shows it: what a card in a binder, or a reply, can point to. */
+const shownId = (id) => (typeof id === 'string' ? id.slice(0, ID_SHOWN) : '');
 /* How many reads are remembered, with their time: the screen says when each message was read. */
 export const READS_KEPT = 200;
 const isFolder = (path) => { try { return statSync(path).isDirectory(); } catch { return false; } };
@@ -303,7 +305,7 @@ export function bridge(dir, { how = 'run `parley read`', back = (id) => `parley 
                     start = Math.max(Math.min(start, end - LEAST), end - LAST_MAX, 0);
                 } else start = Math.max(0, end - Math.min(LAST_MAX, Number.isInteger(last) && last > 0 ? last : ALL_ENTRIES));
                 const page = every.slice(start, end);
-                const both = page.map((e) => `[${e.at.slice(0, 16).replace('T', ' ')}] ${e.text}`);
+                const both = page.map((e) => `[${e.at.slice(0, 16).replace('T', ' ')}${e.id ? ` ${shownId(e.id)}` : ''}] ${e.text}`);
                 while (both.length > 1 && both.join('\n').length > ALL_CHARS) { both.shift(); page.shift(); start += 1; }
                 if (both.length === 0) return `Nothing before that message.${pending}`;
                 const older = start > 0 ? `\nOlder: ${start} more before these. To read them: ${back(page[0].id.slice(0, ID_SHOWN))}` : '\nNothing older: this is the start of the exchange.';
@@ -314,7 +316,8 @@ export function bridge(dir, { how = 'run `parley read`', back = (id) => `parley 
             if (fresh.length === 0) return `No new message.${pending}`;
             /* What they wrote is work: said, so that their screen shows it moving (or still, said so). */
             const next = stale() || (standing()?.state === 'working' ? '' : '\nWhen you start on it, say so: parley doing "what you do"; when you finish: parley status done.');
-            return `${fresh.map((m) => (m.reaction ? reacted(m) : `${m.answers ? `Answer to your question "${plain(m.question, 200)}": ` : m.re ? `Reply to your message "${plain(m.quote, 200)}"${m.via === 'voice' ? ` (${DICTATED})` : ''}: ` : m.via === 'voice' ? `Message (${DICTATED}): ` : 'Message: '}${m.answers ? answerText(m) : plain(m.text)}${aboutText(m)}${attached(m)}`)).join('\n')}${pending}${next}`;
+            const said = (m) => (m.reaction ? reacted(m) : `${m.answers ? `Answer to your question "${plain(m.question, 200)}": ` : m.re ? `Reply to your message "${plain(m.quote, 200)}"${m.via === 'voice' ? ` (${DICTATED})` : ''}: ` : m.via === 'voice' ? `Message (${DICTATED}): ` : 'Message: '}${m.answers ? answerText(m) : plain(m.text)}${aboutText(m)}${attached(m)}`);
+            return `${fresh.map((m) => `${shownId(m.id) ? `[${shownId(m.id)}] ` : ''}${said(m)}`).join('\n')}${pending}${next}`;
         },
     };
 }
@@ -338,7 +341,7 @@ export const TOOLS = [
                 items: { type: 'object', properties: { id: { type: 'string', description: 'Short, letters, digits, - or _: the answer names it.' }, label: { type: 'string', description: 'A word or two for its tab, in their language.' }, question: { type: 'string' }, choices: { type: 'array', items: { type: 'string' } }, many: { type: 'boolean' } }, required: ['question'] } }, short: { type: 'string', description: 'Optional, for a long question: its title, one or two lines.' } } } },
     { name: 'show', description: `Point the person you work for to a file you made (a report, a picture, a page), or to several at once, so that they can open them from their screen. ${GALLERY} Put them in a folder you share with them.`,
         inputSchema: { type: 'object', properties: { path: { type: 'string', description: 'The path of one file.' }, files: { type: 'array', items: { type: 'object', properties: { path: { type: 'string' }, title: { type: 'string', description: 'What it is, in their language: "Home page, before".' } }, required: ['path'] }, description: `Several files shown together (${SHOW_MAX} at most), each with its title.` }, paths: { type: 'array', items: { type: 'string' }, description: 'Several files, without titles (prefer files, with titles).' }, note: { type: 'string', description: 'One line on what it is, common to all.' } } } },
-    { name: 'read', description: 'Read what was written to you since you last read: new instructions, answers to your questions, files they attached, their reactions to your messages (only "go ahead" authorizes what a message proposes; "stop" means stop now), and the questions still open with their ids. A message they dictated is said so: it may hold recognition mistakes. Call it when you are told a message arrived, and before you finish a task. After a restart, to pick up the thread: last (the newest messages, both sides, oldest first) or days; it says how to read further back (before: the id it gives). The exchange is kept whole: read back as far as you need.',
+    { name: 'read', description: 'Read what was written to you since you last read: new instructions, answers to your questions, files they attached, their reactions to your messages (only "go ahead" authorizes what a message proposes; "stop" means stop now), and the questions still open with their ids. A message they dictated is said so: it may hold recognition mistakes. Call it when you are told a message arrived, and before you finish a task. After a restart, to pick up the thread: last (the newest messages, both sides, oldest first) or days; it says how to read further back (before: the id it gives). The exchange is kept whole: read back as far as you need. Each message comes with its id: what a card or a reply can point to.',
         inputSchema: { type: 'object', properties: { last: { type: 'integer', description: `Optional: the newest so many messages of the exchange, both sides (${LAST_MAX} at most).` }, days: { type: 'integer', description: 'Optional: the messages of the last so many days.' }, before: { type: 'string', description: 'Optional, with last or days: the part before this message (the id read gave).' }, all: { type: 'boolean', description: `Optional: the newest ${ALL_ENTRIES} messages of the exchange.` } } } },
     { name: 'close', description: 'Close a question of yours that they answered another way (in a message typed later, not with its buttons), saying the answer you understood. Their screen shows it; they may still correct it. The id is the one read shows.',
         inputSchema: { type: 'object', properties: { id: { type: 'string', description: 'The id of the question, as read shows it.' }, answer: { type: 'string', description: 'The answer you understood, in one line.' } }, required: ['id', 'answer'] } },

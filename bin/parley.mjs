@@ -41,6 +41,7 @@ export const GUIDE = `How to work with the person through Parley
 
 5. After a restart: parley read --last 100
    Older: parley read --before ID (it gives the ID)
+   A message's id, as read shows it: what a card or a reply points to.
 
 6. Forgot how? parley guide.
    Every command: parley --help`;

@@ -18,7 +18,7 @@ application, any agent that can run a command.
 | `parley ask "question" [choice ...]` | ask, with or without choices (`--pick-many`: several may be ticked; `--group -`: up to 5 questions as one card); it does not wait |
 | `parley show path ["note"]` | point to a file it made; several at once, each with its title: `parley show a.png="Home, before" b.png="Home, after"`, one gallery |
 | `parley doing "text"` | say in one line what it is doing now, at each new step |
-| `parley read` | read what was written to it, answers and attached files included, and its questions still open |
+| `parley read` | read what was written to it, answers and attached files included, each message with its id (what a card or a reply points to), and its questions still open |
 | `parley close ID "answer"` | close a question the person answered another way |
 | `parley read --last 100` | the end of the exchange, both sides (or `--days 2`): to pick up the thread after a restart; older: `parley read --before ID`, page after page |
 | `parley status working\|waiting\|done ["note"]` | say where it is |

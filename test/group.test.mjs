@@ -110,7 +110,7 @@ test('the answer: one line, replies by id in the order asked, a text that says t
     assert.equal(line.text, '1. When: Tomorrow\n2. Batches: A, C\n3. Note: No deploy on Friday.', 'an older agent reads the text');
     assert.equal(host.read().waiting, 0);
     assert.deepEqual(host.read().messages.at(-1).replies, line.replies);
-    assert.equal(agent.read().split('\n').slice(0, 4).join('\n'), 'Answer to your question "Before I go on:": \n  1. [when] When: "Tomorrow"\n  2. [which] Batches: they ticked "A", "C"\n  3. [note] Note, in their own words: No deploy on Friday.');
+    assert.equal(agent.read().split('\n').slice(0, 4).join('\n'), `[${line.id.slice(0, 8)}] Answer to your question "Before I go on:": \n  1. [when] When: "Tomorrow"\n  2. [which] Batches: they ticked "A", "C"\n  3. [note] Note, in their own words: No deploy on Friday.`);
     assert.match(agent.read({ all: true }), /You asked them 3 questions at once: Before I go on:/);
 });
 

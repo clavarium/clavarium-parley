@@ -77,7 +77,7 @@ test('the answer: picked, in the question\'s order, and the text says them; read
     assert.equal(line.answers, q.id);
     assert.deepEqual(host.read().messages.at(-1).picked, ['Docket', 'Wi-Fi']);
     const said = agent.read();
-    assert.match(said, /^Answer to your question "Which batches do I launch\?": they ticked "Docket", "Wi-Fi"\n/);
+    assert.match(said, /^\[[0-9a-f]{8}\] Answer to your question "Which batches do I launch\?": they ticked "Docket", "Wi-Fi"\n/);
     assert.doesNotMatch(said, /Open questions/, 'answered');
     assert.match(agent.read({ all: true }), /You asked them: Which batches do I launch\? \(several could be ticked: Docket, Dictation, Wi-Fi\)/);
     assert.match(agent.read({ all: true }), /They answered your question "Which batches do I launch\?": they ticked "Docket", "Wi-Fi"/);
@@ -98,7 +98,7 @@ test('old and new together: no many, no picked; picked refused where it means no
     /* An older screen answers a many question with one tap: a plain answer, read as before. */
     host.say('B', many.id);
     host.say('red', single.id);
-    assert.match(agent.read(), /^Answer to your question "Which ones\?": B\nAnswer to your question "Blue or red\?": red/);
+    assert.match(agent.read(), /^\[[0-9a-f]{8}\] Answer to your question "Which ones\?": B\n\[[0-9a-f]{8}\] Answer to your question "Blue or red\?": red/);
     /* A forged many on a question of one choice, or a line of an older agent: shown as single choices. */
     appendFileSync(join(dir, '.parley', 'from-agent.jsonl'), `${JSON.stringify({ id: 'f', at: new Date().toISOString(), kind: 'ask', text: 'One?', choices: ['only'], many: true })}\n`);
     assert.equal(host.read().messages.find((m) => m.id === 'f').many, undefined);

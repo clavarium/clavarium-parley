@@ -72,7 +72,8 @@ test('the command: the same six verbs on the same files, found from where the ag
     host.say('Keep it short.');
     seen = host.read();
     assert.equal(seen.unread, 2); assert.deepEqual(seen.messages.filter((m) => m.from === 'person').map((m) => m.seen), [false, false]);
-    assert.equal(parley(here, ['read']).out, 'Answer to your question "Blue or red cover?": blue\nMessage: Keep it short.\nWhen you start on it, say so: parley doing "what you do"; when you finish: parley status done.\nForgot how to work with them? parley guide\n', 'a read with something in it ends with the reminder');
+    const [blue, short] = seen.messages.filter((m) => m.from === 'person').map((m) => m.id.slice(0, 8));
+    assert.equal(parley(here, ['read']).out, `[${blue}] Answer to your question "Blue or red cover?": blue\n[${short}] Message: Keep it short.\nWhen you start on it, say so: parley doing "what you do"; when you finish: parley status done.\nForgot how to work with them? parley guide\n`, 'a read with something in it, each message with its id, ends with the reminder');
     assert.equal(parley(here, ['read']).out, 'No new message.\n', 'an empty poll does not');
     seen = host.read();
     assert.equal(seen.unread, 0); assert.deepEqual(seen.messages.filter((m) => m.from === 'person').map((m) => m.seen), [true, true]);
@@ -144,7 +145,7 @@ test('the contract: Parley announces, the application decides; nothing is typed 
     assert.deepEqual(all.files.map((f) => f.open), [null]);
     assert.equal(all.status.state, 'waiting');
     /* The agent reads: nothing is left unread. */
-    assert.match(said((await run2([tool('read')]))[1]), /Answer to your question "Blue or red cover\?": blue\nMessage: And keep it short\./);
+    assert.match(said((await run2([tool('read')]))[1]), /Answer to your question "Blue or red cover\?": blue\n\[[0-9a-f]{8}\] Message: And keep it short\./);
     assert.equal(host.unread(), 0);
     /* A hook that throws stops nothing. */
     const fragile = new Parley(dir, { on: () => { throw new Error('the phone is off'); } });
@@ -417,11 +418,12 @@ test('after a restart the agent picks up the thread: "read --all" gives the whol
     assert.equal(parley(home, ['doing', 'reading']).code, 0);
     assert.equal(parley(home, ['ask', 'His voice, or about him?', 'his voice', 'about him']).code, 0);
     assert.equal(parley(home, ['show', 'chapter.html', 'Chapter 1']).code, 0);
-    assert.match(parley(home, ['read']).out, /^Message: Write the family story\.\nOpen questions \(one they answered another way: close it with parley close ID "the answer you understood"\):\n {2}\[[0-9a-f]{8}\] His voice, or about him\?\nWhen you start on it, say so: parley doing "what you do"; when you finish: parley status done\.\nForgot how to work with them\? parley guide\n$/, 'with the questions still open');
+    assert.match(parley(home, ['read']).out, /^\[[0-9a-f]{8}\] Message: Write the family story\.\nOpen questions \(one they answered another way: close it with parley close ID "the answer you understood"\):\n {2}\[[0-9a-f]{8}\] His voice, or about him\?\nWhen you start on it, say so: parley doing "what you do"; when you finish: parley status done\.\nForgot how to work with them\? parley guide\n$/, 'with the questions still open');
     host.say('his voice', host.read().messages.find((m) => m.kind === 'ask').id);
     const all = parley(home, ['read', '--all']).out.split('\n');
+    assert.equal(all[1].slice(0, 27).replace(/^\[\d{4}-\d\d-\d\d \d\d:\d\d /, ''), `${host.read().messages.find((m) => m.from === 'person').id.slice(0, 8)}]`, 'each line with its id: what a card or a reply can point to');
     assert.match(all[0], /^The whole exchange with the person, oldest first \(5\):$/);
-    assert.deepEqual(all.slice(1, 6).map((l) => l.replace(/^\[\d{4}-\d\d-\d\d \d\d:\d\d\] /, '')), [
+    assert.deepEqual(all.slice(1, 6).map((l) => l.replace(/^\[\d{4}-\d\d-\d\d \d\d:\d\d [0-9a-f]{8}\] /, '')), [
         'They wrote: Write the family story.',
         'You told them: Starting with the farm.',
         'You asked them: His voice, or about him? (choices: his voice, about him)',
@@ -451,11 +453,11 @@ test('the person attaches files to a message: the agent is told where they are, 
     assert.equal(events.at(-1).type, 'person-wrote');
     assert.equal(events.at(-1).message.files.length, 2);
     /* Files alone are a message; a file is a whole path; ten at most. */
-    host.say('', undefined, [{ path: '/work/.parley/files/b2/plan.pdf', name: 'plan.pdf', size: 1048576 * 3 }]);
+    const alone = host.say('', undefined, [{ path: '/work/.parley/files/b2/plan.pdf', name: 'plan.pdf', size: 1048576 * 3 }]).messages.at(-1);
     assert.throws(() => host.say('x', undefined, [{ path: 'relative.txt' }]), /whole path/);
     assert.throws(() => host.say('x', undefined, Array.from({ length: 11 }, (_, i) => ({ path: `/f${i}` }))), /10 files at most/);
     assert.throws(() => host.say('  ', undefined, []), /Write something/);
-    assert.equal(parley(home, ['read']).out, 'Message: Here is the photo.\n  Attached file: /work/.parley/files/a1/photo.jpg (2 KB)\n  Attached file: /elsewhere/x.txt (3 bytes)\nMessage: \n  Attached file: /work/.parley/files/b2/plan.pdf (3.0 MB)\nWhen you start on it, say so: parley doing "what you do"; when you finish: parley status done.\nForgot how to work with them? parley guide\n');
+    assert.equal(parley(home, ['read']).out, `[${mine.id.slice(0, 8)}] Message: Here is the photo.\n  Attached file: /work/.parley/files/a1/photo.jpg (2 KB)\n  Attached file: /elsewhere/x.txt (3 bytes)\n[${alone.id.slice(0, 8)}] Message: \n  Attached file: /work/.parley/files/b2/plan.pdf (3.0 MB)\nWhen you start on it, say so: parley doing "what you do"; when you finish: parley status done.\nForgot how to work with them? parley guide\n`);
     /* On the screen: by name in its bubble, opened the application's way; its whole path in the detailed view. */
     const data = host.read();
     const simple = view(data, { words: texts('en') });
