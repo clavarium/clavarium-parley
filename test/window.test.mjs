@@ -285,3 +285,32 @@ test('the search finds what is further back than what is shown, and opens it at 
     assert.ok(root.querySelectorAll('.parley-said').some((b) => b.dataset.id === id('p', 121)), 'there, in the thread');
     assert.equal(root.querySelector('.parley-search-count').textContent, '1 of 1');
 });
+
+test('reveal shows one message: its id or its first 8 characters; further back, the pages before it are brought until it is there', async (t) => {
+    const { host } = thread(t, 450);
+    const leave = fakePage();
+    const mounted = [];
+    t.after(() => { for (const h of mounted) h.destroy(); leave(); });
+    const asked = [];
+    const root = document.createElement('div');
+    document.body.append(root);
+    const handle = mount(root, { load: async (o) => { asked.push(o); return host().read(o); }, send: async () => {}, words: texts('en'), every: 0, touch: false, window: { messages: 50 } });
+    mounted.push(handle);
+    /* Called before the first look came: it waits for it. */
+    const shownNow = handle.reveal(id('a', 440));
+    assert.equal(await shownNow, true);
+    assert.equal(asked.length, 1, 'shown already: nothing more asked');
+    const mark = (key) => root.querySelectorAll('.parley-said').find((b) => b.dataset.id === key);
+    assert.equal(mark(id('a', 440)).dataset.found, 'true', 'marked a moment');
+    /* Further back: page after page, until it is there. */
+    assert.equal(await handle.reveal(id('p', 121).slice(0, 8)), true);
+    assert.equal(asked.slice(1).every((o) => typeof o.before === 'string' && o.from === undefined), true, 'the pages before, one after the other');
+    assert.equal(asked.length, 1 + Math.ceil((450 - 50 - 121) / 50), 'no further than needed');
+    assert.equal(mark(id('p', 121)).dataset.found, 'true');
+    /* Unknown, or too short to point to one: not shown, and said so. */
+    assert.equal(await handle.reveal('zzzzzzzz'), false);
+    assert.equal(root.querySelector('.parley-earlier'), null, 'looked for as far back as it goes');
+    assert.equal(await handle.reveal(id('a', 2).slice(0, 7)), false);
+    assert.equal(await handle.reveal(null), false);
+    assert.equal(await handle.reveal(id('a', 2)), true, 'the whole id');
+});

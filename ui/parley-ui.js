@@ -21,6 +21,11 @@
  *   window                 { messages: N } or { days: D }: what is shown at
  *                          first (the newest 200 messages by default); the
  *                          rest on demand, a page at a time
+ *                          The handle's reveal(id) shows one message (its id, or
+ *                          its first 8 characters or more): the pages before
+ *                          what is shown are brought until it is there, then
+ *                          the thread scrolls to it and marks it a moment;
+ *                          resolves true when shown, false when not found.
  *   search(text)           optional: resolves with what the host's search()
  *                          gives: the whole thread searched, however little
  *                          of it is shown; a message found further back is
@@ -261,6 +266,8 @@ export const IDLE_MS = 2 * 60 * 1000;
 /* The agent read the person's message and said nothing yet: "Received, thinking..." after this long (at once by default),
    and "No answer yet" after the second. Parley says it was received, never what the agent does. */
 export const RECEIVED_MS = 0;
+/* So many characters of a message's id at least point to it (`reveal`), as `parley read` shows them. */
+const ID_LEAST = 8;
 /* What is shown at first, unless the application says otherwise (`window`): the newest so many messages. */
 export const WINDOW = 200;
 export const NO_ANSWER_MS = 5 * 60 * 1000;
@@ -2634,14 +2641,7 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
         box.append(head, body2);
         let on = 'media-pictures';
         const close = () => { steps.closed('media'); box.hidden = true; };
-        const find = (id) => {
-            close();
-            const row = [...thread.querySelectorAll('.parley-said')].find((b) => b.dataset.id === id);
-            if (!row) return;
-            sticky = false; row.scrollIntoView?.({ block: 'center' });
-            row.dataset.found = 'true'; setTimeout(() => { delete row.dataset.found; }, 1800);
-            paintJump();
-        };
+        const find = (id) => { close(); pointAt(id); };
         /* What is shown is the end of the thread: the pictures of the part before it come with it, on demand. */
         function paint3() {
             fill();
@@ -2821,6 +2821,39 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
     }
     /* The messages as last drawn. */
     const latestItems = () => (latest ? view(latest, { words, view: as, locale, agentName, agentTool, receivedAfter, noAnswerAfter }).items : []);
+    /* ONE MESSAGE SHOWN: the thread scrolled to it, and it marked a moment. */
+    const rowFor = (id) => [...thread.querySelectorAll('.parley-said, .parley-system')].find((b) => b.dataset.id === id);
+    function pointAt(id) {
+        const row = rowFor(id);
+        if (!row) return false;
+        sticky = false; row.scrollIntoView?.({ block: 'center' });
+        row.dataset.found = 'true'; setTimeout(() => { delete row.dataset.found; }, 1800);
+        paintJump();
+        /* The newest put in sight after a paint just made waits a frame: then it, again. */
+        requestAnimationFrame(() => { if (!sticky) rowFor(id)?.scrollIntoView?.({ block: 'center' }); });
+        return true;
+    }
+    /* The application points to a message (a card that links to it): by its id, or its first
+       ID_LEAST characters or more, as `parley read` shows it. Older than what is shown: the pages
+       before it are brought, one after the other, until it is there. */
+    const known = (key) => (latest?.messages ?? []).find((m) => m && typeof m.id === 'string' && m.id && (m.id === key || m.id.startsWith(key)));
+    async function reveal(id) {
+        const key = typeof id === 'string' ? id.trim() : '';
+        if (key.length < ID_LEAST) return false;
+        await loaded;
+        let found = known(key);
+        while (!found && !gone) {
+            const from = latest?.window?.before;
+            if (!(Number(latest?.window?.more) > 0) || typeof from !== 'string' || !from) break;
+            if (!(await before()) || latest?.window?.before === from) break;
+            found = known(key);
+        }
+        if (!found || gone) return false;
+        closeLayers();
+        return pointAt(String(found.id));
+    }
+    /* What is open over the thread, closed. */
+    function closeLayers() { for (const name of steps.open.reverse()) { if (name === 'zoom') zoom.close(); else if (name === 'media') shelf.close(); else if (name === 'react') reacting.close?.(); else if (name === 'search') closeSearch(); else if (name === 'prefs') showPrefs(false); else if (name === 'panel') showSheet(false); } }
     /* ---- the search ---- */
     let searching = false;
     let moveToLast = false;
@@ -3298,7 +3331,7 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
     paintQuick();
     /* What it does now stops moving once it is old: looked at again now and then, data or not. */
     const timer = every > 0 ? setInterval(() => { if (!document.hidden) void refresh(); }, every) : null;
-    void refresh();
+    const loaded = refresh();
     return {
         refresh,
         get view() { return as; }, set view(v) { if (VIEWS.includes(v)) choose(v); },
@@ -3308,7 +3341,9 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
         get listening() { return Boolean(stopping); },
         get attach() { return attach; }, set attach(a) { attach = a?.upload ? a : undefined; clip.hidden = !attach; if (!attach) { pending = []; paintPending(); } },
         /* What is open over the thread, closed (the page shows something else now). */
-        closeLayers() { for (const name of steps.open.reverse()) { if (name === 'zoom') zoom.close(); else if (name === 'media') shelf.close(); else if (name === 'react') reacting.close?.(); else if (name === 'search') closeSearch(); else if (name === 'prefs') showPrefs(false); else if (name === 'panel') showSheet(false); } },
+        closeLayers,
+        /* One message shown, at its place in the thread (brought when it is further back): true when shown. */
+        reveal,
         /* The panel beside the thread: its list given again (null: no panel). */
         get side() { return side; }, set side(given) { setSide(given); },
         get folded() { return panel ? (beside() ? panelFolded : !panelSheet) : true; }, set folded(v) { panelFolded = Boolean(v); if (panelFolded && panelSheet) showSheet(false); placePanel(); },

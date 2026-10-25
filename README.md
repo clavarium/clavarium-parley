@@ -154,6 +154,12 @@ gives it. Without a slot, nothing of it is shown.
 | `window` | `{ messages: N }` or `{ days: D }` (default: 200 messages), and a `load(options)` that passes them to `read(options)` | the end of the thread; "Earlier messages" at its top brings the page before, the reader kept where they were; each look asks only what changed |
 | `search` | `(text)`: the host's `search()`, through the application | the search looks in the whole thread; a message found further back opens at its place |
 
+`handle.reveal(id)` shows one message, the application's way to point to it
+(a card that links to it): its id, or its first 8 characters or more, as
+`parley read` shows it. Older than what is shown, the pages before it are
+brought until it is there; then the thread scrolls to it and marks it a
+moment. It resolves `true` when shown, `false` when no message has that id.
+
 Lines of the application -- what happened around the agent, such as its
 machine short of memory -- are given with the messages (`from: "system"`) and
 shown as grey lines across the thread with their time and buttons, which call

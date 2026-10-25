@@ -502,7 +502,7 @@ mark.parley-found[data-now="true"] { outline: 2px solid var(--parley-ask); }
 .parley .parley-react-reply { display: inline-flex; align-items: center; justify-content: center; gap: .45em; min-height: 2.4em; border-radius: 10px; font-size: .9em; }
 .parley .parley-react-reply[hidden] { display: none; }
 .parley-react-reply .parley-sign { width: 1.1em; height: 1.1em; }
-.parley-said[data-found="true"] { animation: parley-found 1.8s ease-out; }
+.parley-said[data-found="true"], .parley-system[data-found="true"] { animation: parley-found 1.8s ease-out; }
 @keyframes parley-found { 0%, 40% { background: var(--parley-mark); } 100% { background: transparent; } }
 /* ---- the media of the thread ---- */
 .parley-media { position: absolute; inset: 0; z-index: 7; display: flex; flex-direction: column; background: var(--parley-bg); outline: none; }
