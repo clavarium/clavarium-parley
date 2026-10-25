@@ -33,13 +33,16 @@ import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import { createInterface } from 'node:readline';
 
-export const VERSION = '0.17.2-next.1';
+export const VERSION = '0.17.3-next.1';
 /* A message may be long: the screen folds it, and shows its short version first. */
 export const TEXT_MAX = 16000;
 /* Its short version: a title of one or two lines. */
 export const SHORT_MAX = 200;
 /* Kept whole up to this (see SHORT_KEPT in the host): the screen cuts it, never the agent's words. */
 export const SHORT_KEPT = 1000;
+/* A short version is a title of one or two lines; longer than this, the screen is likely to cut it,
+   so the agent is told so (it would not see the cut otherwise). */
+export const SHORT_LINE = 90;
 /* What it is doing now is one short line: a screen shows it while it works. */
 export const DOING_MAX = 200;
 /* Its chat says it works and nothing new came for this long: reminded, under what a verb returns. */
@@ -110,6 +113,9 @@ const reacted = (m) => {
     return `Reaction to ${target}: ${REACTION_MEANINGS[name] ?? `"${name}"`}`;
 };
 const brief = (short) => { const line = plain(short, SHORT_KEPT * 2).replace(/\s+/g, ' ').trim().slice(0, SHORT_KEPT); return line ? { short: line } : {}; };
+/* The agent does not see the screen cut its short version: told when it is too long for a title of a line or two. */
+const tooLong = (short) => (plain(short ?? '', SHORT_KEPT * 2).replace(/\s+/g, ' ').trim().length > SHORT_LINE
+    ? ` Your short version is long (a title of one or two lines): the screen may cut it -- shorten it.` : '');
 /* So many characters of a question's id are shown, and enough to close it. */
 export const ID_SHOWN = 8;
 /* A message's id as read shows it: what a card in a binder, or a reply, can point to. */
@@ -180,14 +186,14 @@ export function bridge(dir, { how = 'run `parley read`', back = (id) => `parley 
         const lead = plain(intro, 2000).trim();
         const text = `${lead ? `${lead}\n\n` : ''}${list.map((q, i) => `${i + 1}. ${q.question.replace(/\s+/g, ' ')}${q.choices.length ? ` (${q.many ? 'several: ' : ''}${q.choices.join(' / ')})` : ''}`).join('\n')}`;
         post({ kind: 'ask', text, choices: [], questions: list, ...(lead ? { intro: lead } : {}), ...brief(short) });
-        return `Posted, ${list.length} questions as one card. Do not wait here: you will be told in the terminal when they answer; then ${how}.`;
+        return `Posted, ${list.length} questions as one card. Do not wait here: you will be told in the terminal when they answer; then ${how}.${tooLong(short)}`;
     };
     return {
         standing,
         tell(text, { short } = {}) {
             if (!plain(text).trim()) throw new Error('the text is empty');
             post({ kind: 'say', text: plain(text), ...brief(short) });
-            return `Posted. They will read it on their screen.${stale()}`;
+            return `Posted. They will read it on their screen.${tooLong(short)}${stale()}`;
         },
         /* `many`: several of its choices may be ticked, sent together; a screen
            that does not know it shows them as single choices, which still answer. */
@@ -197,7 +203,7 @@ export function bridge(dir, { how = 'run `parley read`', back = (id) => `parley 
             const picked = Array.isArray(choices) ? choices.slice(0, CHOICES_MAX).map((c) => plain(c, 200).trim()).filter(Boolean) : [];
             if (many === true && picked.length < 2) throw new Error('several choices to tick need two choices at least');
             post({ kind: 'ask', text: plain(question), choices: picked, ...(many === true ? { many: true } : {}), ...brief(short) });
-            return `Posted. Do not wait here: you will be told in the terminal when they answer; then ${how}.`;
+            return `Posted. Do not wait here: you will be told in the terminal when they answer; then ${how}.${tooLong(short)}`;
         },
         /* A question they answered another way (a message typed later): closed
            by the agent, with the answer it understood. The screen says so; the

@@ -312,3 +312,13 @@ test('the screen\'s data: answered, the card is gone and its text is read; no qu
     assert.deepEqual(done.questions, []);
     assert.equal(done.text, '1. a\n2. b');
 });
+
+test('a short version too long is told to the agent, so it does not miss the screen cutting it (#51)', (t) => {
+    const dir = folder(t);
+    const agent = bridge(join(dir, '.parley'));
+    const longShort = 'This is a very long short version that reads like a whole paragraph and clearly will not fit a title of one or two lines at all';
+    assert.match(agent.tell('The full message.', { short: longShort }), /Your short version is long/, 'tell: told when the short is too long');
+    assert.equal(agent.tell('The full message.', { short: 'A short title' }).includes('Your short version is long'), false, 'a real short title: nothing said');
+    assert.match(agent.ask('Go on?', ['yes', 'no'], { short: longShort }), /Your short version is long/, 'ask: told too');
+    assert.match(agent.ask('Before I go:', undefined, { short: longShort, questions: [{ question: 'A?' }, { question: 'B?' }] }), /Your short version is long/, 'grouped ask: told too');
+});
