@@ -471,7 +471,7 @@ mark.parley-found[data-now="true"] { outline: 2px solid var(--parley-ask); }
 .parley .parley-react-open { position: absolute; top: 0; right: 0; min-height: 0; width: 2.2em; height: 2.2em; padding: 0; border-radius: 999px; display: inline-flex; align-items: center; justify-content: center; color: var(--parley-dim); background: var(--parley-bg); opacity: 0; transition: opacity .12s; }
 .parley-said:hover > .parley-react-open, .parley .parley-react-open:focus-visible, .parley-said[data-reveal="true"] > .parley-react-open { opacity: 1; }
 /* A touch screen: no hover, so the button stays in sight, small, in the message's bottom corner (a long press selects its text). */
-@media (hover: none) {
+@media (hover: none), (pointer: coarse) {
   .parley .parley-react-open { top: auto; bottom: 0; opacity: .7; width: 2em; height: 2em; }
   .parley .parley-said:has(> .parley-react-open) { padding-bottom: 1.9em; }
 }

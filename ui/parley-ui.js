@@ -2545,7 +2545,7 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
        its word under it, its meaning on hover; the one standing is pressed,
        pressed again it is taken back. Reply is there too: what is typed next
        answers that message. Opened by the button on the message (always in
-       sight on a touch screen), or a right click. A long press is left to the
+       sight on a touch screen), or a mouse's right click. A long press is left to the
        browser: it selects the text, to copy it. */
     function reactionPicker() {
         const box = el('div', 'parley-react'); box.hidden = true; box.setAttribute('role', 'dialog'); box.setAttribute('aria-label', said(words, 'react')); box.tabIndex = -1;
@@ -2897,9 +2897,15 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
     function closeSearch() { steps.closed('search'); searching = false; finder.hidden = true; query.value = ''; matches = []; afar = { q: '', matches: [] }; asked += 1; repaint(); sticky = true; bottom(); paintJump(); }
     searchButton.addEventListener('click', openSearch);
     mediaButton.addEventListener('click', () => { showPrefs(false); shelf.show(); });
-    /* A right click on a message of the agent: its reactions. */
+    /* A right click on a message of the agent: its reactions. A long press of a
+       finger or a pen fires the same event (Android): it is left to the browser,
+       that selects the text to copy it; the reactions are the button's. */
+    let pointer = '';
+    thread.addEventListener('pointerdown', (event) => { pointer = event.pointerType ?? ''; });
     thread.addEventListener('contextmenu', (event) => {
         if (!react || !reactions.length) return;
+        const by = event.pointerType || pointer;
+        if (by ? by !== 'mouse' : touching) return;
         const bubble = event.target instanceof Element ? event.target.closest('.parley-said[data-from="agent"]') : null;
         if (!bubble || (event.target instanceof Element && event.target.closest('a, img, pre, code')) || String(globalThis.getSelection?.() ?? '')) return;
         const item = latestItems().find((i) => i.id === bubble.dataset.id && ['say', 'ask', 'show'].includes(i.kind));

@@ -154,6 +154,43 @@ test('on the screen: a gallery with titles, a reaction chosen and taken back, wh
     assert.deepEqual(c.$('.parley-media').querySelectorAll('figcaption').map((x) => x.textContent), ['Page one', 'B']);
 });
 
+test('a long press of a finger is the browser\'s: it selects the text; the reactions are the button\'s, a right click\'s with a mouse', async (t) => {
+    const c = chat(t, { messages: [{ from: 'agent', id: 'a', at: at(0), kind: 'say', text: 'Copy me' }] }, { touch: true });
+    await settle(); await settle();
+    const bubble = c.$('.parley-said[data-id="a"]');
+    const inside = bubble.querySelector('.parley-who') ?? bubble;
+    const picker = c.$('.parley-react');
+    /* A finger held on the text: nothing taken from the browser, no reactions. */
+    assert.equal(inside.dispatchEvent(fakeEvent('pointerdown', { pointerType: 'touch' })), true);
+    await new Promise((r) => setTimeout(r, 500));
+    const held = fakeEvent('contextmenu', { pointerType: 'touch' });
+    inside.dispatchEvent(held);
+    assert.equal(held.defaultPrevented, false, 'the selection of the text is left to the browser');
+    assert.equal(picker.hidden, true);
+    /* Android may not say what pressed: the last pointer down does. */
+    inside.dispatchEvent(fakeEvent('pointerdown', { pointerType: 'pen' }));
+    const held2 = fakeEvent('contextmenu');
+    inside.dispatchEvent(held2);
+    assert.equal(held2.defaultPrevented, false); assert.equal(picker.hidden, true);
+    inside.dispatchEvent(fakeEvent('pointerup'));
+    /* The button, in its corner, labelled, one word on hover. */
+    const open = bubble.querySelector('.parley-react-open');
+    assert.equal(open.tagName, 'BUTTON'); assert.equal(open.title, 'React'); assert.equal(open.getAttribute('aria-label'), 'React');
+    open.click();
+    assert.equal(picker.hidden, false);
+    c.$('.parley-react-choice[data-reaction="go"]').click();
+    await settle();
+    assert.deepEqual(c.reacted, [['a', 'go']]);
+    /* A mouse's right click still opens them. */
+    inside.dispatchEvent(fakeEvent('pointerdown', { pointerType: 'mouse' }));
+    const right = fakeEvent('contextmenu', { pointerType: 'mouse' });
+    inside.dispatchEvent(right);
+    assert.equal(right.defaultPrevented, true); assert.equal(picker.hidden, false);
+    /* Nothing in the style sheet keeps a message's text from being selected. */
+    const css = readFileSync(new URL('../ui/parley-ui.css', import.meta.url), 'utf8');
+    for (const rule of css.match(/[^{}]+\{[^}]*\}/g)) if (/\.parley-(said|text|md|thread|row)\b/.test(rule.split('{')[0])) assert.doesNotMatch(rule, /user-select:\s*none|touch-callout:\s*none/, rule);
+});
+
 test('a decision it waits for on a message: Go ahead and Disagree under it, until the person reacts or writes', async (t) => {
     const said2 = { from: 'agent', id: 'p', at: at(0), kind: 'say', text: 'I propose to merge the branch.' };
     const waiting = { state: 'waiting', at: at(1), note: 'your decision' };
