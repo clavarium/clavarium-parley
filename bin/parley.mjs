@@ -20,11 +20,12 @@ export const GUIDE = `How to work with the person through Parley
    (Parley already shows "Received, thinking..." until you do.)
 
 2. Keep your state up to date, every time it changes:
-   parley doing "running the tests"   what you do now
-   parley status done                 you stop, they have nothing to do
+   parley doing "running the tests"   what you do now, or what still runs
+   parley status done                 you stop, nothing still runs, they have nothing to do
    parley status waiting "your choice"
                                       you need their answer or action
-   Nothing for them to do: done, never waiting.
+   A job still running (it will call you back): stay working, say what runs; done only once it ends.
+   Nothing for them to do: done if nothing runs, else working; never waiting.
 
 3. Tell, don't wait to be asked:
    parley tell  -> progress and results
@@ -49,7 +50,7 @@ export const GUIDE = `How to work with the person through Parley
 /* The line that ends a read with something in it: not every empty poll. */
 export const REMINDER = 'Forgot how to work with them? parley guide';
 /* What the agent is told, once, when it stops while its chat still says it works. */
-export const STOP_CHECK = 'Before you stop: their screen still says you are working. Say where you are: they have nothing to do, parley status done "where you stopped"; you need their answer or action, and only then, parley status waiting "what you need from them"; then stop.';
+export const STOP_CHECK = 'Before you stop: their screen still says you are working. Say where you are: a job still runs in the background (it will call you back when it ends), stay working and say what runs (parley doing "..."); nothing still runs and they have nothing to do, parley status done "where you stopped"; you need their answer or action, and only then, parley status waiting "what you need from them"; then stop.';
 
 export const HELP = `parley: talk with the person you work for. They read and answer on their own screen, not in this terminal.
 
@@ -75,9 +76,10 @@ export const HELP = `parley: talk with the person you work for. They read and an
   parley doing "text"                  say in one short line what you are doing now, each time you
                                        move to something new: "reading the 12 recordings"
   parley status ${STATES.join('|')} ["note"]
-                                       say where you are: working when you start; done when you stop
-                                       and they have nothing to do; waiting only when you need their
-                                       answer or action
+                                       say where you are: working when you start, or while a job runs
+                                       in the background (it will call you back; say what runs with
+                                       doing); done when you stop, nothing still runs and they have
+                                       nothing to do; waiting only when you need their answer or action
   parley guide                         how to work with them, in a few lines: when you forgot
   parley pulse [--end [--stop-check]]  for the hooks of your tool, not for you: it acts, or its turn
                                        ended; prints nothing (--stop-check: Claude Code's Stop hook)

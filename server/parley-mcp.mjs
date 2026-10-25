@@ -33,7 +33,7 @@ import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import { createInterface } from 'node:readline';
 
-export const VERSION = '0.17.0';
+export const VERSION = '0.17.1-next.1';
 /* A message may be long: the screen folds it, and shows its short version first. */
 export const TEXT_MAX = 16000;
 /* Its short version: a title of one or two lines. */
@@ -156,7 +156,7 @@ export function bridge(dir, { how = 'run `parley read`', back = (id) => `parley 
     const stale = () => {
         const s = standing();
         if (s?.state !== 'working' || Date.now() - Date.parse(s.at) < STALE_SAID_MS) return '';
-        return `\nTheir screen still says you are working${s.note ? ` on "${s.note}"` : ''}, since ${Math.round((Date.now() - Date.parse(s.at)) / 60_000)} min: say what you do now (parley doing "..."), or that you stopped and they have nothing to do (parley status done), or, only if you need their answer or action, parley status waiting.`;
+        return `\nTheir screen still says you are working${s.note ? ` on "${s.note}"` : ''}, since ${Math.round((Date.now() - Date.parse(s.at)) / 60_000)} min: say what you do now or what still runs (parley doing "..."), or that you stopped with nothing still running and nothing for them to do (parley status done), or, only if you need their answer or action, parley status waiting.`;
     };
     /* SEVERAL QUESTIONS AT ONCE, one card: each one choice, several to tick, or free.
        The text says them all, for a screen or a reader that knows nothing of `questions`. */

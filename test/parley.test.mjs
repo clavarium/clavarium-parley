@@ -495,7 +495,7 @@ test('"parley guide" says how to work with the person, word for word, and the he
     assert.equal(said.code, 0);
     assert.equal(said.out, `${GUIDE}\n`);
     assert.ok(GUIDE.startsWith('How to work with the person through Parley\n\n1. When you read a new message, first say you have it:\n   parley status working "reading your message"\n'));
-    for (const part of ['(Parley already shows "Received, thinking..." until you do.)', 'parley doing "running the tests"   what you do now', 'parley status done                 you stop, they have nothing to do', 'parley status waiting "your choice"', 'you need their answer or action', 'Nothing for them to do: done, never waiting.',
+    for (const part of ['(Parley already shows "Received, thinking..." until you do.)', 'parley doing "running the tests"   what you do now, or what still runs', 'parley status done                 you stop, nothing still runs, they have nothing to do', 'parley status waiting "your choice"', 'you need their answer or action', 'A job still running (it will call you back): stay working, say what runs; done only once it ends.', 'Nothing for them to do: done if nothing runs, else working; never waiting.',
         '3. Tell, don\'t wait to be asked:', 'parley tell  -> progress and results', 'parley ask   -> a decision (give the choices)', '4. Anything that needs their action or decision\n   goes in the short version (--short), first line.',
         '5. After a restart: parley read --last 100', '6. Forgot how? parley guide.\n   Every command: parley --help']) assert.ok(GUIDE.includes(part), part);
     assert.ok(/^[\x20-\x7e\n]+$/.test(GUIDE), 'plain ASCII');
