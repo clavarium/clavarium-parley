@@ -712,15 +712,15 @@ export function view(data, { words = {}, view: as = 'simple', now = Date.now(), 
     /* Its tool says it acts (the agent itself may say nothing for long). */
     const beat = data?.pulse?.busy === true ? stamp(data.pulse.at) : null;
     const pulsing = beat !== null && now - beat < PULSE_MS;
-    /* Its tool says its turn ended: what it said it does stops there, at once, whatever it forgot to say. */
-    const ended = data?.pulse?.busy === false ? stamp(data.pulse.at) : null;
     if (live) {
         const t = stamp(live.at);
-        const stopped = ended !== null && t !== null && ended >= t;
-        const fresh = t !== null && !stopped && (now - t < STALE_MS || pulsing);
+        /* It declared it is working: the line stays live while it is recent or its tool still beats, even once
+           the turn ended -- a job may still run in the background. It goes still only after a long silence,
+           and then says "nothing new since", never "stopped" (which would contradict "working"). */
+        const fresh = t !== null && (now - t < STALE_MS || pulsing);
         const doing = String(live.note ?? '') || state('working');
         rows.push({ type: 'now', key: `n:${String((turn[0] ?? live).id ?? '')}`, ...step(live), text: busy && fresh ? said(words, 'busy', { doing }) : doing, busy: busy && fresh, live: fresh,
-            quiet: fresh ? '' : stopped ? said(words, 'stopped', { time: clock(ended, locale) }) : said(words, 'quiet', { time: clock(t, locale) }),
+            quiet: fresh ? '' : said(words, 'quiet', { time: clock(t, locale) }),
             label: turn.length ? count(turn.length) : '', open: detailed, steps: turn.map(step), at: stamp((turn[0] ?? live).at), end: t });
     } else if (pulsing) {
         rows.push({ type: 'now', key: `n:${String(turn[0]?.id ?? 'pulse')}`, kind: 'doing', state: 'working', text: said(words, 'pulse'), time: clock(beat, locale), when: whole(beat, locale),

@@ -98,14 +98,13 @@ test('what it does now does not go still while its tool beats; steps after its l
     assert.equal(v.rows.filter((r) => r.type === 'now').length, 1, 'one line, never two');
 });
 
-test('its turn ended: what it said it does stops there at once, said so, even if it forgot to say done', () => {
+test('its turn ended but it stays working: a declared-working line does not go still just because the turn ended -- a job may run in the background', () => {
     const asked = { from: 'person', id: 'p1', kind: 'say', text: 'Write the story.', seen: true, at: at(0) };
     const doing = { id: 'd1', kind: 'doing', state: 'working', note: 'running the tests', at: at(1) };
     let line = view({ messages: [asked], steps: [doing], pulse: { busy: false, at: at(3) } }, { words, now: Date.parse(at(4)), locale: 'en-GB' }).rows.at(-1);
-    assert.deepEqual([line.text, line.live, line.quiet], ['running the tests', false, 'stopped at 06:03']);
-    line = view({ messages: [asked], steps: [doing], pulse: { busy: false, at: at(0) } }, { words, now: Date.parse(at(4)), locale: 'en-GB' }).rows.at(-1);
-    assert.equal(line.live, true, 'a turn that ended before it said what it does: not this one');
-    assert.equal(texts('fr').stopped, 'arrêté à {time}');
+    assert.deepEqual([line.text, line.live, line.quiet], ['running the tests', true, ''], 'the turn ended, but it said it works: the line stays live, no "stopped"');
+    line = view({ messages: [asked], steps: [doing], pulse: { busy: false, at: at(3) } }, { words, now: Date.parse(at(40)), locale: 'en-GB' }).rows.at(-1);
+    assert.deepEqual([line.live, line.quiet], [false, 'nothing new since 06:01'], 'still only after a long silence, and "nothing new since", never "stopped"');
 });
 
 test('the Stop hook of Claude Code: asked once to say where it is while its chat says it works; stopping again, it stops', (t) => {
