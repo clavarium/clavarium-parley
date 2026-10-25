@@ -285,9 +285,9 @@ test('the screen: a field being written in is the browser\'s -- a right click or
         assert.equal(root.querySelectorAll('.parley-said[data-reveal]').length, 0, `${field.className}: a press in it marks nothing`);
         assert.equal(document.activeElement, field);
     }
-    /* Out of the field, on the message itself: a right click still opens its reactions. */
+    /* Out of the field, on the message itself: a mouse's right click still opens its reactions. */
     const bubble = $('.parley-said[data-id="g"]');
-    const menu = fakeEvent('contextmenu', { target: bubble });
+    const menu = fakeEvent('contextmenu', { target: bubble, pointerType: 'mouse' });
     bubble.dispatchEvent(menu);
     assert.equal(menu.defaultPrevented, true);
     assert.equal(picker.hidden, false);
