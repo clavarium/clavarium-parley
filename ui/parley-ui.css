@@ -254,6 +254,10 @@
 .parley-badge[data-kind="todo"] { color: var(--parley-note); }
 .parley-badge[data-kind="blocked"] { color: var(--parley-caution); }
 .parley-badge[data-kind="warn"] { color: var(--parley-warning); }
+/* A secret lifted out of a message: stars, never the value (secret-scan.mjs host-side). */
+.parley-secret { display: inline-flex; align-items: center; gap: .4em; vertical-align: .05em; padding: 0 .45em 0 .55em; border: 1px solid var(--parley-line); border-radius: 7px; white-space: nowrap; }
+.parley-secret-dots { color: var(--parley-action); font-weight: 700; letter-spacing: .14em; }
+.parley-secret-label { font-size: .78em; color: var(--parley-dim); }
 /* The alerts of GitHub, as boxes. */
 .parley-callout { --parley-c: var(--parley-note); border-left: 4px solid var(--parley-c); border-radius: 6px; padding: .5em .8em; background: color-mix(in srgb, var(--parley-c) 9%, transparent); }
 .parley-callout[data-kind="tip"] { --parley-c: var(--parley-tip); }

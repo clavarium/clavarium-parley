@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { fakePage } from './fake-dom.mjs';
-import { mount, markdown, inline, safeLink, plainOf, view } from '../ui/parley-ui.js';
+import { mount, markdown, inline, safeLink, plainOf, view, maskSecrets } from '../ui/parley-ui.js';
 import { texts, cited } from '../host/parley-host.mjs';
 
 const SOURCE = readFileSync(fileURLToPath(new URL('../ui/parley-ui.js', import.meta.url)), 'utf8');
@@ -147,4 +147,24 @@ test('two versions of a message: the short one first, the rest on demand, its IM
     /* A question is never folded. */
     const asked = view({ messages: [{ from: 'agent', id: 'q', at: at(0), kind: 'ask', text: long, choices: ['yes'] }] }, { words: texts('en') });
     assert.equal(asked.items[0].open, true);
+});
+
+test('a lifted secret is one node, shown as stars, never the value', () => {
+    const marker = '⟨secret:SECRET_0A1B2C3D4E⟩';
+    const nodes = inline(`the key is ${marker} now`);
+    const sec = nodes.find((n) => n.t === 'secret');
+    assert.deepEqual(sec, { t: 'secret', name: 'SECRET_0A1B2C3D4E' });
+    assert.equal(plainOf(nodes), 'the key is ••••• now', 'copy/search see stars, not the marker');
+    assert.equal(maskSecrets(`a ${marker} b`), 'a ••••• b');
+    assert.equal(inline('ordinary text, no secret').every((n) => n.t === 'text'), true, 'ordinary text is untouched');
+});
+
+test('a secret in a shown message renders as a stars chip, the value nowhere in the page', async (t) => {
+    const marker = '⟨secret:SECRET_0A1B2C3D4E⟩';
+    const { root } = await shown(t, `here: ${marker} use it`);
+    const chip = root.querySelector('.parley-secret');
+    assert.ok(chip, 'a secret chip is drawn');
+    assert.ok(chip.textContent.includes('•••••'), 'it shows stars');
+    assert.ok(!root.textContent.includes('SECRET_0A1B2C3D4E'), 'the reference name is not shown');
+    assert.ok(!root.textContent.includes('⟨'), 'the raw marker is not shown');
 });

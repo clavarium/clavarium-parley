@@ -348,6 +348,11 @@ const ESCAPABLE = /[\\`*_{}[\]()#+\-.!|~=<>"'$]/;
 export const MATH_MAX = 4000;
 const URL_AT = /^https?:\/\/[^\s<>()[\]"'`]+(?:\([^\s<>()]*\)[^\s<>()[\]"'`]*)*/i;
 const PAIRS = [['**', 'strong'], ['__', 'strong'], ['~~', 'del'], ['==', 'mark'], ['*', 'em'], ['_', 'em']];
+/* A secret the host lifted out of a message (secret-scan.mjs): the message keeps only this marker, shown
+   here as stars and never as the value. The angle brackets (U+27E8/27E9) are vanishingly rare in real text. */
+const SECRET_REF = /^⟨secret:(SECRET_[0-9A-F]{10})⟩/;
+const SECRET_REF_G = /⟨secret:SECRET_[0-9A-F]{10}⟩/g;
+export const maskSecrets = (text) => String(text ?? '').replace(SECRET_REF_G, '•••••');
 
 export function inline(text, depth = 0) {
     const s = String(text ?? '');
@@ -358,6 +363,8 @@ export function inline(text, depth = 0) {
     let i = 0;
     while (i < s.length) {
         const c = s[i];
+        /* A secret lifted out by the host: one node, shown as stars; its value is never in the thread. */
+        if (c === '⟨') { const m = SECRET_REF.exec(s.slice(i)); if (m) { flush(); out.push({ t: 'secret', name: m[1] }); i += m[0].length; continue; } }
         /* A formula, \( ... \) or \[ ... \]: read before an escaped bracket, when it closes. */
         if (c === '\\' && (s[i + 1] === '(' || s[i + 1] === '[')) {
             const end = s.indexOf(s[i + 1] === '(' ? '\\)' : '\\]', i + 2);
@@ -547,7 +554,7 @@ export function markdown(text, depth = 0) {
     return blocks;
 }
 /* All the text of a run of inlines, as it reads. */
-export const plainOf = (nodes) => (nodes ?? []).map((n) => (n.t === 'math' ? n.tex : n.t === 'text' || n.t === 'code' ? n.v : n.t === 'br' ? '\n' : n.t === 'img' ? n.alt : n.t === 'badge' ? `[${n.kind}]` : plainOf(n.c))).join('');
+export const plainOf = (nodes) => (nodes ?? []).map((n) => (n.t === 'math' ? n.tex : n.t === 'text' || n.t === 'code' ? n.v : n.t === 'br' ? '\n' : n.t === 'img' ? n.alt : n.t === 'badge' ? `[${n.kind}]` : n.t === 'secret' ? '•••••' : plainOf(n.c))).join('');
 /* About how many lines a text takes in a reading column. */
 export const linesOf = (text) => String(text ?? '').split('\n').reduce((n, l) => n + Math.max(1, Math.ceil(l.length / 90)), 0);
 
@@ -1171,6 +1178,7 @@ function painter(ctx) {
             else if (n.t === 'code') { const f = fileOf(n.v.trim()); const c = el('code', '', n.v); into.append(f && open ? pathLink(f, c) : c); }
             else if (n.t === 'em' || n.t === 'strong' || n.t === 'del' || n.t === 'mark') { const e = el(n.t === 'del' ? 's' : n.t); inlines(n.c, e); into.append(e); }
             else if (n.t === 'badge') { const b = el('span', 'parley-badge', said(words, `badge-${n.kind}`)); b.dataset.kind = n.kind; into.append(b); }
+            else if (n.t === 'secret') { const chip = el('span', 'parley-secret'); chip.append(el('span', 'parley-secret-dots', '•••••'), el('span', 'parley-secret-label', said(words, 'secret'))); chip.title = said(words, 'secret-hint'); into.append(chip); }
             else if (n.t === 'link') {
                 const href = safeLink(n.href);
                 const f = n.href.startsWith('/') ? fileOf(n.href) : null;
@@ -2304,7 +2312,7 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
         return card;
     }
     function body(item, v) {
-        if (!rich) return [el('p', 'parley-text', item.text)];
+        if (!rich) return [el('p', 'parley-text', maskSecrets(item.text))];
         const refs = new Map(item.refs.map((r) => [r.path, r.open]));
         const paint2 = painter({ words, refs, open, picture: picture ? pictureUrl : null, pictureUrl, diagram, highlight, cache, urls, zoom: zoomFrom, math: formula, targets: zoneRefs,
             ...(send ? {

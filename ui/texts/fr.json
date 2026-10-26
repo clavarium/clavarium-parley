@@ -62,6 +62,8 @@
   "draw-hint": "Dessinez au doigt ou à la souris pour montrer quelque chose.",
   "copy": "Copier",
   "copied": "Copié",
+  "secret": "secret",
+  "secret-hint": "Un secret que tu as collé, gardé hors du fil -- l'outil s'en sert, tu ne le vois jamais, et il s'efface tout seul.",
   "see-details": "Voir le détail",
   "see-more": "Voir la suite",
   "see-less": "Replier",

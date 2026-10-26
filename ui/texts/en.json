@@ -62,6 +62,8 @@
   "draw-hint": "Draw with a finger or the mouse to point at something.",
   "copy": "Copy",
   "copied": "Copied",
+  "secret": "secret",
+  "secret-hint": "A secret you pasted, kept out of the chat -- the tool uses it, you never see it, and it clears itself.",
   "see-details": "See the details",
   "see-more": "See more",
   "see-less": "See less",
