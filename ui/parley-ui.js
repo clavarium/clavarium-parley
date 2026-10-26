@@ -350,8 +350,8 @@ const URL_AT = /^https?:\/\/[^\s<>()[\]"'`]+(?:\([^\s<>()]*\)[^\s<>()[\]"'`]*)*/
 const PAIRS = [['**', 'strong'], ['__', 'strong'], ['~~', 'del'], ['==', 'mark'], ['*', 'em'], ['_', 'em']];
 /* A secret the host lifted out of a message (secret-scan.mjs): the message keeps only this marker, shown
    here as stars and never as the value. The angle brackets (U+27E8/27E9) are vanishingly rare in real text. */
-const SECRET_REF = /^⟨secret:(SECRET_[0-9A-F]{10})⟩/;
-const SECRET_REF_G = /⟨secret:SECRET_[0-9A-F]{10}⟩/g;
+const SECRET_REF = /^⟨secret:(SECRET_[0-9A-F]{10})(?:@\d+)?⟩/;
+const SECRET_REF_G = /⟨secret:SECRET_[0-9A-F]{10}(?:@\d+)?⟩/g;
 export const maskSecrets = (text) => String(text ?? '').replace(SECRET_REF_G, '•••••');
 
 export function inline(text, depth = 0) {

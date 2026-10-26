@@ -33,7 +33,7 @@ import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import { createInterface } from 'node:readline';
 
-export const VERSION = '0.17.6-next.1';
+export const VERSION = '0.17.7-next.1';
 /* A message may be long: the screen folds it, and shows its short version first. */
 export const TEXT_MAX = 16000;
 /* Its short version: a title of one or two lines. */
@@ -63,7 +63,16 @@ export const FOLDER = '.parley';
 /* A pulse that says the same is written again only after this long: a tool may pulse at every action. */
 export const PULSE_EVERY_MS = 10_000;
 
-const plain = (value, max = TEXT_MAX) => String(value ?? '').slice(0, max);
+/* A secret the host lifted out of a message (secret-scan.mjs): the agent reads WHERE to use it and how long
+   it has left -- never the value. The marker carries the moment it clears, so the countdown is the parloir's,
+   the same one the person sees as stars. */
+const SECRET_REF_G = /⟨secret:(SECRET_[0-9A-F]{10})(?:@(\d+))?⟩/g;
+const secretsForAgent = (text, now = Date.now()) => String(text ?? '').replace(SECRET_REF_G, (_m, name, at) => {
+    const mins = at ? Math.round((Number(at) - now) / 60_000) : null;
+    const when = mins === null ? 'it clears after a few minutes' : mins <= 0 ? 'it clears any moment now' : `it clears in about ${mins} min`;
+    return `[a secret, at /run/secrets/${name} -- use it there, never print it; ${when}]`;
+});
+const plain = (value, max = TEXT_MAX) => secretsForAgent(String(value ?? '')).slice(0, max);
 /* THE END OF THE EXCHANGE (`read --last N`, `--days D`, `--all`): so many entries by default
    (`--all`: ALL_ENTRIES), LAST_MAX at most, and so many characters; `--days` gives LEAST at
    least. What is older is read with `--before ID`, page after page: never cut nor summarised. */

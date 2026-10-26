@@ -534,3 +534,16 @@ test('ask: the question first, then its answers, each with --choice or as before
     assert.match(asked(['--choice', 'only an answer']).err, /A question needs its text/);
     assert.equal(readFileSync(join(here, '.parley', 'from-agent.jsonl'), 'utf8').trim().split('\n').length, 3, 'nothing posted by a refused one');
 });
+
+test('a secret the host lifted out reads as where to use it and how long it has -- never the value or raw marker', (t) => {
+    const home = folder(t); const dir = join(home, '.parley'); install(dir);
+    const host = new Parley(dir);
+    const at = Date.now() + 9 * 60_000;
+    host.say(`here is ⟨secret:SECRET_0A1B2C3D4E@${at}⟩ -- publish with it`);
+    const out = parley(home, ['read']).out;
+    assert.match(out, /\/run\/secrets\/SECRET_0A1B2C3D4E/, 'the agent is told where to use it');
+    assert.match(out, /clears in about \d+ min/, 'with a countdown');
+    assert.match(out, /never print it/, 'and not to print it');
+    assert.doesNotMatch(out, /⟨secret:/, 'never the raw marker');
+    assert.doesNotMatch(out, new RegExp(String(at)), 'never the raw timestamp');
+});
