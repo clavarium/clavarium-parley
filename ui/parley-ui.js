@@ -1168,7 +1168,7 @@ function placeAt(n, left) {
 }
 
 function painter(ctx) {
-    const { words, refs, open, picture, diagram, highlight, cache } = ctx;
+    const { words, refs, open, picture, diagram, highlight, cache, secrets: liveSecrets = {}, forget } = ctx;
     const fileOf = (path) => (refs.has(path) ? { path, open: refs.get(path) } : null);
     const pathLink = (file, text) => { const b = button('', 'parley-pathlink', () => open?.(file)); b.append(text ?? file.path); b.title = file.path; return b; };
     function inlines(nodes, into) {
@@ -1178,7 +1178,15 @@ function painter(ctx) {
             else if (n.t === 'code') { const f = fileOf(n.v.trim()); const c = el('code', '', n.v); into.append(f && open ? pathLink(f, c) : c); }
             else if (n.t === 'em' || n.t === 'strong' || n.t === 'del' || n.t === 'mark') { const e = el(n.t === 'del' ? 's' : n.t); inlines(n.c, e); into.append(e); }
             else if (n.t === 'badge') { const b = el('span', 'parley-badge', said(words, `badge-${n.kind}`)); b.dataset.kind = n.kind; into.append(b); }
-            else if (n.t === 'secret') { const chip = el('span', 'parley-secret'); chip.append(el('span', 'parley-secret-dots', '•••••'), el('span', 'parley-secret-label', said(words, 'secret'))); chip.title = said(words, 'secret-hint'); into.append(chip); }
+            else if (n.t === 'secret') {
+                const chip = el('span', 'parley-secret'); chip.title = said(words, 'secret-hint');
+                chip.append(el('span', 'parley-secret-dots', '•••••'));
+                const live = liveSecrets[n.name];
+                const mins = live ? Math.max(1, Math.round(live.expiresInMs / 60_000)) : 0;
+                chip.append(el('span', 'parley-secret-label', live ? said(words, 'secret-left', { mins }) : said(words, 'secret')));
+                if (live && forget) { const x = el('button', 'parley-secret-forget'); x.type = 'button'; x.textContent = '×'; x.title = said(words, 'secret-forget'); x.setAttribute('aria-label', said(words, 'secret-forget')); x.addEventListener('click', (e) => { e.stopPropagation(); forget(n.name); }); chip.append(x); }
+                into.append(chip);
+            }
             else if (n.t === 'link') {
                 const href = safeLink(n.href);
                 const f = n.href.startsWith('/') ? fileOf(n.href) : null;
@@ -1907,6 +1915,7 @@ function card(file, words, open, size, title) {
 export function mount(root, { load, send, words = {}, open, terminal, remind, view: first = 'simple', onView, every = 3000, locale,
     voice: speaking, autoSend = false, onAutoSend, replies: ready = [], enter = 'auto', touch, attach, act,
     markdown: rich = false, picture, diagram, highlight, agentName, agentTool, react, reactions: offered = REACTIONS,
+    secrets: liveSecrets = {}, forget,
     receivedAfter = RECEIVED_MS, noAnswerAfter = NO_ANSWER_MS, back = true, draft: draftKey = '', math: mathGiven, refs: zoneRefs,
     window: shownAtFirst, search: searchAll, side: sideGiven } = {}) {
     const steps = stepper(back);
@@ -2314,7 +2323,7 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
     function body(item, v) {
         if (!rich) return [el('p', 'parley-text', maskSecrets(item.text))];
         const refs = new Map(item.refs.map((r) => [r.path, r.open]));
-        const paint2 = painter({ words, refs, open, picture: picture ? pictureUrl : null, pictureUrl, diagram, highlight, cache, urls, zoom: zoomFrom, math: formula, targets: zoneRefs,
+        const paint2 = painter({ words, refs, open, picture: picture ? pictureUrl : null, pictureUrl, diagram, highlight, cache, urls, zoom: zoomFrom, math: formula, targets: zoneRefs, secrets: liveSecrets, forget,
             ...(send ? {
                 /* "Talk about it": said at once, with what it is about. */
                 talk: (about) => { void say(said(words, 'talk-text', { name: about.label }), undefined, undefined, undefined, { about }); },

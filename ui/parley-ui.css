@@ -258,6 +258,8 @@
 .parley-secret { display: inline-flex; align-items: center; gap: .4em; vertical-align: .05em; padding: 0 .45em 0 .55em; border: 1px solid var(--parley-line); border-radius: 7px; white-space: nowrap; }
 .parley-secret-dots { color: var(--parley-action); font-weight: 700; letter-spacing: .14em; }
 .parley-secret-label { font-size: .78em; color: var(--parley-dim); }
+.parley-secret-forget { all: unset; cursor: pointer; display: inline-grid; place-items: center; width: 1.35em; height: 1.35em; border-radius: 5px; color: var(--parley-dim); line-height: 1; }
+.parley-secret-forget:hover, .parley-secret-forget:focus-visible { background: color-mix(in srgb, var(--parley-caution) 22%, transparent); color: var(--parley-caution); outline: none; }
 /* The alerts of GitHub, as boxes. */
 .parley-callout { --parley-c: var(--parley-note); border-left: 4px solid var(--parley-c); border-radius: 6px; padding: .5em .8em; background: color-mix(in srgb, var(--parley-c) 9%, transparent); }
 .parley-callout[data-kind="tip"] { --parley-c: var(--parley-tip); }
