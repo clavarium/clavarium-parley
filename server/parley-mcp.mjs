@@ -33,7 +33,7 @@ import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import { createInterface } from 'node:readline';
 
-export const VERSION = '0.17.3-next.1';
+export const VERSION = '0.17.4-next.1';
 /* A message may be long: the screen folds it, and shows its short version first. */
 export const TEXT_MAX = 16000;
 /* Its short version: a title of one or two lines. */
@@ -47,6 +47,9 @@ export const SHORT_LINE = 90;
 export const DOING_MAX = 200;
 /* Its chat says it works and nothing new came for this long: reminded, under what a verb returns. */
 export const STALE_SAID_MS = 10 * 60_000;
+/* While working, this many messages (tell/ask/show) with no `doing` between them: reminded to post one.
+   A count, not a timeout: the reminder is about keeping them posted step by step, and repeats each time. */
+export const NUDGE_EVERY = 3;
 export const CHOICES_MAX = 8;
 /* Questions asked together, as one card: so many at most, each with an id the answer names. */
 export const GROUP_MAX = 5;
@@ -164,6 +167,21 @@ export function bridge(dir, { how = 'run `parley read`', back = (id) => `parley 
         if (s?.state !== 'working' || Date.now() - Date.parse(s.at) < STALE_SAID_MS) return '';
         return `\nTheir screen still says you are working${s.note ? ` on "${s.note}"` : ''}, since ${Math.round((Date.now() - Date.parse(s.at)) / 60_000)} min: say what you do now or what still runs (parley doing "..."), or that you stopped with nothing still running and nothing for them to do (parley status done), or, only if you need their answer or action, parley status waiting.`;
     };
+    /* KEEP THEM POSTED: while working, a short reminder when several messages have gone by with no
+       `doing` between them -- decided from the use of the tools, not a timeout. It repeats every
+       NUDGE_EVERY such messages, and stops as soon as a `doing` is posted. */
+    const doingNudge = () => {
+        const s = standing();
+        if (s?.state !== 'working') return '';
+        const mine = lines(OUT).filter(Boolean);
+        const lastDoing = [...mine].reverse().find((m) => m.kind === 'doing');
+        const since = mine.filter((m) => ['say', 'ask', 'show'].includes(m.kind) && String(m.at ?? '') > String(lastDoing?.at ?? ''));
+        if (since.length < NUDGE_EVERY || since.length % NUDGE_EVERY !== 0) return '';
+        const mins = lastDoing ? `, ${Math.round((Date.now() - Date.parse(lastDoing.at)) / 60_000)} min ago` : ' this turn';
+        return `\nReminder: keep them posted -- post a short \`parley doing "..."\` as you move to each step (none in your last ${since.length} messages${mins}).`;
+    };
+    /* One reminder at most under a verb: the stale-state one when it applies, else the keep-posted one. */
+    const nudge = () => stale() || doingNudge();
     /* SEVERAL QUESTIONS AT ONCE, one card: each one choice, several to tick, or free.
        The text says them all, for a screen or a reader that knows nothing of `questions`. */
     const group = (intro, questions, short) => {
@@ -186,14 +204,14 @@ export function bridge(dir, { how = 'run `parley read`', back = (id) => `parley 
         const lead = plain(intro, 2000).trim();
         const text = `${lead ? `${lead}\n\n` : ''}${list.map((q, i) => `${i + 1}. ${q.question.replace(/\s+/g, ' ')}${q.choices.length ? ` (${q.many ? 'several: ' : ''}${q.choices.join(' / ')})` : ''}`).join('\n')}`;
         post({ kind: 'ask', text, choices: [], questions: list, ...(lead ? { intro: lead } : {}), ...brief(short) });
-        return `Posted, ${list.length} questions as one card. Do not wait here: you will be told in the terminal when they answer; then ${how}.${tooLong(short)}`;
+        return `Posted, ${list.length} questions as one card. Do not wait here: you will be told in the terminal when they answer; then ${how}.${tooLong(short)}${nudge()}`;
     };
     return {
         standing,
         tell(text, { short } = {}) {
             if (!plain(text).trim()) throw new Error('the text is empty');
             post({ kind: 'say', text: plain(text), ...brief(short) });
-            return `Posted. They will read it on their screen.${tooLong(short)}${stale()}`;
+            return `Posted. They will read it on their screen.${tooLong(short)}${nudge()}`;
         },
         /* `many`: several of its choices may be ticked, sent together; a screen
            that does not know it shows them as single choices, which still answer. */
@@ -203,7 +221,7 @@ export function bridge(dir, { how = 'run `parley read`', back = (id) => `parley 
             const picked = Array.isArray(choices) ? choices.slice(0, CHOICES_MAX).map((c) => plain(c, 200).trim()).filter(Boolean) : [];
             if (many === true && picked.length < 2) throw new Error('several choices to tick need two choices at least');
             post({ kind: 'ask', text: plain(question), choices: picked, ...(many === true ? { many: true } : {}), ...brief(short) });
-            return `Posted. Do not wait here: you will be told in the terminal when they answer; then ${how}.${tooLong(short)}`;
+            return `Posted. Do not wait here: you will be told in the terminal when they answer; then ${how}.${tooLong(short)}${nudge()}`;
         },
         /* A question they answered another way (a message typed later): closed
            by the agent, with the answer it understood. The screen says so; the
@@ -218,7 +236,7 @@ export function bridge(dir, { how = 'run `parley read`', back = (id) => `parley 
             if (found.length === 0) throw new Error(`no question has the id ${given}`);
             if (found.length > 1) throw new Error(`several questions start with ${given}: give more of it`);
             post({ kind: 'close', answers: found[0].id, text: said });
-            return 'Closed. Their screen shows the answer you understood; they may still correct it.';
+            return `Closed. Their screen shows the answer you understood; they may still correct it.${nudge()}`;
         },
         /* A relative path is the agent's own, from where it stands: it is
            posted whole, so that the application knows which file it is. */
@@ -232,7 +250,7 @@ export function bridge(dir, { how = 'run `parley read`', back = (id) => `parley 
             const files = list.map((f) => { const whole = resolve(from, f.path); if (!existsSync(whole)) throw new Error(`no such file: ${whole}`); return { path: whole, ...(f.title ? { title: f.title } : {}) }; });
             const several = Array.isArray(target) || files[0].title;
             post({ kind: 'show', path: files[0].path, text: plain(note, 500), ...(several ? { files } : {}) });
-            return files.length > 1 ? `Posted, as one gallery of ${files.length}. They can open them from their screen if they are in a folder they share with you.` : 'Posted. They can open it from their screen if it is in a folder they share with you.';
+            return `${files.length > 1 ? `Posted, as one gallery of ${files.length}. They can open them from their screen if they are in a folder they share with you.` : 'Posted. They can open it from their screen if it is in a folder they share with you.'}${nudge()}`;
         },
         status(state, note) {
             if (!STATES.includes(state)) throw new Error(`the state is one of: ${STATES.join(', ')}`);

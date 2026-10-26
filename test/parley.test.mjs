@@ -48,6 +48,20 @@ test('the agent\'s side speaks MCP and has seven verbs, no more', async (t) => {
     assert.equal(replies.length, 5, 'a notification is not answered');
 });
 
+test('while working, a reminder to post `doing` comes after several messages with none, and stops after one', (t) => {
+    const home = folder(t); install(join(home, '.parley'));
+    const say = (text) => parley(home, ['tell', text]).out;
+    parley(home, ['status', 'working', 'on it']);
+    assert.doesNotMatch(say('one'), /keep them posted/, 'the first message is not nudged');
+    assert.doesNotMatch(say('two'), /keep them posted/);
+    assert.match(say('three'), /keep them posted -- post a short `parley doing/, 'the third message with no doing is reminded');
+    parley(home, ['doing', 'stepping through it']);
+    assert.doesNotMatch(say('four'), /keep them posted/, 'a doing starts the count over');
+    /* Only while working: nothing when it waits. */
+    parley(home, ['status', 'waiting']);
+    assert.doesNotMatch([say('x'), say('y'), say('z')].join(''), /keep them posted/);
+});
+
 test('the command: the same six verbs on the same files, found from where the agent stands', async (t) => {
     const home = folder(t);
     const dir = join(home, '.parley'); install(dir);
