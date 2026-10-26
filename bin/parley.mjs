@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-/* THE COMMAND: the seven verbs for any agent that can run a command. It writes
+/* THE COMMAND: the verbs for any agent that can run a command. It writes
  * the same files as the MCP server, through the same code (server/).
  *
  *   parley read [--last N | --days D] [--before ID] | tell | ask | show | close | doing | status | guide | --help
@@ -80,6 +80,8 @@ export const HELP = `parley: talk with the person you work for. They read and an
                                        in the background (it will call you back; say what runs with
                                        doing); done when you stop, nothing still runs and they have
                                        nothing to do; waiting only when you need their answer or action
+  parley forget NAME                   forget a short-lived secret they pasted in the chat, once you are
+                                       done with it (at /run/secrets/NAME): the parloir drops it at once
   parley guide                         how to work with them, in a few lines: when you forgot
   parley pulse [--end [--stop-check]]  for the hooks of your tool, not for you: it acts, or its turn
                                        ended; prints nothing (--stop-check: Claude Code's Stop hook)
@@ -193,7 +195,7 @@ export function run(argv, { env = process.env, cwd = process.cwd(), stdin = () =
             return { code: 0, out: '', err: '' };
         } catch { return { code: 1, out: '', err: '' }; }
     }
-    if (!['read', 'tell', 'ask', 'show', 'close', 'doing', 'status'].includes(verb)) return { code: 64, out: '', err: `Unknown: ${verb}. Run "parley --help".\n` };
+    if (!['read', 'tell', 'ask', 'show', 'close', 'doing', 'status', 'forget'].includes(verb)) return { code: 64, out: '', err: `Unknown: ${verb}. Run "parley --help".\n` };
     const folder = findFolder({ dir, env, from: cwd });
     if (!folder) return { code: 2, out: '', err: `No ${FOLDER} folder here or above. Run it from your work folder, or give --dir FOLDER.\n` };
     const text = (value) => (value === '-' ? stdin().replace(/\n$/, '') : value);
@@ -253,6 +255,7 @@ export function run(argv, { env = process.env, cwd = process.cwd(), stdin = () =
         }
         else if (verb === 'close') said = verbs.close(rest[0], text(rest.slice(1).join(' ')));
         else if (verb === 'doing') said = verbs.doing(text(rest.join(' ')));
+        else if (verb === 'forget') said = verbs.forget(rest[0]);
         else if (verb === 'show') { const { files, note } = showing(rest, cwd); said = verbs.show(files.length === 1 && !files[0].title ? files[0].path : files, note, { from: cwd }); }
         else said = verbs.status(rest[0], rest.slice(1).join(' '));
         return { code: 0, out: `${said}\n`, err: '' };

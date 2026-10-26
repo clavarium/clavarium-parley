@@ -33,7 +33,7 @@ import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import { createInterface } from 'node:readline';
 
-export const VERSION = '0.17.7-next.1';
+export const VERSION = '0.17.8-next.1';
 /* A message may be long: the screen folds it, and shows its short version first. */
 export const TEXT_MAX = 16000;
 /* Its short version: a title of one or two lines. */
@@ -154,6 +154,8 @@ export function bridge(dir, { how = 'run `parley read`', back = (id) => `parley 
     const IN = join(dir, 'to-agent.jsonl');
     const READ = join(dir, 'read.json');
     const PULSE = join(dir, 'pulse.json');
+    /* Requests to forget a short-lived secret, for the parloir (host) to act on: not part of the thread. */
+    const FORGET = join(dir, 'forget.jsonl');
     const post = (entry) => {
         mkdirSync(dir, { recursive: true });
         const id = randomUUID();
@@ -275,6 +277,16 @@ export function bridge(dir, { how = 'run `parley read`', back = (id) => `parley 
             post({ kind: 'doing', text: line });
             return 'Noted.';
         },
+        /* FORGET A SHORT-LIVED SECRET given through the chat: ask the parloir (host) to drop it from its vault
+           and the machine at once, before its few minutes are up. The name is the one `parley read` shows
+           (/run/secrets/<name>). It is a request to the host, not part of the thread. */
+        forget(name) {
+            const n = String(name ?? '').trim();
+            if (!/^SECRET_[0-9A-F]{10}$/.test(n)) throw new Error('give the name of a short-lived secret, as `parley read` shows it: SECRET_ then ten hex');
+            mkdirSync(dir, { recursive: true });
+            appendFileSync(FORGET, `${JSON.stringify({ at: new Date().toISOString(), name: n })}\n`);
+            return 'Noted. The parloir will forget it.';
+        },
         /* A sign of life from the agent's TOOL (its hooks), not from the agent:
            `busy` while it acts, false when its turn ended. No line, no event:
            one small file, rewritten whole. Not a verb, not an MCP tool. */
@@ -382,6 +394,8 @@ export const TOOLS = [
         inputSchema: { type: 'object', properties: { text: { type: 'string', description: 'One short line, in their language.' } }, required: ['text'] } },
     { name: 'status', description: 'Say in one word where you are, so that their screen shows it: "working" when you start; "done" when you stop and they have nothing to do; "waiting" only when you need their answer or action (it puts them on alert).',
         inputSchema: { type: 'object', properties: { state: { type: 'string', enum: STATES }, note: { type: 'string', description: 'Optional: one short line.' } }, required: ['state'] } },
+    { name: 'forget', description: 'Forget a short-lived secret the person pasted in the chat, once you are done with it: the parloir drops it from its store and the machine at once, before its few minutes are up. The name is the one read shows, at /run/secrets/<name>. It clears itself anyway if you do not.',
+        inputSchema: { type: 'object', properties: { name: { type: 'string', description: 'The secret\'s name, as read shows it (SECRET_ then ten hex).' } }, required: ['name'] } },
 ];
 
 export function serve(dir, { input = process.stdin, output = process.stdout } = {}) {
@@ -394,6 +408,7 @@ export function serve(dir, { input = process.stdin, output = process.stdout } = 
         if (name === 'read') return verbs.read({ all: args.all === true, ...(Number.isInteger(args.last) ? { last: args.last } : {}), ...(Number.isInteger(args.days) ? { days: args.days } : {}), ...(typeof args.before === 'string' ? { before: args.before } : {}) });
         if (name === 'status') return verbs.status(args.state, args.note);
         if (name === 'doing') return verbs.doing(args.text);
+        if (name === 'forget') return verbs.forget(args.name);
         throw new Error(`unknown tool: ${name}`);
     };
     const send = (message) => output.write(`${JSON.stringify(message)}\n`);

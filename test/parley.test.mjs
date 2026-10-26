@@ -36,11 +36,11 @@ const said = (reply) => reply.result.content[0].text;
 /* The command, as an agent runs it: in a folder of its own, a new process each time. */
 const parley = (cwd, args, input) => { const r = spawnSync(process.execPath, [COMMAND, ...args], { cwd, input, encoding: 'utf8', env: { ...process.env, PARLEY_DIR: '' } }); return { code: r.status, out: r.stdout, err: r.stderr }; };
 
-test('the agent\'s side speaks MCP and has seven verbs, no more', async (t) => {
+test('the agent\'s side speaks MCP and has eight verbs, no more', async (t) => {
     const dir = folder(t);
     const replies = await agent(dir, [{ method: 'tools/list' }, { method: 'ping' }, { method: 'resources/list' }, tool('launch')]);
     assert.equal(replies[0].result.serverInfo.name, 'parley'); assert.deepEqual(replies[0].result.capabilities, { tools: {} });
-    assert.deepEqual(replies[1].result.tools.map((x) => x.name), ['tell', 'ask', 'show', 'read', 'close', 'doing', 'status']);
+    assert.deepEqual(replies[1].result.tools.map((x) => x.name), ['tell', 'ask', 'show', 'read', 'close', 'doing', 'status', 'forget']);
     assert.ok(replies[1].result.tools.every((x) => x.inputSchema.type === 'object' && x.description.length > 20));
     assert.deepEqual(replies[2].result, {});
     assert.equal(replies[3].error.code, -32601);
@@ -546,4 +546,14 @@ test('a secret the host lifted out reads as where to use it and how long it has 
     assert.match(out, /never print it/, 'and not to print it');
     assert.doesNotMatch(out, /⟨secret:/, 'never the raw marker');
     assert.doesNotMatch(out, new RegExp(String(at)), 'never the raw timestamp');
+});
+
+test('forget: the agent drops a short-lived secret; the request is recorded for the host, not shown in the thread', (t) => {
+    const home = folder(t); const dir = join(home, '.parley'); install(dir);
+    assert.match(parley(home, ['forget', 'SECRET_0A1B2C3D4E']).out, /forget/i);
+    const asked = readFileSync(join(dir, 'forget.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+    assert.deepEqual(asked.map((x) => x.name), ['SECRET_0A1B2C3D4E'], 'the name is recorded for the host');
+    assert.notEqual(parley(home, ['forget', 'not-a-secret']).code, 0, 'a name that is not a secret is refused');
+    const host = new Parley(dir);
+    assert.ok(!host.read().messages.some((m) => /SECRET_0A1B2C3D4E/.test(m.text ?? '')), 'a forget request is not a message of the thread');
 });
