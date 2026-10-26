@@ -351,8 +351,31 @@ const PAIRS = [['**', 'strong'], ['__', 'strong'], ['~~', 'del'], ['==', 'mark']
 /* A secret the host lifted out of a message (secret-scan.mjs): the message keeps only this marker, shown
    here as stars and never as the value. The angle brackets (U+27E8/27E9) are vanishingly rare in real text. */
 const SECRET_REF = /^⟨secret:(SECRET_[0-9A-F]{10})(?:@\d+)?⟩/;
-const SECRET_REF_G = /⟨secret:SECRET_[0-9A-F]{10}(?:@\d+)?⟩/g;
+const SECRET_REF_G = /⟨secret:(SECRET_[0-9A-F]{10})(?:@\d+)?⟩/g;
 export const maskSecrets = (text) => String(text ?? '').replace(SECRET_REF_G, '•••••');
+
+/* The stars chip for a lifted secret, drawn the same wherever a message carries one -- the agent's rendered
+   Markdown (inlines) and the person's own plain bubble. Shows its time left and a way to forget it when the
+   application gave the live map and a forget callback; otherwise plain stars. Never the value. */
+function secretChipEl(name, words, liveSecrets, forget) {
+    const chip = el('span', 'parley-secret'); chip.title = said(words, 'secret-hint');
+    chip.append(el('span', 'parley-secret-dots', '•••••'));
+    const live = (typeof liveSecrets === 'function' ? liveSecrets() : liveSecrets)?.[name];
+    const mins = live ? Math.max(1, Math.round(live.expiresInMs / 60_000)) : 0;
+    chip.append(el('span', 'parley-secret-label', live ? said(words, 'secret-left', { mins }) : said(words, 'secret')));
+    if (live && forget) { const x = el('button', 'parley-secret-forget'); x.type = 'button'; x.textContent = '×'; x.title = said(words, 'secret-forget'); x.setAttribute('aria-label', said(words, 'secret-forget')); x.addEventListener('click', (e) => { e.stopPropagation(); forget(name); }); chip.append(x); }
+    return chip;
+}
+/* Plain text (the person's own words), with any lifted-secret marker turned into the chip -- not Markdown. */
+function textWithSecrets(text, into, words, liveSecrets, forget) {
+    const s = String(text ?? ''); let last = 0;
+    for (const m of s.matchAll(SECRET_REF_G)) {
+        if (m.index > last) into.append(s.slice(last, m.index));
+        into.append(secretChipEl(m[1], words, liveSecrets, forget));
+        last = m.index + m[0].length;
+    }
+    if (last < s.length) into.append(s.slice(last));
+}
 
 export function inline(text, depth = 0) {
     const s = String(text ?? '');
@@ -1178,15 +1201,7 @@ function painter(ctx) {
             else if (n.t === 'code') { const f = fileOf(n.v.trim()); const c = el('code', '', n.v); into.append(f && open ? pathLink(f, c) : c); }
             else if (n.t === 'em' || n.t === 'strong' || n.t === 'del' || n.t === 'mark') { const e = el(n.t === 'del' ? 's' : n.t); inlines(n.c, e); into.append(e); }
             else if (n.t === 'badge') { const b = el('span', 'parley-badge', said(words, `badge-${n.kind}`)); b.dataset.kind = n.kind; into.append(b); }
-            else if (n.t === 'secret') {
-                const chip = el('span', 'parley-secret'); chip.title = said(words, 'secret-hint');
-                chip.append(el('span', 'parley-secret-dots', '•••••'));
-                const live = liveSecrets[n.name];
-                const mins = live ? Math.max(1, Math.round(live.expiresInMs / 60_000)) : 0;
-                chip.append(el('span', 'parley-secret-label', live ? said(words, 'secret-left', { mins }) : said(words, 'secret')));
-                if (live && forget) { const x = el('button', 'parley-secret-forget'); x.type = 'button'; x.textContent = '×'; x.title = said(words, 'secret-forget'); x.setAttribute('aria-label', said(words, 'secret-forget')); x.addEventListener('click', (e) => { e.stopPropagation(); forget(n.name); }); chip.append(x); }
-                into.append(chip);
-            }
+            else if (n.t === 'secret') into.append(secretChipEl(n.name, words, liveSecrets, forget));
             else if (n.t === 'link') {
                 const href = safeLink(n.href);
                 const f = n.href.startsWith('/') ? fileOf(n.href) : null;
@@ -2443,7 +2458,8 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
         if (item.label) bubble.append(el('p', 'parley-label', item.label));
         if (item.reply) bubble.append(el('p', 'parley-inreply', item.reply));
         if (item.closed) bubble.append(el('p', 'parley-closed', item.closed));
-        if (item.from === 'agent') bubble.append(...body(item, v)); else if (item.text) bubble.append(el('p', 'parley-text', item.text));
+        if (item.from === 'agent') bubble.append(...body(item, v));
+        else if (item.text) { const p = el('p', 'parley-text'); textWithSecrets(item.text, p, words, liveSecrets, forget); bubble.append(p); }
         if (item.file) {
             if (item.file.open !== null && item.file.picture && pictureUrl(item.file)) bubble.append(fileView(item.file));
             else {

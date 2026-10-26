@@ -14,14 +14,14 @@ const at = (m) => new Date(Date.UTC(2030, 0, 1, 9, m)).toISOString();
 const elements = (node) => node.children.flatMap((c) => [c, ...elements(c)]);
 const pages = new WeakMap();
 /* Mounts the screen on a fake page with one message of the agent. */
-async function shown(t, text, { refs = [], picture, diagram, highlight, short, open = () => {}, after = false, secrets, forget } = {}) {
+async function shown(t, text, { refs = [], picture, diagram, highlight, short, open = () => {}, after = false, secrets, forget, from = 'agent' } = {}) {
     /* One page per test, taken away after every chat on it. */
     if (!pages.has(t)) { const leave = fakePage(); pages.set(t, []); t.after(() => { for (const h of pages.get(t)) h.destroy(); leave(); }); }
     const root = document.createElement('div');
     document.body.append(root);
     const opened = [];
     /* `after`: a later message of the agent, so that this one is not the newest (the newest is never folded). */
-    const handle = mount(root, { load: async () => ({ messages: [{ from: 'agent', id: 'm', at: at(0), kind: 'say', text, refs, ...(short ? { short } : {}) }, ...(after ? [{ from: 'agent', id: 'n', at: at(1), kind: 'say', text: 'Next.' }] : [])] }), send: async () => {}, words: texts('en'), every: 0, touch: false,
+    const handle = mount(root, { load: async () => ({ messages: [{ from, id: 'm', at: at(0), kind: 'say', text, refs, ...(short ? { short } : {}) }, ...(after ? [{ from: 'agent', id: 'n', at: at(1), kind: 'say', text: 'Next.' }] : [])] }), send: async () => {}, words: texts('en'), every: 0, touch: false,
         markdown: true, picture, diagram, highlight, secrets, forget, open: (f) => { opened.push(f); open(f); } });
     pages.get(t).push(handle);
     await settle(); await settle();
@@ -189,4 +189,16 @@ test('a secret with nothing live shown about it: stars, no button (expired or no
     const chip = root.querySelector('.parley-secret');
     assert.ok(chip && chip.textContent.includes('•••••'));
     assert.ok(!chip.querySelector('.parley-secret-forget'), 'no button without a live secret');
+});
+
+test('the secret chip renders in the PERSON\'s own bubble too (not the raw marker)', async (t) => {
+    const marker = '⟨secret:SECRET_0A1B2C3D4E@' + (Date.now() + 9 * 60_000) + '⟩';
+    const { root } = await shown(t, `my token is ${marker} ok`, { from: 'person', after: true, secrets: { SECRET_0A1B2C3D4E: { expiresInMs: 9 * 60_000 } }, forget: () => {} });
+    const bubble = root.querySelector('.parley-said[data-from="person"]');
+    assert.ok(bubble, 'a person bubble');
+    const chip = bubble.querySelector('.parley-secret');
+    assert.ok(chip, 'the stars chip renders in the person bubble');
+    assert.ok(chip.textContent.includes('•••••'), 'stars, not the marker');
+    assert.ok(chip.textContent.includes('9'), 'with the time left');
+    assert.ok(!root.textContent.includes('⟨secret:'), 'the raw marker is never shown');
 });
