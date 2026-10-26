@@ -363,7 +363,7 @@ function secretChipEl(name, words, liveSecrets, forget) {
     const live = (typeof liveSecrets === 'function' ? liveSecrets() : liveSecrets)?.[name];
     const mins = live ? Math.max(1, Math.round(live.expiresInMs / 60_000)) : 0;
     chip.append(el('span', 'parley-secret-label', live ? said(words, 'secret-left', { mins }) : said(words, 'secret')));
-    if (live && forget) { const x = el('button', 'parley-secret-forget'); x.type = 'button'; x.textContent = '×'; x.title = said(words, 'secret-forget'); x.setAttribute('aria-label', said(words, 'secret-forget')); x.addEventListener('click', (e) => { e.stopPropagation(); forget(name); }); chip.append(x); }
+    if (live && forget) { const x = el('button', 'parley-secret-forget'); x.type = 'button'; x.append(sign('trash')); x.title = said(words, 'secret-forget'); x.setAttribute('aria-label', said(words, 'secret-forget')); x.addEventListener('click', (e) => { e.stopPropagation(); forget(name); }); chip.append(x); }
     return chip;
 }
 /* Plain text (the person's own words), with any lifted-secret marker turned into the chip -- not Markdown. */
@@ -981,6 +981,7 @@ const SIGNS = {
     up: [['path', { d: 'M6 15l6-6 6 6' }]],
     file: [['path', { d: 'M6 3h8l5 5v13H6z' }], ['path', { d: 'M14 3v5h5' }]],
     tasks: [['path', { d: 'M3.5 6.5l1.5 1.5 3-3M3.5 12.5l1.5 1.5 3-3M3.5 18.5l1.5 1.5 3-3M11 6.5h9.5M11 12.5h9.5M11 18.5h9.5' }]],
+    trash: [['path', { d: 'M4 7h16' }], ['path', { d: 'M9.5 7V5.6A1.6 1.6 0 0 1 11.1 4h1.8A1.6 1.6 0 0 1 14.5 5.6V7' }], ['path', { d: 'M6.5 7l.9 12.3A1.7 1.7 0 0 0 9.1 21h5.8a1.7 1.7 0 0 0 1.7-1.7L17.5 7' }], ['path', { d: 'M10 11v6M14 11v6' }]],
 };
 function sign(kind) {
     const svg = document.createElementNS(SVG, 'svg');
