@@ -1958,6 +1958,17 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
     const foldKept = new Set();
     const foldDone = new Set();
     const FOLD_MS = 15_000;
+    /* #109: only fold a message tall enough to be worth it. A short one (a line
+       or two) collapsing to a bar is just noise. The outgoing message is still
+       on screen from the last draw when we decide, so measure it there. */
+    const FOLD_MIN_PX = 160;
+    /* True unless we can SEE it is short: only a real, positive height at or
+       below the floor suppresses the fold. A missing element or a zero height
+       (no layout yet, or a non-visual test env) keeps the old behaviour, so the
+       fix never hides a fold it cannot measure. */
+    const foldWorthIt = (id) => {
+        try { const b = thread.querySelector(`.parley-said[data-id="${(typeof CSS !== 'undefined' && CSS.escape) ? CSS.escape(id) : id}"]`); const h = b ? b.offsetHeight : 0; return !(h > 0 && h <= FOLD_MIN_PX); } catch { return true; }
+    };
     const reduceMotion = () => typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
     /* Drawings and coloured code, made once each; the addresses of drawings, let go at the end. */
     const cache = new Map();
@@ -2845,7 +2856,8 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
             const curLast = v.rows.find((r) => r.type === 'message' && r.last)?.id ?? null;
             if (foldFrom !== null && curLast !== null && curLast !== foldFrom
                 && !foldKept.has(foldFrom) && !foldDone.has(foldFrom) && !foldAt.has(foldFrom)
-                && v.rows.some((r) => r.id === foldFrom && r.type === 'message' && r.from === 'agent')) {
+                && v.rows.some((r) => r.id === foldFrom && r.type === 'message' && r.from === 'agent')
+                && foldWorthIt(foldFrom)) {
                 foldAt.set(foldFrom, Date.now());
             }
             if (curLast !== null) foldFrom = curLast;
