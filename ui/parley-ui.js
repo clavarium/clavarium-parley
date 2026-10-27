@@ -2359,7 +2359,24 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
         fill.style.animationDelay = `-${elapsed}ms`;
         bar.append(fill, el('span', 'parley-fold-label', said(words, 'fold-soon')));
         bar.addEventListener('click', (e) => { e.stopPropagation(); foldKept.add(id); foldAt.delete(id); repaint(); });
-        fill.addEventListener('animationend', () => { if (foldAt.has(id)) { foldAt.delete(id); foldDone.add(id); repaint(); } });
+        fill.addEventListener('animationend', () => {
+            if (!foldAt.has(id)) return;
+            const finish = () => { foldAt.delete(id); foldDone.add(id); repaint(); };
+            const bubble = bar.closest('.parley-said');
+            /* Fold in one motion: pin the message's height, ease it down to a line
+               while the bar fades, and draw the folded form once the slide ends. */
+            if (!bubble || reduceMotion()) { finish(); return; }
+            bar.classList.add('parley-fold-going');
+            bubble.style.overflow = 'hidden';
+            bubble.style.transition = 'max-height .45s ease';
+            bubble.style.maxHeight = `${bubble.scrollHeight}px`;
+            bubble.getBoundingClientRect();
+            bubble.style.maxHeight = '2.6em';
+            let done = false;
+            const end = () => { if (done) return; done = true; bubble.removeEventListener('transitionend', end); finish(); };
+            bubble.addEventListener('transitionend', end);
+            setTimeout(end, 700);
+        });
         return bar;
     }
     function body(item, v) {
