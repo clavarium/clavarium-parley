@@ -1948,6 +1948,17 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
     /* Steps the person opened or closed, by group; messages unfolded: kept while the page is drawn again. */
     const unfolded = new Map();
     const expanded = new Set();
+    /* #87: a message the newest has just pushed up folds with a slow countdown the
+       reader can cancel. `foldFrom` is the id that was newest at the last draw;
+       `foldAt` maps an id to when its countdown began; `foldKept` were kept open by a
+       tap; `foldDone` finished their countdown (now folded). Closure state, so it
+       survives each redraw. `reduceMotion` is ours here (the zoom viewer has its own). */
+    let foldFrom = null;
+    const foldAt = new Map();
+    const foldKept = new Set();
+    const foldDone = new Set();
+    const FOLD_MS = 15_000;
+    const reduceMotion = () => typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
     /* Drawings and coloured code, made once each; the addresses of drawings, let go at the end. */
     const cache = new Map();
     const urls = new Set();
@@ -2336,6 +2347,21 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
         paint2();
         return card;
     }
+    /* #87: the slow "folding soon" bar under a message on its way out. A fill creeps
+       across it (the countdown), resumed from where it was at each redraw via a
+       negative delay; a tap keeps the message open; when the fill reaches the end the
+       message folds. */
+    function foldBar(id, elapsed) {
+        const bar = el('button', 'parley-fold'); bar.type = 'button';
+        bar.setAttribute('aria-label', said(words, 'fold-keep'));
+        const fill = el('span', 'parley-fold-fill');
+        fill.style.animationDuration = `${FOLD_MS}ms`;
+        fill.style.animationDelay = `-${elapsed}ms`;
+        bar.append(fill, el('span', 'parley-fold-label', said(words, 'fold-soon')));
+        bar.addEventListener('click', (e) => { e.stopPropagation(); foldKept.add(id); foldAt.delete(id); repaint(); });
+        fill.addEventListener('animationend', () => { if (foldAt.has(id)) { foldAt.delete(id); foldDone.add(id); repaint(); } });
+        return bar;
+    }
     function body(item, v) {
         if (!rich) return [el('p', 'parley-text', maskSecrets(item.text))];
         const refs = new Map(item.refs.map((r) => [r.path, r.open]));
@@ -2354,7 +2380,13 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
         const more = (key, open2) => { const b = button(said(words, open2 ? 'see-less' : key), 'parley-unfold', () => { if (open2) expanded.delete(item.id); else expanded.add(item.id); repaint(); }); b.setAttribute('aria-expanded', String(open2)); return b; };
         /* A question is never folded; the detailed view and a search unfold everything. */
         /* Nor is the newest message of the agent: nothing seems left below it, nothing to scroll for. */
-        if (item.kind === 'ask' || item.last || v.view === 'detailed' || searching) return item.short ? [shortLine(), whole2()] : [whole2()];
+        if (item.kind === 'ask' || item.last || v.view === 'detailed' || searching || foldKept.has(item.id)) return item.short ? [shortLine(), whole2()] : [whole2()];
+        /* #87: a message the newest just pushed up stays full, with a slow countdown bar, until the countdown ends -- then it folds. A tap on the bar keeps it open. */
+        if (!reduceMotion() && foldAt.has(item.id)) {
+            const elapsed = Date.now() - foldAt.get(item.id);
+            if (elapsed < FOLD_MS) { const full = item.short ? [shortLine(), whole2()] : [whole2()]; return [...full, foldBar(item.id, elapsed)]; }
+            foldAt.delete(item.id); foldDone.add(item.id);
+        }
         const isOpen = expanded.has(item.id);
         if (item.short) {
             if (isOpen) return [shortLine(), whole2(), more('see-details', true)];
@@ -2780,6 +2812,16 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
         const mark = JSON.stringify([v, small, [...expanded], searching ? query.value : '', older]);
         if (mark === shown) { anchor = null; return; }
         shown = mark;
+        /* #87: did a newer agent message just push the previous newest up? Then that one folds, with a countdown. Not under reduced motion (it stays an instant fold). */
+        if (!reduceMotion()) {
+            const curLast = v.rows.find((r) => r.type === 'message' && r.last)?.id ?? null;
+            if (foldFrom !== null && curLast !== null && curLast !== foldFrom
+                && !foldKept.has(foldFrom) && !foldDone.has(foldFrom) && !foldAt.has(foldFrom)
+                && v.rows.some((r) => r.id === foldFrom && r.type === 'message' && r.from === 'agent')) {
+                foldAt.set(foldFrom, Date.now());
+            }
+            if (curLast !== null) foldFrom = curLast;
+        }
         for (const b of toggles) b.setAttribute('aria-pressed', String(b.dataset.view === v.view));
         status.hidden = !v.status;
         if (v.status) { status.dataset.state = v.status.state; status.textContent = v.status.text; status.title = [v.status.text, v.status.when].filter(Boolean).join(' - '); }

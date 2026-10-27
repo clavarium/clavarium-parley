@@ -261,6 +261,13 @@
 .parley-secret-forget { all: unset; cursor: pointer; display: inline-grid; place-items: center; width: 1.35em; height: 1.35em; border-radius: 5px; color: var(--parley-dim); line-height: 1; }
 .parley-secret-forget:hover, .parley-secret-forget:focus-visible { background: color-mix(in srgb, var(--parley-caution) 22%, transparent); color: var(--parley-caution); outline: none; }
 .parley-secret-forget .parley-sign { width: .95em; height: .95em; }
+/* #87: the slow "folding soon" countdown bar under a message on its way out. */
+.parley-fold { position: relative; overflow: hidden; display: block; width: 100%; margin-top: 8px; padding: 6px 12px; border: 1px solid var(--parley-line); border-radius: 8px; background: transparent; color: var(--parley-dim); font: 600 .78em inherit; text-align: left; cursor: pointer; }
+.parley-fold:hover, .parley-fold:focus-visible { color: var(--parley-text); border-color: var(--parley-action); outline: none; }
+.parley-fold-fill { position: absolute; inset: 0; width: 0; background: color-mix(in srgb, var(--parley-action) 20%, transparent); border-right: 2px solid var(--parley-action); animation-name: parley-fold-count; animation-timing-function: linear; animation-fill-mode: forwards; }
+.parley-fold-label { position: relative; }
+@keyframes parley-fold-count { from { width: 0; } to { width: 100%; } }
+@media (prefers-reduced-motion: reduce) { .parley-fold-fill { animation: none; width: 100%; } }
 /* The alerts of GitHub, as boxes. */
 .parley-callout { --parley-c: var(--parley-note); border-left: 4px solid var(--parley-c); border-radius: 6px; padding: .5em .8em; background: color-mix(in srgb, var(--parley-c) 9%, transparent); }
 .parley-callout[data-kind="tip"] { --parley-c: var(--parley-tip); }
