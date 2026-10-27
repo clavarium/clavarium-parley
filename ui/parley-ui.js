@@ -2154,6 +2154,17 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
     /* The box, and on its frame what the microphone does: over it, taking no room. */
     const field = el('div', 'parley-field');
     const box = el('textarea', 'parley-box'); box.rows = 1; box.maxLength = TEXT_MAX; box.placeholder = said(words, 'placeholder'); box.setAttribute('aria-label', said(words, 'placeholder'));
+    /* How much room is left, shown only once the message is halfway to the limit;
+       it warns (amber) past three quarters and presses (red) in the last tenth. */
+    const countEl = el('span', 'parley-count'); countEl.hidden = true; countEl.setAttribute('aria-live', 'polite');
+    const COUNT_FROM = Math.floor(TEXT_MAX / 2);
+    const tellCount = () => {
+        const n = box.value.length;
+        if (n < COUNT_FROM) { countEl.hidden = true; return; }
+        countEl.hidden = false;
+        countEl.textContent = `${n} / ${TEXT_MAX}`;
+        countEl.dataset.level = n >= TEXT_MAX * 0.9 ? 'high' : n >= TEXT_MAX * 0.75 ? 'mid' : 'low';
+    };
     const mic = el('button', 'parley-mic'); mic.type = 'button'; mic.setAttribute('aria-pressed', 'false');
     /* Listening, it says in a word that a touch stops it. */
     const micWord = el('span', 'parley-mic-word', said(words, 'mic-stop'));
@@ -2182,7 +2193,7 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
     /* What floats over the chat first; then the chat, top to bottom. */
     /* The box and what goes with it: apart from the thread, by a line and some room. */
     const composer = el('div', 'parley-composer');
-    composer.append(quickRow, replyRow, pendingRow, form, problem);
+    composer.append(quickRow, replyRow, pendingRow, form, countEl, problem);
     const reacting = reactionPicker();
     const shelf = mediaShelf();
     root.replaceChildren(zoom.box, drawer.box, shelf.box, reacting.box, dropZone, top, finder, main, panelBox, composer);
@@ -3124,6 +3135,7 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
     const measured = { value: null, width: -1 };
     const grow = () => {
         keepDraft();
+        tellCount();
         if (sizedByCss) return;
         const width = box.getBoundingClientRect().width;
         if (box.value === measured.value && width === measured.width) return;
