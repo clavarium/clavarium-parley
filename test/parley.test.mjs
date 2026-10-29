@@ -101,9 +101,10 @@ test('the command: the same six verbs on the same files, found from where the ag
     assert.equal(parley(tmpdir(), ['read']).code, 2, 'no folder, said so');
     assert.equal(parley(tmpdir(), ['read', '--dir', dir]).code, 0, 'or given');
     /* The MCP server writes the same files: one exchange, two ways in. */
-    await agent(dir, [tool('tell', { text: 'from MCP' }), tool('doing', { text: 'x'.repeat(300) })]);
+    await agent(dir, [tool('tell', { text: 'from MCP' }), tool('doing', { text: 'x'.repeat(300) }), tool('doing', { text: 'one short line' })]);
     assert.equal(host.read().messages.at(-1).text, 'from MCP');
-    assert.equal(host.read().steps.at(-1).note, 'x'.repeat(200), 'what it does is one short line');
+    assert.equal(host.read().steps.at(-1).note, 'one short line', 'a line too long is refused, not cut (#51); the next one goes');
+    assert.ok(!host.read().steps.some((x) => /^x+$/.test(x.note ?? '')), 'nothing of the long one was posted');
 });
 
 test('the help says everything an agent needs, in English, and nothing is done without a verb', (t) => {

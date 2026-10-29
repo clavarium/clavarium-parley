@@ -33,7 +33,7 @@ import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import { createInterface } from 'node:readline';
 
-export const VERSION = '0.17.14-next.1';
+export const VERSION = '0.17.15-next.1';
 /* A message may be long: the screen folds it, and shows its short version first. */
 export const TEXT_MAX = 16000;
 /* Its short version: a title of one or two lines. */
@@ -213,14 +213,16 @@ export function bridge(dir, { how = 'run `parley read`', back = (id) => `parley 
             if (!GROUP_ID.test(id)) throw new Error(`question ${i + 1}: its id is letters, digits, - or _ (30 at most)`);
             if (seen.has(id)) throw new Error(`two questions have the id ${id}`);
             seen.add(id);
-            const text = plain(q.question, 1000).trim();
+            const text = whole(q.question, 1000, `question ${i + 1}`).trim();
             if (!text) throw new Error(`question ${i + 1} is empty`);
-            const choices = Array.isArray(q.choices) ? q.choices.slice(0, CHOICES_MAX).map((c) => plain(c, 200).replace(/\s+/g, ' ').trim()).filter(Boolean) : [];
+            if (Array.isArray(q.choices) && q.choices.length > CHOICES_MAX) throw new Error(`question ${i + 1}: ${q.choices.length} choices; ${CHOICES_MAX} at most. Nothing was sent.`);
+            const choices = Array.isArray(q.choices) ? q.choices.map((c, k) => whole(c, 200, `choice ${k + 1} of question ${i + 1}`).replace(/\s+/g, ' ').trim()).filter(Boolean) : [];
             if (q.many === true && choices.length < 2) throw new Error(`question ${i + 1}: several choices to tick need two choices at least`);
-            const label = plain(q.label, LABEL_MAX * 2).replace(/\s+/g, ' ').trim().slice(0, LABEL_MAX);
+            const label = whole(q.label ?? '', LABEL_MAX, `label of question ${i + 1}`).replace(/\s+/g, ' ').trim();
             return { id, ...(label ? { label } : {}), question: text, choices, ...(q.many === true ? { many: true } : {}) };
         });
-        const lead = plain(intro, 2000).trim();
+        const lead = whole(intro ?? '', 2000, 'introduction').trim();
+        if (short !== undefined) whole(short, SHORT_KEPT, 'short version');
         const text = `${lead ? `${lead}\n\n` : ''}${list.map((q, i) => `${i + 1}. ${q.question.replace(/\s+/g, ' ')}${q.choices.length ? ` (${q.many ? 'several: ' : ''}${q.choices.join(' / ')})` : ''}`).join('\n')}`;
         post({ kind: 'ask', text, choices: [], questions: list, ...(lead ? { intro: lead } : {}), ...brief(short) });
         return `Posted, ${list.length} questions as one card. Do not wait here: you will be told in the terminal when they answer; then ${how}.${tooLong(short)}${nudge()}`;
@@ -241,7 +243,8 @@ export function bridge(dir, { how = 'run `parley read`', back = (id) => `parley 
             const body = whole(question, TEXT_MAX, 'question');
             if (!body.trim()) throw new Error('the question is empty');
             if (short !== undefined) whole(short, SHORT_KEPT, 'short version');
-            const picked = Array.isArray(choices) ? choices.slice(0, CHOICES_MAX).map((c) => plain(c, 200).trim()).filter(Boolean) : [];
+            if (Array.isArray(choices) && choices.length > CHOICES_MAX) throw new Error(`${choices.length} choices; ${CHOICES_MAX} at most. Nothing was sent.`);
+            const picked = Array.isArray(choices) ? choices.map((c, k) => whole(c, 200, `choice ${k + 1}`).trim()).filter(Boolean) : [];
             if (many === true && picked.length < 2) throw new Error('several choices to tick need two choices at least');
             post({ kind: 'ask', text: body, choices: picked, ...(many === true ? { many: true } : {}), ...brief(short) });
             return `Posted. Do not wait here: you will be told in the terminal when they answer; then ${how}.${tooLong(short)}${nudge()}`;
@@ -253,7 +256,7 @@ export function bridge(dir, { how = 'run `parley read`', back = (id) => `parley 
         close(id, answer) {
             const given = plain(id, 100).trim().replace(/^\[|\]$/g, '');
             if (given.length < ID_SHOWN) throw new Error(`give the id of the question, as "read" shows it (${ID_SHOWN} characters at least)`);
-            const said = plain(answer, 500).replace(/\s+/g, ' ').trim();
+            const said = whole(answer, 500, 'answer').replace(/\s+/g, ' ').trim();
             if (!said) throw new Error('say the answer you understood');
             const found = lines(OUT).filter((m) => m && m.kind === 'ask' && typeof m.id === 'string' && m.id.startsWith(given));
             if (found.length === 0) throw new Error(`no question has the id ${given}`);
@@ -267,24 +270,24 @@ export function bridge(dir, { how = 'run `parley read`', back = (id) => `parley 
            each a path or { path, title }: a title says what it is ("Home page,
            before"), the name of the file is only the fallback. */
         show(target, note, { from = process.cwd() } = {}) {
-            const list = (Array.isArray(target) ? target : [target]).map((f) => (f && typeof f === 'object' ? { path: plain(f.path, 1000), title: plain(f.title, TITLE_MAX * 2).replace(/\s+/g, ' ').trim().slice(0, TITLE_MAX) } : { path: plain(f, 1000), title: '' }));
+            const list = (Array.isArray(target) ? target : [target]).map((f) => (f && typeof f === 'object' ? { path: plain(f.path, 1000), title: whole(f.title ?? '', TITLE_MAX, 'title').replace(/\s+/g, ' ').trim() } : { path: plain(f, 1000), title: '' }));
             if (list.length === 0 || list.some((f) => !f.path.trim())) throw new Error('the path is empty');
             if (list.length > SHOW_MAX) throw new Error(`${SHOW_MAX} files at most at once`);
             const files = list.map((f) => { const whole = resolve(from, f.path); if (!existsSync(whole)) throw new Error(`no such file: ${whole}`); return { path: whole, ...(f.title ? { title: f.title } : {}) }; });
             const several = Array.isArray(target) || files[0].title;
-            post({ kind: 'show', path: files[0].path, text: plain(note, 500), ...(several ? { files } : {}) });
+            post({ kind: 'show', path: files[0].path, text: whole(note ?? '', 500, 'note'), ...(several ? { files } : {}) });
             return `${files.length > 1 ? `Posted, as one gallery of ${files.length}. They can open them from their screen if they are in a folder they share with you.` : 'Posted. They can open it from their screen if it is in a folder they share with you.'}${nudge()}`;
         },
         status(state, note) {
             if (!STATES.includes(state)) throw new Error(`the state is one of: ${STATES.join(', ')}`);
-            post({ kind: 'status', state, text: plain(note, 300) });
+            post({ kind: 'status', state, text: whole(note ?? '', 300, 'note') });
             return 'Noted.';
         },
         /* One line, said each time it moves to something new: it is shown while
            it works, and goes when its next message comes; what came before stays
            one click away. */
         doing(text) {
-            const line = plain(text).replace(/\s+/g, ' ').trim().slice(0, DOING_MAX);
+            const line = whole(text, DOING_MAX, 'line').replace(/\s+/g, ' ').trim();
             if (!line) throw new Error('the text is empty');
             post({ kind: 'doing', text: line });
             return 'Noted.';
