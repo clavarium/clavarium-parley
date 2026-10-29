@@ -173,5 +173,6 @@
   "panel-hide": "Hide {title}",
   "panel-empty": "Nothing yet",
   "panel-done": "Done ({count})",
-  "panel-not-saved": "Not saved: {error}"
+  "panel-not-saved": "Not saved: {error}",
+  "to-card": "Attach to a card"
 }

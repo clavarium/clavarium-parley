@@ -66,6 +66,9 @@
  *                          (default: the neutral word of the dictionary)
  *   agentTool              optional: which tool it is, said small beside its
  *                          name in the detailed view
+ *   card(message)          optional: the host's own way to attach a message to
+ *                          something of its own (a card of its binders): offered
+ *                          in the message's menu, beside Reply ({ id, text, short })
  *   react(to, reaction)    optional: puts a reaction of the set on a message
  *                          of the agent (null: takes it back); `reactions`
  *                          replaces the set, [{ id, icon }] (REACTIONS)
@@ -237,7 +240,7 @@ export const KEYS = Object.freeze(['send', 'placeholder', 'empty', 'view', 'simp
     'attach', 'remove-file', 'sending-files', 'attach-where', 'draw-open', 'draw-again', 'drawn-from', 'draw-marked', 'draw-colour', 'draw-undo', 'draw-clear', 'draw-cancel', 'draw-done', 'draw-note', 'draw-hint',
     'copy', 'copied', 'see-details', 'see-more', 'see-less', 'note', 'tip', 'important', 'warning', 'caution', 'badge-ok', 'badge-todo', 'badge-blocked', 'badge-warn',
     'waits-you', 'waits-you-note', 'busy', 'pulse', 'state-sent', 'state-read', 'state-working', 'state-done', 'sent-at', 'read-at', 'done-at',
-    'reply', 'other-answer', 'group-count', 'group-step', 'group-next', 'group-back', 'group-review', 'group-check', 'group-modify', 'group-send', 'group-several', 'group-own', 'group-missing',
+    'reply', 'to-card', 'other-answer', 'group-count', 'group-step', 'group-next', 'group-back', 'group-review', 'group-check', 'group-modify', 'group-send', 'group-several', 'group-own', 'group-missing',
     'replying', 'not-a-reply', 'in-reply', 'closed', 'you', 'agent', 'drop', 'picture', 'diagram', 'not-shown', 'grouped',
     'zoom-in', 'zoom-out', 'zoom-actual', 'zoom-fit', 'zoom-actual-short', 'zoom-fit-short', 'close', 'previous', 'next', 'search', 'found', 'newest', 'dictation', 'auto-send-off',
     'react', 'react-remove', 'react-agree', 'react-go', 'react-disagree', 'react-unclear', 'react-stop', 'react-redo', 'react-later', 'react-love',
@@ -1933,7 +1936,7 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
     markdown: rich = false, picture, diagram, highlight, agentName, agentTool, react, reactions: offered = REACTIONS,
     secrets: liveSecrets = {}, forget,
     receivedAfter = RECEIVED_MS, noAnswerAfter = NO_ANSWER_MS, back = true, draft: draftKey = '', math: mathGiven, refs: zoneRefs,
-    window: shownAtFirst, search: searchAll, side: sideGiven } = {}) {
+    window: shownAtFirst, search: searchAll, side: sideGiven, card: toCard } = {}) {
     const steps = stepper(back);
     /* What is asked of load() at first, and for each page before it: { last } or { days }. */
     const span = windowOf(shownAtFirst);
@@ -2666,7 +2669,9 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
         const box = el('div', 'parley-react'); box.hidden = true; box.setAttribute('role', 'dialog'); box.setAttribute('aria-label', said(words, 'react')); box.tabIndex = -1;
         const grid = el('div', 'parley-react-grid');
         const replyB = el('button', 'parley-react-reply'); replyB.type = 'button'; replyB.append(icon('reply', 'parley-sign'), el('span', '', said(words, 'reply')));
-        box.append(grid, replyB);
+        /* The host's own: this message attached to a card of its binders (card(message), optional). */
+        const cardB = el('button', 'parley-react-reply parley-react-card'); cardB.type = 'button'; cardB.append(icon('paperclip', 'parley-sign'), el('span', '', said(words, 'to-card')));
+        box.append(grid, replyB, cardB);
         let target = null;
         let marked = null;
         const close = () => {
@@ -2681,6 +2686,7 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
             problem.hidden = true;
             try { await react(t.id, id); await refresh(); } catch (error) { problem.textContent = said(words, 'not-sent', { error: String(error?.message ?? error) }); problem.hidden = false; }
         };
+        cardB.addEventListener('click', () => { const t = target; close(); if (t && toCard) void toCard({ id: t.id, text: t.text, short: t.short }); });
         replyB.addEventListener('click', () => { const t = target; close(); if (!t) return; replyTo = { id: t.id, text: cut(t.short || t.text, 90), auto: false }; dismissed.delete(t.id); paintReply(); focusBox(); });
         box.addEventListener('keydown', (event) => { if (event.key === 'Escape') { event.preventDefault(); close(); } });
         document.addEventListener('pointerdown', (event) => { if (!box.hidden && !(event.target instanceof Node && box.contains(event.target)) && !(event.target instanceof Element && event.target.closest('.parley-react-open, .parley-reaction'))) close(); });
@@ -2703,6 +2709,7 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
                     return b;
                 }));
                 replyB.hidden = !send;
+                cardB.hidden = !toCard;
                 box.style.left = ''; box.style.top = '';
                 /* On a narrow screen: a panel that rises from the bottom, the message kept in sight above it. */
                 const sheet = root.getBoundingClientRect().width < SHEET_PX;

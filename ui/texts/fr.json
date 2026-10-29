@@ -173,5 +173,6 @@
   "panel-hide": "Masquer {title}",
   "panel-empty": "Rien pour l'instant",
   "panel-done": "Faits ({count})",
-  "panel-not-saved": "Non enregistré : {error}"
+  "panel-not-saved": "Non enregistré : {error}",
+  "to-card": "Attacher à une fiche"
 }
