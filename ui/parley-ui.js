@@ -2523,7 +2523,9 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
             if (item.time) head.append(time(item.trail ? `${item.time} - ${item.trail.label}` : item.time, item.when));
             bubble.append(head);
             /* React to it: a button that shows on hover (a right click too); on a touch screen, always there, in its corner. */
-            if (react && reactions.length && ['say', 'ask', 'show'].includes(item.kind)) {
+            /* The agent's messages take reactions; the person's own, only the host's action (a card). */
+            const reacts = react && reactions.length && ['say', 'ask', 'show'].includes(item.kind);
+            if (reacts || (toCard && item.from === 'person' && item.id)) {
                 const r = el('button', 'parley-react-open'); r.type = 'button'; r.title = said(words, 'react'); r.setAttribute('aria-label', r.title); r.setAttribute('aria-haspopup', 'true');
                 r.append(icon('smile-plus', 'parley-sign'));
                 r.addEventListener('click', (event) => { event.stopPropagation(); reacting.open(item, bubble); });
@@ -2693,13 +2695,15 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
         return {
             box,
             open(item, bubble) {
-                if (!react || !reactions.length) return;
+                const reacts = Boolean(react && reactions.length && item.from !== 'person');
+                if (!reacts && !toCard) return;
                 if (marked) delete marked.dataset.reacting;
                 target = item; marked = bubble; bubble.dataset.reacting = 'true';
                 /* "Go ahead" first, "Stop" last: the two never side by side. */
                 const rank = (r, i) => { const k = PICKER_ORDER.indexOf(r.id); return r.id === 'stop' ? 1e6 : k < 0 ? 100 + i : k; };
                 const ordered = reactions.map((r, i) => ({ r, k: rank(r, i) })).sort((x, y) => x.k - y.k).map((x) => x.r);
-                grid.replaceChildren(...ordered.map((r) => {
+                grid.hidden = !reacts;
+                grid.replaceChildren(...(reacts ? ordered : []).map((r) => {
                     const b = el('button', 'parley-react-choice'); b.type = 'button'; b.dataset.reaction = r.id;
                     b.title = said(words, `react-${r.id}-hint`);
                     b.setAttribute('aria-pressed', String(item.reaction === r.id));
