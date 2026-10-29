@@ -2515,6 +2515,13 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
         const bubble = el('div', 'parley-said'); bubble.dataset.from = item.from; bubble.dataset.kind = item.kind; bubble.dataset.id = item.id; if (item.open) bubble.dataset.asking = 'true'; if (item.closed) bubble.dataset.closed = 'true';
         if (item.id && item.id === revealed) bubble.dataset.reveal = 'true';
         if (item.when) bubble.title = item.when;
+        /* The person's own message: only the host's action (attach it to a card), by a clip in its corner. */
+        if (item.from === 'person' && toCard && item.id) {
+            const r = el('button', 'parley-react-open'); r.type = 'button'; r.title = said(words, 'to-card'); r.setAttribute('aria-label', r.title); r.setAttribute('aria-haspopup', 'true');
+            r.append(icon('paperclip', 'parley-sign'));
+            r.addEventListener('click', (event) => { event.stopPropagation(); reacting.open(item, bubble); });
+            bubble.append(r);
+        }
         if (item.from === 'agent') {
             const head = el('p', 'parley-who');
             if (item.name) head.append(el('span', 'parley-name', item.name));
@@ -2523,9 +2530,7 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
             if (item.time) head.append(time(item.trail ? `${item.time} - ${item.trail.label}` : item.time, item.when));
             bubble.append(head);
             /* React to it: a button that shows on hover (a right click too); on a touch screen, always there, in its corner. */
-            /* The agent's messages take reactions; the person's own, only the host's action (a card). */
-            const reacts = react && reactions.length && ['say', 'ask', 'show'].includes(item.kind);
-            if (reacts || (toCard && item.from === 'person' && item.id)) {
+            if (react && reactions.length && ['say', 'ask', 'show'].includes(item.kind)) {
                 const r = el('button', 'parley-react-open'); r.type = 'button'; r.title = said(words, 'react'); r.setAttribute('aria-label', r.title); r.setAttribute('aria-haspopup', 'true');
                 r.append(icon('smile-plus', 'parley-sign'));
                 r.addEventListener('click', (event) => { event.stopPropagation(); reacting.open(item, bubble); });
