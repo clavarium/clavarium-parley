@@ -322,3 +322,12 @@ test('a short version too long is told to the agent, so it does not miss the scr
     assert.match(agent.ask('Go on?', ['yes', 'no'], { short: longShort }), /Your short version is long/, 'ask: told too');
     assert.match(agent.ask('Before I go:', undefined, { short: longShort, questions: [{ question: 'A?' }, { question: 'B?' }] }), /Your short version is long/, 'grouped ask: told too');
 });
+
+test('a message or short longer than the tool keeps is refused, never cut and sent in pieces (#51)', (t) => {
+    const dir = folder(t);
+    const agent = bridge(join(dir, '.parley'));
+    assert.throws(() => agent.tell('x'.repeat(16001)), /Nothing was sent/, 'a too-long message is refused, not truncated');
+    assert.throws(() => agent.tell('A message.', { short: 'y'.repeat(1001) }), /Nothing was sent/, 'a too-long short is refused');
+    assert.throws(() => agent.ask('q'.repeat(16001), ['a', 'b']), /Nothing was sent/, 'a too-long question is refused');
+    assert.doesNotThrow(() => agent.tell('A normal message.'), 'a message within the limit still goes');
+});

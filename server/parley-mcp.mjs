@@ -73,6 +73,14 @@ const secretsForAgent = (text, now = Date.now()) => String(text ?? '').replace(S
     return `[a secret, at /run/secrets/${name} -- use it there, never print it; ${when}]`;
 });
 const plain = (value, max = TEXT_MAX) => secretsForAgent(String(value ?? '')).slice(0, max);
+/* The agent's OWN text to send: refused whole when it is longer than the tool keeps, rather
+   than cut in the middle of a sentence and sent in pieces. The agent is told the length and
+   the limit so it shortens (or splits) and sends again; nothing is sent meanwhile. */
+const whole = (value, max, what) => {
+    const v = secretsForAgent(String(value ?? ''));
+    if (v.length > max) throw new Error(`your ${what} is ${v.length} characters; this tool sends at most ${max}. Nothing was sent -- shorten it (or split it in two) and send again.`);
+    return v;
+};
 /* THE END OF THE EXCHANGE (`read --last N`, `--days D`, `--all`): so many entries by default
    (`--all`: ALL_ENTRIES), LAST_MAX at most, and so many characters; `--days` gives LEAST at
    least. What is older is read with `--before ID`, page after page: never cut nor summarised. */
@@ -220,18 +228,22 @@ export function bridge(dir, { how = 'run `parley read`', back = (id) => `parley 
     return {
         standing,
         tell(text, { short } = {}) {
-            if (!plain(text).trim()) throw new Error('the text is empty');
-            post({ kind: 'say', text: plain(text), ...brief(short) });
+            const body = whole(text, TEXT_MAX, 'message');
+            if (!body.trim()) throw new Error('the text is empty');
+            if (short !== undefined) whole(short, SHORT_KEPT, 'short version');
+            post({ kind: 'say', text: body, ...brief(short) });
             return `Posted. They will read it on their screen.${tooLong(short)}${nudge()}`;
         },
         /* `many`: several of its choices may be ticked, sent together; a screen
            that does not know it shows them as single choices, which still answer. */
         ask(question, choices, { short, many = false, questions } = {}) {
             if (questions !== undefined) return group(question, questions, short);
-            if (!plain(question).trim()) throw new Error('the question is empty');
+            const body = whole(question, TEXT_MAX, 'question');
+            if (!body.trim()) throw new Error('the question is empty');
+            if (short !== undefined) whole(short, SHORT_KEPT, 'short version');
             const picked = Array.isArray(choices) ? choices.slice(0, CHOICES_MAX).map((c) => plain(c, 200).trim()).filter(Boolean) : [];
             if (many === true && picked.length < 2) throw new Error('several choices to tick need two choices at least');
-            post({ kind: 'ask', text: plain(question), choices: picked, ...(many === true ? { many: true } : {}), ...brief(short) });
+            post({ kind: 'ask', text: body, choices: picked, ...(many === true ? { many: true } : {}), ...brief(short) });
             return `Posted. Do not wait here: you will be told in the terminal when they answer; then ${how}.${tooLong(short)}${nudge()}`;
         },
         /* A question they answered another way (a message typed later): closed
