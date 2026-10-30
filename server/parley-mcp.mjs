@@ -33,7 +33,7 @@ import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import { createInterface } from 'node:readline';
 
-export const VERSION = '0.17.21-next.1';
+export const VERSION = '0.17.22-next.1';
 /* A message may be long: the screen folds it, and shows its short version first. */
 export const TEXT_MAX = 16000;
 /* Its short version: a title of one or two lines. */
@@ -201,10 +201,79 @@ export function bridge(dir, { how = 'run `parley read`', back = (id) => `parley 
     };
     /* One reminder at most under a verb: the stale-state one when it applies, else the keep-posted one. */
     const nudge = () => stale() || doingNudge();
+    /* A SELECTOR FOR AN ANSWER (#195): a slider, a range, a scale, stars, a number, a ranking,
+       a split that keeps its total, a small table, a date or a time, a few lines of text, yes/no.
+       Checked and kept whole: a bound out of place, an empty list, a table too big is refused. */
+    const num = (v, what, i) => { if (v === undefined) return undefined; const n = Number(v); if (!Number.isFinite(n)) throw new Error(`question ${i + 1}: ${what} is a number`); return n; };
+    const words2 = (list, what, i, lo, hi, max = 60) => {
+        if (!Array.isArray(list) || list.length < lo || list.length > hi) throw new Error(`question ${i + 1}: ${what} is a list of ${lo} to ${hi}`);
+        return list.map((x, k) => whole(x, max, `${what} ${k + 1} of question ${i + 1}`).replace(/\s+/g, ' ').trim()).map((x, k) => { if (!x) throw new Error(`question ${i + 1}: ${what} ${k + 1} is empty`); return x; });
+    };
+    const inputOf = (raw, i) => {
+        if (raw === undefined || raw === null) return undefined;
+        if (typeof raw !== 'object') throw new Error(`question ${i + 1}: input is an object with a kind`);
+        const kind = String(raw.kind ?? '');
+        const unit = raw.unit === undefined ? undefined : whole(raw.unit, 12, `unit of question ${i + 1}`).trim();
+        const ends = raw.labels === undefined ? undefined : words2(raw.labels, 'labels', i, 2, 2, 40);
+        const bounds = (dmin, dmax) => {
+            const min = num(raw.min, 'min', i) ?? dmin; const max = num(raw.max, 'max', i) ?? dmax; const step = num(raw.step, 'step', i) ?? 1;
+            if (!(max > min)) throw new Error(`question ${i + 1}: max is above min`);
+            if (!(step > 0) || step > max - min) throw new Error(`question ${i + 1}: step is between 0 and max - min`);
+            return { min, max, step };
+        };
+        const keep = (o) => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined));
+        switch (kind) {
+            case 'yesno': return { kind };
+            case 'slider': case 'number': {
+                const b = bounds(0, 100); const value = num(raw.value, 'value', i);
+                return keep({ kind, ...b, unit, labels: ends, value: value === undefined ? undefined : Math.min(b.max, Math.max(b.min, value)) });
+            }
+            case 'range': {
+                const b = bounds(0, 100);
+                const v = Array.isArray(raw.value) && raw.value.length === 2 ? raw.value.map((x) => num(x, 'value', i)).sort((x, y) => x - y) : undefined;
+                return keep({ kind, ...b, unit, labels: ends, value: v });
+            }
+            case 'scale': {
+                const min = num(raw.min, 'min', i) ?? 0; const max = num(raw.max, 'max', i) ?? 10;
+                if (!Number.isInteger(min) || !Number.isInteger(max) || max <= min || max - min > 10) throw new Error(`question ${i + 1}: a scale is whole numbers, 11 steps at most`);
+                return keep({ kind, min, max, labels: ends });
+            }
+            case 'stars': { const max = num(raw.max, 'max', i) ?? 5; if (!Number.isInteger(max) || max < 3 || max > 10) throw new Error(`question ${i + 1}: stars are 3 to 10`); return { kind, max }; }
+            case 'rank': return { kind, items: words2(raw.items, 'items', i, 2, 10) };
+            case 'split': {
+                const total = num(raw.total, 'total', i) ?? 100;
+                if (!(total > 0)) throw new Error(`question ${i + 1}: total is above 0`);
+                return keep({ kind, items: words2(raw.items, 'items', i, 2, 6), total, unit: unit ?? '%' });
+            }
+            case 'table': {
+                const columns = words2(raw.columns, 'columns', i, 1, 6, 30); const rows = words2(raw.rows, 'rows', i, 1, 8, 60);
+                const values = Array.isArray(raw.values) ? raw.values.slice(0, rows.length).map((r) => (Array.isArray(r) ? r.slice(0, columns.length).map((x) => whole(String(x ?? ''), 60, 'a cell')) : [])) : [];
+                return { kind, columns, rows, values };
+            }
+            case 'date': case 'time': case 'datetime': return keep({ kind, value: raw.value === undefined ? undefined : whole(String(raw.value), 30, `value of question ${i + 1}`) });
+            case 'text': { const lines2 = num(raw.lines, 'lines', i) ?? 3; return { kind, lines: Math.max(1, Math.min(8, Math.round(lines2))) }; }
+            default: throw new Error(`question ${i + 1}: input kind is one of yesno, slider, range, scale, stars, number, rank, split, table, date, time, datetime, text`);
+        }
+    };
+    const inputSaid = (x) => {
+        if (!x) return '';
+        const u = x.unit ? ` ${x.unit}` : '';
+        switch (x.kind) {
+            case 'slider': case 'number': return ` (${x.kind === 'slider' ? 'slider' : 'number'} ${x.min}–${x.max}${u})`;
+            case 'range': return ` (range ${x.min}–${x.max}${u})`;
+            case 'scale': return ` (scale ${x.min}–${x.max})`;
+            case 'stars': return ` (stars, ${x.max})`;
+            case 'rank': return ` (rank: ${x.items.join(' / ')})`;
+            case 'split': return ` (split ${x.total}${u}: ${x.items.join(' / ')})`;
+            case 'table': return ` (table: ${x.rows.length} × ${x.columns.length})`;
+            default: return ` (${x.kind})`;
+        }
+    };
     /* SEVERAL QUESTIONS AT ONCE, one card: each one choice, several to tick, or free.
        The text says them all, for a screen or a reader that knows nothing of `questions`. */
-    const group = (intro, questions, short) => {
-        if (!Array.isArray(questions) || questions.length < 2) throw new Error('questions asked together are two at least');
+    const group = (intro, questions, short, { steps = false } = {}) => {
+        /* One question alone comes here too when it has a selector. */
+        if (!Array.isArray(questions) || (questions.length < 2 && !questions.some((q) => q?.input))) throw new Error('questions asked together are two at least');
         if (questions.length > GROUP_MAX) throw new Error(`${GROUP_MAX} questions at most at once`);
         const seen = new Set();
         const list = questions.map((q, i) => {
@@ -219,13 +288,15 @@ export function bridge(dir, { how = 'run `parley read`', back = (id) => `parley 
             const choices = Array.isArray(q.choices) ? q.choices.map((c, k) => whole(c, 200, `choice ${k + 1} of question ${i + 1}`).replace(/\s+/g, ' ').trim()).filter(Boolean) : [];
             if (q.many === true && choices.length < 2) throw new Error(`question ${i + 1}: several choices to tick need two choices at least`);
             const label = whole(q.label ?? '', LABEL_MAX, `label of question ${i + 1}`).replace(/\s+/g, ' ').trim();
-            return { id, ...(label ? { label } : {}), question: text, choices, ...(q.many === true ? { many: true } : {}) };
+            const input = inputOf(q.input, i);
+            if (input && choices.length) throw new Error(`question ${i + 1}: choices or an input, not both`);
+            return { id, ...(label ? { label } : {}), question: text, choices, ...(q.many === true ? { many: true } : {}), ...(input ? { input } : {}) };
         });
         const lead = whole(intro ?? '', 2000, 'introduction').trim();
         if (short !== undefined) whole(short, SHORT_KEPT, 'short version');
-        const text = `${lead ? `${lead}\n\n` : ''}${list.map((q, i) => `${i + 1}. ${q.question.replace(/\s+/g, ' ')}${q.choices.length ? ` (${q.many ? 'several: ' : ''}${q.choices.join(' / ')})` : ''}`).join('\n')}`;
-        post({ kind: 'ask', text, choices: [], questions: list, ...(lead ? { intro: lead } : {}), ...brief(short) });
-        return `Posted, ${list.length} questions as one card. Do not wait here: you will be told in the terminal when they answer; then ${how}.${tooLong(short)}${nudge()}`;
+        const text = `${lead ? `${lead}\n\n` : ''}${list.map((q, i) => `${i + 1}. ${q.question.replace(/\s+/g, ' ')}${q.choices.length ? ` (${q.many ? 'several: ' : ''}${q.choices.join(' / ')})` : inputSaid(q.input)}`).join('\n')}`;
+        post({ kind: 'ask', text, choices: [], questions: list, ...(lead ? { intro: lead } : {}), ...(steps ? { steps: true } : {}), ...brief(short) });
+        return `Posted, ${list.length === 1 ? 'the question with its selector' : `${list.length} questions as one card`}. Do not wait here: you will be told in the terminal when they answer; then ${how}.${tooLong(short)}${nudge()}`;
     };
     return {
         standing,
@@ -238,8 +309,10 @@ export function bridge(dir, { how = 'run `parley read`', back = (id) => `parley 
         },
         /* `many`: several of its choices may be ticked, sent together; a screen
            that does not know it shows them as single choices, which still answer. */
-        ask(question, choices, { short, many = false, questions } = {}) {
-            if (questions !== undefined) return group(question, questions, short);
+        ask(question, choices, { short, many = false, questions, input, steps = false } = {}) {
+            if (questions !== undefined) return group(question, questions, short, { steps });
+            /* One question with a selector: a card of one. */
+            if (input !== undefined) return group('', [{ id: 'answer', question, input }], short);
             const body = whole(question, TEXT_MAX, 'question');
             if (!body.trim()) throw new Error('the question is empty');
             if (short !== undefined) whole(short, SHORT_KEPT, 'short version');
@@ -390,7 +463,7 @@ export const RICH = 'Only when the topic calls for it, never as decoration: a fo
 export const GALLERY = 'Pictures that go together (before and after, several pages) are shown at once, as one gallery: give each a title that says what it is ("Home page, before"); the file name is not a title.';
 export const SHORTER = 'For anything longer than a few lines, give a short version too (short): a title of one or two lines, shown first, the rest one tap away. Whatever asks them for an action or a decision, or says you are blocked, MUST be in the short version.';
 /* Which form of question, when: one line an agent keeps. */
-export const ASKING = 'Which form: one choice for a decision; several to tick when they pick which items to do, such as which batches to launch; no choices for an open question. They can always answer in their own words.';
+export const ASKING = 'Which form: one choice for a decision; several to tick when they pick which items to do, such as which batches to launch; no choices for an open question; a selector (input) when the answer is a setting -- a slider, a range, a scale, stars, a number, an order, a split, a small table to correct, a date. They can always answer in their own words. Several questions go on one card; steps: true only for long ones.';
 export const GROUPING = `Several decisions you need at once: ask them together, as one card (${GROUP_MAX} questions at most, never more); each one choice, several to tick, or free.`;
 export const TOOLS = [
     { name: 'tell', description: `Tell the person you work for something: where you are, what you did, what you found. They read it on their own screen, not in this terminal. It does not wait for an answer. ${WRITING} ${SHORTER} ${RICH}`,
@@ -398,7 +471,7 @@ export const TOOLS = [
     { name: 'ask', description: `Ask the person you work for a question, instead of asking it in the terminal. It does NOT wait: it posts the question and returns at once. Stop or go on with something else; you will be told in the terminal when a message arrives, then call read. A question they answered another way (a message typed later): close it with close. ${ASKING} Several to tick: many: true. ${GROUPING} Together: questions, instead of question and choices. ${WRITING} ${RICH}`,
         inputSchema: { type: 'object', properties: { question: { type: 'string' }, choices: { type: 'array', items: { type: 'string' }, description: 'Optional: the answers they can pick from.' }, many: { type: 'boolean', description: 'Optional, with two choices or more: they may tick several, sent together; read lists those ticked.' },
             questions: { type: 'array', maxItems: GROUP_MAX, description: `Optional: 2 to ${GROUP_MAX} questions asked together, as one card, answered with one Send; read gives each answer by its id. question is then an optional introduction.`,
-                items: { type: 'object', properties: { id: { type: 'string', description: 'Short, letters, digits, - or _: the answer names it.' }, label: { type: 'string', description: 'A word or two for its tab, in their language.' }, question: { type: 'string' }, choices: { type: 'array', items: { type: 'string' } }, many: { type: 'boolean' } }, required: ['question'] } }, short: { type: 'string', description: 'Optional, for a long question: its title, one or two lines.' } } } },
+                items: { type: 'object', properties: { id: { type: 'string', description: 'Short, letters, digits, - or _: the answer names it.' }, label: { type: 'string', description: 'A word or two for its tab, in their language.' }, question: { type: 'string' }, choices: { type: 'array', items: { type: 'string' } }, many: { type: 'boolean' }, input: { type: 'object', description: 'Optional, instead of choices: a selector for the answer. kind: yesno | slider | number (min, max, step, unit, value, labels: [low end, high end]) | range (same, value: [a, b]) | scale (min, max: whole numbers, 11 steps at most, labels) | stars (max 3-10) | rank (items) | split (items, total: 100 by default, unit) | table (columns, rows, values: rows of cells) | date | time | datetime (value) | text (lines). The answer comes back as plain text.', properties: { kind: { type: 'string' } } } }, required: ['question'] } }, steps: { type: 'boolean', description: 'Optional, with long questions: one at a time, as steps with tabs, instead of all on one card.' }, input: { type: 'object', description: 'Optional, instead of choices: a selector for the answer. kind: yesno | slider | number (min, max, step, unit, value, labels: [low end, high end]) | range (same, value: [a, b]) | scale (min, max: whole numbers, 11 steps at most, labels) | stars (max 3-10) | rank (items) | split (items, total: 100 by default, unit) | table (columns, rows, values: rows of cells) | date | time | datetime (value) | text (lines). The answer comes back as plain text.', properties: { kind: { type: 'string' } } }, short: { type: 'string', description: 'Optional, for a long question: its title, one or two lines.' } } } },
     { name: 'show', description: `Point the person you work for to a file you made (a report, a picture, a page), or to several at once, so that they can open them from their screen. ${GALLERY} Put them in a folder you share with them.`,
         inputSchema: { type: 'object', properties: { path: { type: 'string', description: 'The path of one file.' }, files: { type: 'array', items: { type: 'object', properties: { path: { type: 'string' }, title: { type: 'string', description: 'What it is, in their language: "Home page, before".' } }, required: ['path'] }, description: `Several files shown together (${SHOW_MAX} at most), each with its title.` }, paths: { type: 'array', items: { type: 'string' }, description: 'Several files, without titles (prefer files, with titles).' }, note: { type: 'string', description: 'One line on what it is, common to all.' } } } },
     { name: 'read', description: 'Read what was written to you since you last read: new instructions, answers to your questions, files they attached, their reactions to your messages (only "go ahead" authorizes what a message proposes; "stop" means stop now), and the questions still open with their ids. A message they dictated is said so: it may hold recognition mistakes. Call it when you are told a message arrived, and before you finish a task. After a restart, to pick up the thread: last (the newest messages, both sides, oldest first) or days; it says how to read further back (before: the id it gives). The exchange is kept whole: read back as far as you need. Each message comes with its id: what a card or a reply can point to.',
@@ -417,7 +490,7 @@ export function serve(dir, { input = process.stdin, output = process.stdout } = 
     const verbs = bridge(dir, { how: 'call read', back: (id) => `call read with before: "${id}"` });
     const call = (name, args = {}) => {
         if (name === 'tell') return verbs.tell(args.text, { short: args.short });
-        if (name === 'ask') return verbs.ask(args.question, args.choices, { short: args.short, many: args.many === true, ...(args.questions !== undefined ? { questions: args.questions } : {}) });
+        if (name === 'ask') return verbs.ask(args.question, args.choices, { short: args.short, many: args.many === true, steps: args.steps === true, ...(args.input !== undefined ? { input: args.input } : {}), ...(args.questions !== undefined ? { questions: args.questions } : {}) });
         if (name === 'close') return verbs.close(args.id, args.answer);
         if (name === 'show') return verbs.show(Array.isArray(args.files) ? args.files : Array.isArray(args.paths) ? args.paths : args.path, args.note);
         if (name === 'read') return verbs.read({ all: args.all === true, ...(Number.isInteger(args.last) ? { last: args.last } : {}), ...(Number.isInteger(args.days) ? { days: args.days } : {}), ...(typeof args.before === 'string' ? { before: args.before } : {}) });

@@ -65,6 +65,9 @@ export const HELP = `parley: talk with the person you work for. They read and an
                                        each with --choice (the question first; "-" for the question
                                        read from standard input); --pick-many: they may tick several
   parley ask [--short "title"] --group - <<'EOF' ... EOF
+                                       (a question may carry an "input" selector instead of choices:
+                                       slider, range, scale, stars, number, rank, split, table, date,
+                                       time, datetime, text, yesno; "steps": true for long ones)
                                        several questions at once, one card, one Send: JSON on standard
                                        input, {"question": "intro, optional", "questions": [{"id",
                                        "label", "question", "choices"?, "many"?}]}, ${GROUP_MAX} at most
@@ -233,7 +236,10 @@ export function run(argv, { env = process.env, cwd = process.cwd(), stdin = () =
                 let given;
                 try { given = JSON.parse(stdin()); } catch { return { code: 64, out: '', err: 'The questions are not JSON: {"question": "intro, optional", "questions": [{"id", "label", "question", "choices", "many"}]}.\n' }; }
                 const asked = Array.isArray(given) ? { questions: given } : given && typeof given === 'object' ? given : {};
-                said = verbs.ask(asked.question ?? asked.intro ?? '', undefined, { short: short ?? asked.short, questions: asked.questions ?? null });
+                /* One question with a selector: {"question", "input"}; several: {"questions": [...], "steps"?}. */
+                said = asked.input !== undefined && asked.questions === undefined
+                    ? verbs.ask(asked.question ?? '', undefined, { short: short ?? asked.short, input: asked.input })
+                    : verbs.ask(asked.question ?? asked.intro ?? '', undefined, { short: short ?? asked.short, questions: asked.questions ?? null, steps: asked.steps === true });
                 return { code: 0, out: `${said}\n`, err: '' };
             }
             if (verb === 'tell') said = verbs.tell(text(rest.join(' ')), { short });

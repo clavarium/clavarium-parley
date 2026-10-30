@@ -69,7 +69,7 @@ test('MCP: ask takes questions, five at most, each described; the guidance says 
     const qs = ask.inputSchema.properties.questions;
     assert.equal(qs.type, 'array');
     assert.equal(qs.maxItems, GROUP_MAX);
-    assert.deepEqual(Object.keys(qs.items.properties), ['id', 'label', 'question', 'choices', 'many']);
+    assert.deepEqual(Object.keys(qs.items.properties), ['id', 'label', 'question', 'choices', 'many', 'input']);
     assert.deepEqual(qs.items.required, ['question']);
     assert.ok(ask.description.includes(GROUPING));
     assert.match(GROUPING, /5 questions at most, never more/);
@@ -166,7 +166,7 @@ test('the screen: one card, a step each, a summary with Modify, one Send; what i
     document.body.append(root);
     const sent = [];
     const at = (n) => new Date(Date.UTC(2026, 9, 24, 9, n)).toISOString();
-    let data = { messages: [{ from: 'agent', id: 'g', at: at(0), kind: 'ask', text: '1. Deploy now? ...', intro: 'Before I go on:', choices: [], questions: THREE.map((q) => ({ choices: [], ...q })) }] };
+    let data = { messages: [{ from: 'agent', id: 'g', at: at(0), kind: 'ask', steps: true, text: '1. Deploy now? ...', intro: 'Before I go on:', choices: [], questions: THREE.map((q) => ({ choices: [], ...q })) }] };
     const handle = mount(root, { load: async () => data, send: async (...args) => { sent.push(args); }, words: texts('en'), every: 0, touch: false });
     t.after(() => { handle.destroy(); leave(); });
     await settle(); await settle();
@@ -230,7 +230,7 @@ test('the screen: an answer in one\'s own words is written in one box, kept with
     const root = document.createElement('div');
     document.body.append(root);
     const at = (n) => new Date(Date.UTC(2026, 9, 24, 9, n)).toISOString();
-    let data = { messages: [{ from: 'agent', id: 'g', at: at(0), kind: 'ask', text: '1. Note ...', intro: 'Two things', choices: [], questions: [THREE[2], THREE[0]] }] };
+    let data = { messages: [{ from: 'agent', id: 'g', at: at(0), kind: 'ask', steps: true, text: '1. Note ...', intro: 'Two things', choices: [], questions: [THREE[2], THREE[0]] }] };
     const handle = mount(root, { load: async () => data, send: async () => {}, words: texts('en'), every: 0, touch: true });
     t.after(() => { handle.destroy(); leave(); });
     await settle(); await settle();
@@ -267,7 +267,7 @@ test('the screen: a field being written in is the browser\'s -- a right click or
     const root = document.createElement('div');
     document.body.append(root);
     const at = (n) => new Date(Date.UTC(2026, 9, 24, 9, n)).toISOString();
-    const data = { messages: [{ from: 'agent', id: 'g', at: at(0), kind: 'ask', text: '1. Note ...', intro: 'Two things', choices: [], questions: [THREE[2], THREE[0]] }] };
+    const data = { messages: [{ from: 'agent', id: 'g', at: at(0), kind: 'ask', steps: true, text: '1. Note ...', intro: 'Two things', choices: [], questions: [THREE[2], THREE[0]] }] };
     const handle = mount(root, { load: async () => data, send: async () => {}, react: async () => {}, words: texts('en'), every: 0, touch: false });
     t.after(() => { handle.destroy(); leave(); });
     await settle(); await settle();
@@ -303,7 +303,7 @@ test('the screen: a field being written in is the browser\'s -- a right click or
 
 test('the screen\'s data: answered, the card is gone and its text is read; no quick answers for it', () => {
     const at = (n) => new Date(Date.UTC(2026, 9, 24, 9, n)).toISOString();
-    const asked = { from: 'agent', id: 'g', at: at(0), kind: 'ask', text: '1. a\n2. b', intro: 'Two things', choices: [], questions: [{ id: 'a', question: 'a', choices: ['x', 'y'] }, { id: 'b', question: 'b', choices: [] }] };
+    const asked = { from: 'agent', id: 'g', at: at(0), kind: 'ask', steps: true, text: '1. a\n2. b', intro: 'Two things', choices: [], questions: [{ id: 'a', question: 'a', choices: ['x', 'y'] }, { id: 'b', question: 'b', choices: [] }] };
     const open = view({ messages: [asked] }, { words: texts('en') }).items[0];
     assert.equal(open.questions.length, 2);
     assert.equal(open.text, 'Two things');

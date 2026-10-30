@@ -676,13 +676,15 @@ export function view(data, { words = {}, view: as = 'simple', now = Date.now(), 
             many: m.kind === 'ask' && m.many === true && Array.isArray(m.choices) && m.choices.length > 1,
             /* Several questions asked together, while not answered: one card, a step each. */
             questions: m.kind === 'ask' && !answered.has(m.id) && Array.isArray(m.questions) ? m.questions.filter((q) => q && typeof q.id === 'string' && typeof q.question === 'string' && q.question.trim()).slice(0, GROUP_MAX)
-                .map((q) => ({ id: q.id, label: cut(String(q.label ?? ''), 40), question: q.question, choices: (Array.isArray(q.choices) ? q.choices : []).map(String).slice(0, 8), many: q.many === true && Array.isArray(q.choices) && q.choices.length > 1 })) : [],
+                .map((q) => ({ id: q.id, label: cut(String(q.label ?? ''), 40), question: q.question, choices: (Array.isArray(q.choices) ? q.choices : []).map(String).slice(0, 8), many: q.many === true && Array.isArray(q.choices) && q.choices.length > 1, ...(q.input && typeof q.input === 'object' && typeof q.input.kind === 'string' ? { input: q.input } : {}) })) : [],
+            /* Long questions: one at a time, with tabs (#195); else all on one card. */
+            steps: m.steps === true,
             open,
             closed: m.kind === 'ask' && m.closed && !answered.has(m.id) ? said(words, 'closed', { answer: cut(m.closed.text, 300) }) : '',
             reply: person && (m.answers || m.re) ? said(words, 'in-reply', { question: cut(m.question || m.quote, 90) }) : '',
             mark: '',
         };
-        if (item.questions.length < 2) item.questions = [];
+        if (item.questions.length < 2 && !item.questions.some((q) => q.input)) item.questions = [];
         else item.text = String(m.intro ?? '');
         if (person) {
             /* Where it is: sent; read; worked on; handled -- each with its time. */
@@ -2273,14 +2275,176 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
     /* `fields`: the box of each question answered in one's own words, made once and moved, never made again:
        a box made anew under the finger loses the focus, and folds a touch screen's keyboard. */
     const draftOf = (id) => { if (!drafts.has(id)) drafts.set(id, { step: 0, answers: new Map(), ticked: new Set(), fields: new Map() }); return drafts.get(id); };
+    /* A SELECTOR (#195): its control, drawn from `q.input`, and what it answers in plain words.
+       `a` is the question's draft: { value } for a selector. The control is made once per draft
+       and kept (moved), never made again under the finger. */
+    const fmt = (n) => (Number.isInteger(n) ? String(n) : String(Math.round(n * 100) / 100));
+    const withUnit = (x, unit) => `${x}${unit ? (unit === '%' ? ' %' : ` ${unit}`) : ''}`;
+    function inputAnswer(q, a) {
+        const x = q.input; const v = a.value;
+        if (v === undefined || v === null || v === '') return null;
+        switch (x.kind) {
+            case 'yesno': return { text: v ? said(words, 'input-yes') : said(words, 'input-no'), value: Boolean(v) };
+            case 'slider': case 'number': return { text: withUnit(fmt(v), x.unit), value: v };
+            case 'range': return { text: withUnit(`${fmt(v[0])}–${fmt(v[1])}`, x.unit), value: v };
+            case 'scale': return { text: `${v} / ${x.max}`, value: v };
+            case 'stars': return { text: `${'★'.repeat(v)}${'☆'.repeat(x.max - v)} (${v}/${x.max})`, value: v };
+            case 'rank': return { text: v.join(' > '), value: v };
+            case 'split': return { text: x.items.map((it, i) => `${it} ${withUnit(fmt(v[i]), x.unit)}`).join(' · '), value: v };
+            case 'table': return { text: x.rows.map((r, i) => `${r}: ${x.columns.map((c, k) => `${c} ${v[i]?.[k] ?? ''}`).join(', ')}`).join(' ; '), value: v };
+            case 'text': return String(v).trim() ? { text: String(v).trim() } : null;
+            default: return { text: String(v), value: v };
+        }
+    }
+    function inputControl(q, a, changed) {
+        const x = q.input;
+        const box = el('div', `parley-input parley-input-${x.kind}`);
+        const valueOut = el('span', 'parley-input-value');
+        const say2 = () => { const r = inputAnswer(q, a); valueOut.textContent = r ? r.text : ''; changed(); };
+        const ends = (lo, hi) => { const e = el('div', 'parley-input-ends'); e.append(el('span', '', lo), valueOut, el('span', '', hi)); return e; };
+        const range = (val, onInput) => { const r = el('input'); r.type = 'range'; r.min = String(x.min); r.max = String(x.max); r.step = String(x.step); r.value = String(val); r.addEventListener('input', () => onInput(Number(r.value))); return r; };
+        switch (x.kind) {
+            case 'yesno': {
+                const row = el('div', 'parley-pickrow');
+                for (const [k, on] of [['input-yes', true], ['input-no', false]]) { const b = button(said(words, k), '', () => { a.value = on; for (const y of row.children) y.setAttribute('aria-pressed', String(y === b)); say2(); }); b.setAttribute('aria-pressed', String(a.value === on)); row.append(b); }
+                box.append(row); break;
+            }
+            case 'slider': {
+                if (a.value === undefined) a.value = x.value ?? x.min + Math.round((x.max - x.min) / 2 / x.step) * x.step;
+                box.append(range(a.value, (n) => { a.value = n; say2(); }), ends(x.labels?.[0] ?? withUnit(fmt(x.min), x.unit), x.labels?.[1] ?? withUnit(fmt(x.max), x.unit))); break;
+            }
+            case 'range': {
+                if (a.value === undefined) a.value = x.value ?? [x.min + (x.max - x.min) / 4, x.max - (x.max - x.min) / 4].map((n) => Math.round(n / x.step) * x.step);
+                const two = el('div', 'parley-input-two');
+                const lo = range(a.value[0], (n) => { a.value = [Math.min(n, a.value[1]), a.value[1]]; lo.value = String(a.value[0]); say2(); });
+                const hi = range(a.value[1], (n) => { a.value = [a.value[0], Math.max(n, a.value[0])]; hi.value = String(a.value[1]); say2(); });
+                two.append(lo, hi); box.append(two, ends(withUnit(fmt(x.min), x.unit), withUnit(fmt(x.max), x.unit))); break;
+            }
+            case 'scale': {
+                const row = el('div', 'parley-input-scale');
+                for (let n = x.min; n <= x.max; n++) { const b = button(String(n), '', () => { a.value = n; for (const y of row.children) y.setAttribute('aria-pressed', String(y === b)); say2(); }); b.setAttribute('aria-pressed', String(a.value === n)); row.append(b); }
+                box.append(row);
+                if (x.labels) { const e = el('div', 'parley-input-ends'); e.append(el('span', '', x.labels[0]), el('span', '', x.labels[1])); box.append(e); }
+                break;
+            }
+            case 'stars': {
+                const row = el('div', 'parley-input-stars');
+                const paintStars = () => { [...row.children].forEach((b, i) => b.setAttribute('aria-pressed', String(i < (a.value ?? 0)))); };
+                for (let n = 1; n <= x.max; n++) { const b = button('★', '', () => { a.value = n; paintStars(); say2(); }); b.setAttribute('aria-label', `${n} / ${x.max}`); row.append(b); }
+                paintStars(); box.append(row, valueOut); break;
+            }
+            case 'number': {
+                if (a.value === undefined) a.value = x.value ?? x.min;
+                const field = el('input'); field.type = 'number'; field.min = String(x.min); field.max = String(x.max); field.step = String(x.step); field.value = String(a.value); field.inputMode = 'decimal';
+                const set = (n) => { a.value = Math.min(x.max, Math.max(x.min, Math.round(n / x.step) * x.step)); field.value = String(a.value); say2(); };
+                field.addEventListener('change', () => set(Number(field.value)));
+                const row = el('div', 'parley-input-number');
+                row.append(button('−', '', () => set(a.value - x.step)), field, button('+', '', () => set(a.value + x.step)));
+                if (x.unit) row.append(el('span', 'parley-input-unit', x.unit));
+                box.append(row); break;
+            }
+            case 'rank': {
+                if (a.value === undefined) a.value = [...x.items];
+                const list = el('ol', 'parley-input-rank');
+                const paintRank = () => { list.replaceChildren(...a.value.map((it, i) => { const li = el('li'); const up = button('↑', '', () => { if (i) { a.value.splice(i - 1, 0, a.value.splice(i, 1)[0]); paintRank(); say2(); } }); up.setAttribute('aria-label', said(words, 'rank-up')); const down = button('↓', '', () => { if (i < a.value.length - 1) { a.value.splice(i + 1, 0, a.value.splice(i, 1)[0]); paintRank(); say2(); } }); down.setAttribute('aria-label', said(words, 'rank-down')); li.append(el('span', 'parley-input-rank-n', String(i + 1)), el('span', 'parley-input-rank-t', it), up, down); return li; })); };
+                paintRank(); box.append(list); break;
+            }
+            case 'split': {
+                if (a.value === undefined) { const each = Math.floor(x.total / x.items.length); a.value = x.items.map((_, i) => (i === x.items.length - 1 ? x.total - each * (x.items.length - 1) : each)); }
+                const rows = x.items.map((it, i) => {
+                    const r = el('input'); r.type = 'range'; r.min = '0'; r.max = String(x.total); r.step = '1'; r.value = String(a.value[i]);
+                    const out = el('span', 'parley-input-value', withUnit(fmt(a.value[i]), x.unit));
+                    r.addEventListener('input', () => {
+                        /* The others give or take what this one took, so the total holds. */
+                        const n = Number(r.value); const rest = x.total - n; const others = a.value.map((v, k) => (k === i ? 0 : v)); const sum = others.reduce((s2, v) => s2 + v, 0);
+                        a.value = a.value.map((v, k) => (k === i ? n : sum ? Math.round(v * rest / sum) : Math.round(rest / (x.items.length - 1))));
+                        const drift = x.total - a.value.reduce((s2, v) => s2 + v, 0); const j = a.value.findIndex((_, k) => k !== i); if (j >= 0) a.value[j] += drift;
+                        rows.forEach((row2, k) => { row2.range.value = String(a.value[k]); row2.out.textContent = withUnit(fmt(a.value[k]), x.unit); });
+                        say2();
+                    });
+                    const line = el('div', 'parley-input-split-row'); line.append(el('span', '', it), r, out);
+                    return { line, range: r, out };
+                });
+                for (const r of rows) box.append(r.line);
+                box.append(el('div', 'parley-input-ends', said(words, 'split-total', { total: withUnit(fmt(x.total), x.unit) })));
+                break;
+            }
+            case 'table': {
+                if (a.value === undefined) a.value = x.rows.map((_, i) => x.columns.map((_, k) => x.values?.[i]?.[k] ?? ''));
+                const t = el('table', 'parley-input-table'); const head = el('tr'); head.append(el('th', '', ''));
+                for (const c of x.columns) head.append(el('th', '', c));
+                t.append(head);
+                x.rows.forEach((r, i) => { const tr = el('tr'); tr.append(el('th', '', r)); x.columns.forEach((c, k) => { const td = el('td'); const f = el('input'); f.value = String(a.value[i][k]); f.setAttribute('aria-label', `${r} · ${c}`); f.addEventListener('input', () => { a.value[i][k] = f.value; changed(); }); td.append(f); tr.append(td); }); t.append(tr); });
+                const wrap = el('div', 'parley-input-table-wrap'); wrap.append(t); box.append(wrap); break;
+            }
+            case 'date': case 'time': case 'datetime': {
+                const f = el('input'); f.type = x.kind === 'datetime' ? 'datetime-local' : x.kind; if (a.value === undefined && x.value) a.value = x.value; f.value = a.value ?? '';
+                f.addEventListener('input', () => { a.value = f.value; changed(); }); box.append(f); break;
+            }
+            default: {
+                const f = el('textarea', 'parley-questions-free'); f.rows = x.lines ?? 3; f.value = a.value ?? ''; f.placeholder = said(words, 'group-own');
+                f.addEventListener('input', () => { a.value = f.value; changed(); }); box.append(f);
+            }
+        }
+        say2();
+        return box;
+    }
+    /* QUESTIONS ON ONE CARD (#195), the default: each with its control -- choices, a selector, or
+       its own words -- one under the other, one Send once all are answered. */
+    function seriesCard(item) {
+        const qs = item.questions;
+        const d = draftOf(item.id);
+        const card = el('div', 'parley-questions parley-series'); card.dataset.draft = item.id;
+        const slot = (q) => { if (!d.answers.has(q.id)) d.answers.set(q.id, { picked: [], own: !q.input && q.choices.length === 0, text: '' }); return d.answers.get(q.id); };
+        const answerOf = (q) => { const a = slot(q); if (q.input) return inputAnswer(q, a); if (a.own) return a.text.trim() ? { text: a.text.trim() } : null; const picked = q.choices.filter((c) => a.picked.includes(c)); return picked.length ? { picked } : null; };
+        const sendBtn = button(said(words, qs.length > 1 ? 'series-send' : 'series-send-one'), 'parley-questions-send', () => {
+            const all = qs.map(answerOf);
+            if (all.some((r) => r === null)) return;
+            const replies = qs.map((q, i) => ({ id: q.id, ...(all[i].picked ? { picked: all[i].picked } : { text: all[i].text }), ...(all[i].value !== undefined ? { value: all[i].value } : {}) }));
+            const text = qs.length === 1 ? (all[0].picked ? all[0].picked.join(', ') : all[0].text) : qs.map((q, i) => `${i + 1}. ${q.label || cut(q.question, 60)}: ${all[i].picked ? all[i].picked.join(', ') : all[i].text}`).join('\n');
+            for (const b of card.querySelectorAll('button, input, textarea')) b.disabled = true;
+            void say(text, item.id, undefined, undefined, { replies }).then((ok) => { if (ok) drafts.delete(item.id); else for (const b of card.querySelectorAll('button, input, textarea')) b.disabled = false; });
+        });
+        const left = el('span', 'parley-series-left');
+        const check = () => { const missing = qs.filter((q) => answerOf(q) === null).length; sendBtn.disabled = missing > 0; left.textContent = missing ? said(words, 'series-left', { count: missing }) : ''; };
+        const parts = [];
+        for (const q of qs) {
+            const a = slot(q);
+            const row = el('div', 'parley-series-q');
+            row.append(el('p', 'parley-questions-question', q.question));
+            if (q.input) {
+                let ctl = d.fields.get(q.id);
+                if (!ctl) { ctl = inputControl(q, a, check); d.fields.set(q.id, ctl); }
+                row.append(ctl);
+            } else if (q.choices.length) {
+                const chips = el('div', 'parley-pickrow');
+                for (const c of q.choices) {
+                    const b = button(c, '', () => { a.own = false; a.picked = q.many ? (a.picked.includes(c) ? a.picked.filter((y) => y !== c) : [...a.picked, c]) : [c]; for (const y of chips.children) y.setAttribute('aria-pressed', String(a.picked.includes(y.textContent))); check(); });
+                    b.setAttribute('aria-pressed', String(a.picked.includes(c)));
+                    chips.append(b);
+                }
+                row.append(chips);
+            } else {
+                let free = d.fields.get(q.id);
+                if (!free) { free = el('textarea', 'parley-questions-free'); free.rows = 2; free.value = a.text; free.placeholder = said(words, 'group-own'); free.setAttribute('aria-label', q.question); free.addEventListener('input', () => { a.text = free.value; check(); }); d.fields.set(q.id, free); }
+                row.append(free);
+            }
+            parts.push(row);
+        }
+        const nav = el('div', 'parley-questions-nav parley-series-nav'); nav.append(left, sendBtn);
+        parts.push(nav);
+        card.replaceChildren(...parts);
+        check();
+        return card;
+    }
     /* QUESTIONS ASKED TOGETHER: one card, a step each (one choice, several to tick, or their own
        words), a summary where each can be changed, one Send. */
     function groupCard(item) {
         const qs = item.questions;
         const d = draftOf(item.id);
         const card = el('div', 'parley-questions'); card.dataset.draft = item.id;
-        const answerOf = (q) => { const a = d.answers.get(q.id); if (!a) return null; if (a.own) return a.text.trim() ? { text: a.text.trim() } : null; const picked = q.choices.filter((c) => a.picked.includes(c)); return picked.length ? { picked } : null; };
-        const slot = (q) => { if (!d.answers.has(q.id)) d.answers.set(q.id, { picked: [], own: q.choices.length === 0, text: '' }); return d.answers.get(q.id); };
+        const answerOf = (q) => { const a = d.answers.get(q.id); if (!a) return null; if (q.input) return inputAnswer(q, a); if (a.own) return a.text.trim() ? { text: a.text.trim() } : null; const picked = q.choices.filter((c) => a.picked.includes(c)); return picked.length ? { picked } : null; };
+        const slot = (q) => { if (!d.answers.has(q.id)) d.answers.set(q.id, { picked: [], own: !q.input && q.choices.length === 0, text: '' }); return d.answers.get(q.id); };
         const go = (step) => { d.step = Math.max(0, Math.min(qs.length, step)); paint2(); };
         /* Answered or not, said on its tab: a check, else its number. */
         const markTab = (t, i, done) => {
@@ -2309,7 +2473,12 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
                 const q = qs[d.step];
                 const a = slot(q);
                 parts.push(el('p', 'parley-questions-step', said(words, 'group-step', { n: d.step + 1, count: qs.length })), el('p', 'parley-questions-question', q.question));
-                if (q.choices.length && q.many) {
+                if (q.input) {
+                    /* A selector: its control, kept across steps; its tab says when it is answered. */
+                    let ctl = d.fields.get(q.id);
+                    if (!ctl) { ctl = inputControl(q, a, () => { const tab = ctl?.closest?.('.parley-questions')?.querySelector('.parley-questions-tabs')?.children[d.step]; const done = answerOf(q) !== null; if (tab && tab.dataset.done !== String(done)) markTab(tab, d.step, done); }); d.fields.set(q.id, ctl); }
+                    parts.push(ctl);
+                } else if (q.choices.length && q.many) {
                     parts.push(el('p', 'parley-questions-hint', said(words, 'group-several')));
                     const picks = el('div', 'parley-choices parley-picks'); picks.setAttribute('role', 'group');
                     for (const c of q.choices) {
@@ -2331,7 +2500,7 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
                     }
                     parts.push(row);
                 }
-                if (a.own) {
+                if (q.input) { /* drawn above */ } else if (a.own) {
                     let free = d.fields.get(q.id);
                     if (!free) {
                         free = el('textarea', 'parley-questions-free'); free.rows = 3; free.value = a.text; free.placeholder = said(words, 'group-own'); free.dataset.draft = `${item.id}:${q.id}`;
@@ -2363,7 +2532,7 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
                 const all = qs.map(answerOf);
                 const sendAll = button(said(words, 'group-send', { count: qs.length }), 'parley-questions-send', () => {
                     if (all.some((r) => r === null)) return;
-                    const replies = qs.map((q, i) => ({ id: q.id, ...all[i] }));
+                    const replies = qs.map((q, i) => ({ id: q.id, ...(all[i].picked ? { picked: all[i].picked } : { text: all[i].text }), ...(all[i].value !== undefined ? { value: all[i].value } : {}) }));
                     const text = qs.map((q, i) => `${i + 1}. ${q.label || cut(q.question, 60)}: ${all[i].picked ? all[i].picked.join(', ') : all[i].text}`).join('\n');
                     for (const b of card.querySelectorAll('button')) b.disabled = true;
                     void say(text, item.id, undefined, undefined, { replies }).then((ok) => { if (ok) drafts.delete(item.id); else paint2(); });
@@ -2618,8 +2787,8 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
             }
             choices.append(go);
             bubble.append(choices);
-        } else if (item.questions.length > 1 && send) {
-            bubble.append(groupCard(item));
+        } else if (item.questions.length > 0 && send) {
+            bubble.append(item.steps ? groupCard(item) : seriesCard(item));
         } else if (item.choices.length > 0) {
             const choices = el('div', 'parley-choices');
             for (const choice of item.choices) choices.append(button(choice, '', () => { for (const x of choices.children) x.disabled = true; void say(choice, item.id); }));
@@ -2627,7 +2796,7 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
         }
         /* A question: answered by what is typed, once Reply is pressed; under choices, a quiet
            "Other answer…": their own words instead of one of them. */
-        if ((item.open || item.closed) && send && item.questions.length < 2) {
+        if ((item.open || item.closed) && send && item.questions.length === 0) {
             const other = item.choices.length > 0;
             const r = button(said(words, other ? 'other-answer' : 'reply'), other ? 'parley-reply-to parley-other' : 'parley-reply-to', () => { replyTo = { id: item.id, text: cut(item.short || item.text, 90), auto: false }; dismissed.delete(item.id); paintReply(); focusBox(); });
             bubble.append(r);

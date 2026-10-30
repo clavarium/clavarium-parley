@@ -174,5 +174,13 @@
   "panel-empty": "Rien pour l'instant",
   "panel-done": "Faits ({count})",
   "panel-not-saved": "Non enregistré : {error}",
-  "to-card": "Attacher à une fiche"
+  "to-card": "Attacher à une fiche",
+  "input-yes": "Oui",
+  "input-no": "Non",
+  "series-send": "Envoyer",
+  "series-send-one": "Envoyer la réponse",
+  "series-left": "Il reste {count} réponse(s)",
+  "rank-up": "Monter",
+  "rank-down": "Descendre",
+  "split-total": "Total {total}"
 }

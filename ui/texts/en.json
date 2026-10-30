@@ -174,5 +174,13 @@
   "panel-empty": "Nothing yet",
   "panel-done": "Done ({count})",
   "panel-not-saved": "Not saved: {error}",
-  "to-card": "Attach to a card"
+  "to-card": "Attach to a card",
+  "input-yes": "Yes",
+  "input-no": "No",
+  "series-send": "Send",
+  "series-send-one": "Send the answer",
+  "series-left": "{count} answer(s) left",
+  "rank-up": "Up",
+  "rank-down": "Down",
+  "split-total": "Total {total}"
 }
