@@ -2538,7 +2538,7 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
             if (item.name && item.tool && item.tool !== item.name) head.append(el('span', 'parley-tool', item.tool));
             if (item.time) head.append(time(item.trail ? `${item.time} - ${item.trail.label}` : item.time, item.when));
             bubble.append(head);
-            /* React to it: a button that shows on hover (a right click too); on a touch screen, always there, in its corner. */
+            /* React to it: a button that shows on hover (a right click too); on a touch screen, a short tap on the message shows it a few seconds, in its corner. */
             if (react && reactions.length && ['say', 'ask', 'show'].includes(item.kind)) {
                 const r = el('button', 'parley-react-open'); r.type = 'button'; r.title = said(words, 'react'); r.setAttribute('aria-label', r.title); r.setAttribute('aria-haspopup', 'true');
                 r.append(icon('smile-plus', 'parley-sign'));
@@ -3103,23 +3103,9 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
         if ((event.ctrlKey || event.metaKey) && !event.altKey && String(event.key).toLowerCase() === 'f') { event.preventDefault(); openSearch(); }
         else if (event.key === 'Escape' && searching && !zoom.open) { event.preventDefault(); closeSearch(); }
     });
-    /* A long press on a touch screen shows a message's time, as hovering does with a mouse. */
-    let pressing;
+    /* A long press on a touch screen is the browser's: it selects the text, to copy it (#38). Nothing
+       of the message shows then; a short tap shows its button and time (below). */
     let hiding;
-    const unpress = () => { clearTimeout(pressing); pressing = undefined; };
-    thread.addEventListener('pointerdown', (event) => {
-        const bubble = event.target instanceof Element ? event.target.closest('.parley-said') : null;
-        if (!bubble || event.pointerType === 'mouse' || typedIn(event.target)) return;
-        unpress();
-        pressing = setTimeout(() => {
-            /* Its text stays the browser's to select: the reactions are its button's, in its corner. */
-            for (const other of thread.querySelectorAll('.parley-said[data-reveal]')) delete other.dataset.reveal;
-            bubble.dataset.reveal = 'true'; revealed = bubble.dataset.id ?? '';
-            clearTimeout(hiding);
-            hiding = setTimeout(() => { revealed = ''; for (const other of thread.querySelectorAll('.parley-said[data-reveal]')) delete other.dataset.reveal; }, 4000);
-        }, PRESS_MS);
-    });
-    for (const type of ['pointerup', 'pointercancel', 'pointerleave', 'scroll']) thread.addEventListener(type, unpress, { passive: true });
     /* A short tap on a message, on a touch screen: its button and time shown a few seconds (a tap again, hidden). */
     let tapped = null;
     thread.addEventListener('pointerdown', (event) => { tapped = event.pointerType === 'mouse' ? null : { x: event.clientX, y: event.clientY, at: Date.now() }; }, { passive: true });
@@ -3516,6 +3502,6 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
         get side() { return side; }, set side(given) { setSide(given); },
         get folded() { return panel ? (beside() ? panelFolded : !panelSheet) : true; }, set folded(v) { panelFolded = Boolean(v); if (panelFolded && panelSheet) showSheet(false); placePanel(); },
         get layers() { return steps.open; },
-        destroy() { steps.destroy(); gone = true; quiet(); letGo([]); for (const u of urls) try { URL.revokeObjectURL(u); } catch { /* gone */ } document.removeEventListener('pointerdown', away); document.removeEventListener('pointerdown', awayFromSheet); clearTimeout(hush); if (timer) clearInterval(timer); clearTimeout(hiding); unpress(); watch?.disconnect(); settle?.disconnect(); watchQuick?.disconnect(); seeing?.disconnect(); root.replaceChildren(); root.classList.remove('parley'); delete root.dataset.view; delete root.dataset.panel; },
+        destroy() { steps.destroy(); gone = true; quiet(); letGo([]); for (const u of urls) try { URL.revokeObjectURL(u); } catch { /* gone */ } document.removeEventListener('pointerdown', away); document.removeEventListener('pointerdown', awayFromSheet); clearTimeout(hush); if (timer) clearInterval(timer); clearTimeout(hiding); watch?.disconnect(); settle?.disconnect(); watchQuick?.disconnect(); seeing?.disconnect(); root.replaceChildren(); root.classList.remove('parley'); delete root.dataset.view; delete root.dataset.panel; },
     };
 }
