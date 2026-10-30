@@ -31,7 +31,7 @@
   "quiet": "rien de nouveau depuis {time}",
   "stopped": "arrêté à {time}",
   "mic": "Dicter",
-  "mic-stop": "Arrêter",
+  "mic-stop": "Arrêter la dictée",
   "auto-send": "Envoyer ce que je dicte dès que j'arrête de parler",
   "auto-on": "envoie tout seul quand vous vous taisez",
   "settings": "Réglages",

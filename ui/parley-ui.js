@@ -987,7 +987,8 @@ const SIGNS = {
     mic: [['rect', { x: 9, y: 3, width: 6, height: 11, rx: 3 }], ['path', { d: 'M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21M8.5 21h7' }]],
     prefs: [['path', { d: 'M4 7h9M17 7h3M4 17h3M11 17h9' }], ['circle', { cx: 15, cy: 7, r: 2 }], ['circle', { cx: 9, cy: 17, r: 2 }]],
     clip: [['path', { d: 'M20 11.5l-7.8 7.8a5 5 0 0 1-7.1-7.1l8.5-8.5a3.4 3.4 0 0 1 4.8 4.8l-8.4 8.4a1.7 1.7 0 0 1-2.4-2.4l7.6-7.6' }]],
-    stop: [['rect', { x: 7, y: 7, width: 10, height: 10, rx: 1.5 }]],
+    stop: [['rect', { x: 6, y: 6, width: 12, height: 12, rx: 2.5 }]],
+    send: [['path', { d: 'M12 19V5M5.5 11.5L12 5l6.5 6.5' }]],
     copy: [['rect', { x: 8, y: 8, width: 12, height: 12, rx: 2 }], ['path', { d: 'M16 8V5.5A1.5 1.5 0 0 0 14.5 4h-9A1.5 1.5 0 0 0 4 5.5v9A1.5 1.5 0 0 0 5.5 16H8' }]],
     sent: [['circle', { cx: 12, cy: 12, r: 8 }], ['path', { d: 'M12 12V7.5', class: 'parley-hand' }], ['path', { d: 'M12 12h3' }]],
     read: [['path', { d: 'M5 12.5l4.5 4.5L19 7.5' }]],
@@ -2210,17 +2211,22 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
     };
     const mic = el('button', 'parley-mic'); mic.type = 'button'; mic.setAttribute('aria-pressed', 'false');
     /* Listening, it says in a word that a touch stops it. */
-    const micWord = el('span', 'parley-mic-word', said(words, 'mic-stop'));
+    /* Round buttons of one size, a sign each; their words are their title, for a hover and a reader. */
     /* "Send when I stop" is on: a dot on the microphone, said in its label. */
     const micAuto = el('span', 'parley-mic-auto'); micAuto.setAttribute('aria-hidden', 'true');
-    mic.append(sign('mic'), sign('stop'), micWord, micAuto);
-    const go = el('button', 'parley-send', said(words, 'send')); go.type = 'submit';
+    mic.append(sign('mic'), sign('stop'), micAuto);
+    const go = el('button', 'parley-send'); go.type = 'submit'; go.title = said(words, 'send'); go.setAttribute('aria-label', go.title); go.append(sign('send'));
     /* Files to attach: picked beside the box, pasted, dropped; shown above it until they are sent. */
     const clip = el('button', 'parley-attach'); clip.type = 'button'; clip.title = said(words, 'attach'); clip.setAttribute('aria-label', clip.title); clip.append(sign('clip'));
     clip.hidden = !attach?.upload;
     const picker = el('input'); picker.type = 'file'; picker.multiple = true; picker.hidden = true; picker.tabIndex = -1;
     const pendingRow = el('div', 'parley-attached'); pendingRow.hidden = true; pendingRow.setAttribute('aria-live', 'polite');
     let pending = [];
+    let uploading = false;
+    /* While dictating: how to stop listening (null when the microphone is off). */
+    let stopping = null;
+    /* Send is grey while there is nothing to send: no text, no file, no phrase being heard. */
+    const paintGo = () => { go.disabled = uploading || (!box.value.trim() && pending.length === 0 && !stopping); };
     /* While dictating, what the microphone does: a label on the box's frame,
        seen; the same words in a status for whoever does not see it. */
     const heard = el('div', 'parley-voice'); heard.hidden = true; heard.setAttribute('aria-hidden', 'true');
@@ -2229,14 +2235,15 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
     const heardSaid = el('span', 'parley-voice-said'); heardSaid.setAttribute('role', 'status');
     field.append(box, heard, heardSaid);
     const problem = el('p', 'parley-problem'); problem.hidden = true; problem.setAttribute('role', 'alert');
-    form.append(field, clip, mic, go, picker);
+    /* One frame: the files to send on top, then the clip, the box, the microphone and Send. */
+    form.append(pendingRow, clip, field, mic, go, picker);
     const dropZone = el('div', 'parley-drop', said(words, 'drop')); dropZone.hidden = true;
     const zoom = zoomer(root, words, steps);
     const drawer = annotator(words, steps);
     /* What floats over the chat first; then the chat, top to bottom. */
     /* The box and what goes with it: apart from the thread, by a line and some room. */
     const composer = el('div', 'parley-composer');
-    composer.append(quickRow, replyRow, pendingRow, form, countEl, problem);
+    composer.append(quickRow, replyRow, form, countEl, problem);
     const reacting = reactionPicker();
     const shelf = mediaShelf();
     root.replaceChildren(zoom.box, drawer.box, shelf.box, reacting.box, dropZone, top, finder, main, panelBox, composer);
@@ -3386,6 +3393,7 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
     const grow = () => {
         keepDraft();
         tellCount();
+        paintGo();
         if (sizedByCss) return;
         const width = box.getBoundingClientRect().width;
         if (box.value === measured.value && width === measured.width) return;
@@ -3438,6 +3446,7 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
     const paintPending = () => {
         letGo(pending);
         pendingRow.hidden = pending.length === 0;
+        paintGo();
         /* Where they go, and who opens them: said where they are chosen. */
         const where = el('p', 'parley-where', said(words, 'attach-where'));
         pendingRow.replaceChildren(where, ...pending.map((file, i) => {
@@ -3486,7 +3495,7 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
         paintPending(); focusBox();
     };
     zoom.annotate = attach?.upload ? drawAgain : null;
-    let uploading = false;
+
     /* Emptied once sent. A keyboard's own dictation (a tablet's, a phone's) may still be composing the words when
        Send is touched: it puts them back as it ends. What comes back within a moment and is what was sent (or
        begins with it) is taken out again -- once; anything typed after it stays. */
@@ -3524,13 +3533,13 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
             }
         } catch (error) {
             problem.dataset.kind = ''; problem.textContent = said(words, 'not-sent', { error: String(error?.message ?? error) });
-            uploading = false; go.disabled = clip.disabled = false;
+            uploading = false; clip.disabled = false; paintGo();
             return;
         }
         problem.hidden = true; problem.dataset.kind = '';
         const sent = await say(text, answers, files, via, about);
         if (sent) dictatedNow = false;
-        uploading = false; go.disabled = clip.disabled = false;
+        uploading = false; clip.disabled = false; paintGo();
         if (sent) { answered(); pending = []; paintPending(); if (box.value.trim() === text) clearBox(text); }
     };
     clip.addEventListener('click', () => { if (attach?.upload) picker.click(); });
@@ -3554,7 +3563,6 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
     root.addEventListener('drop', (event) => { if (!carrying(event)) return; event.preventDefault(); carried = 0; dropZone.hidden = true; add(event.dataTransfer.files); });
     /* ---- dictation ---- */
     let voice = speaking?.listen ? speaking : null;
-    let stopping = null;
     let starting = false;
     let hearing = '';
     let auto = autoSend === true;
@@ -3573,9 +3581,10 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
         mic.dataset.state = on ? hearing || 'listening' : '';
         mic.dataset.auto = String(auto);
         const label = said(words, on ? 'mic-stop' : 'mic');
-        mic.title = auto ? `${label} - ${said(words, 'auto-on')}` : label; mic.setAttribute('aria-label', mic.title); micWord.hidden = !on;
+        mic.title = auto ? `${label} - ${said(words, 'auto-on')}` : label; mic.setAttribute('aria-label', mic.title);
         autoButton.setAttribute('aria-pressed', String(auto));
-        field.dataset.voice = on ? hearing || 'listening' : '';
+        field.dataset.voice = form.dataset.voice = on ? hearing || 'listening' : '';
+        paintGo();
         box.placeholder = said(words, on ? 'voice-placeholder' : 'placeholder');
         if (on) tell(hearing || 'listening', writing ? said(words, 'voice-wait') : said(words, `voice-${hearing || 'listening'}`));
         else if (!hush) { heard.hidden = true; heard.dataset.state = ''; heardSaid.textContent = ''; }

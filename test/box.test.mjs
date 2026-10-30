@@ -62,7 +62,8 @@ test('dictating grows nothing: what the microphone does is said inside the box, 
     const mic = $('.parley-mic');
     mic.click(); await settle();
     assert.equal(mic.getAttribute('aria-pressed'), 'true');
-    assert.equal(mic.title, 'Stop'); assert.equal($('.parley-mic-word').hidden, false, 'the button says Stop');
+    assert.equal(mic.title, 'Stop dictation', 'a sign on the button; its words in its title');
+    assert.equal(mic.textContent, '', 'no word on the button: the round stop sign says it');
     const voice = $('.parley-voice');
     assert.ok($('.parley-field').contains(voice), 'said on the box\'s frame');
     assert.equal(voice.getAttribute('aria-hidden'), 'true');
