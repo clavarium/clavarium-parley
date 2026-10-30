@@ -85,24 +85,24 @@
   .parley[data-view="detailed"] .parley-main { flex-direction: row; }
   .parley-aside { order: 0; width: 18rem; flex: none; max-height: none; }
 }
-.parley-form { position: relative; display: flex; flex-wrap: wrap; align-items: flex-end; gap: 4px; padding: 5px; border: 1px solid var(--parley-line); border-radius: 22px; background: var(--parley-bg); transition: border-color .15s, box-shadow .15s; }
+.parley-form { position: relative; display: flex; flex-wrap: wrap; align-items: flex-end; gap: 4px; padding: 5px; border: 1px solid var(--parley-line); border-radius: 24px; background: var(--parley-bg); transition: border-color .15s, box-shadow .15s; }
 /* One frame for the box and its buttons, as an online chat has: it shows the focus, and dictation in red. */
 .parley-form:focus-within { border-color: color-mix(in srgb, var(--parley-action) 55%, var(--parley-line)); box-shadow: 0 0 0 3px color-mix(in srgb, var(--parley-action) 14%, transparent); }
 .parley-form[data-voice="listening"], .parley-form[data-voice="calibrating"], .parley-form[data-voice="transcribing"] { border-color: color-mix(in srgb, var(--parley-live) 45%, var(--parley-line)); }
 .parley-form[data-voice="hearing"] { border-color: var(--parley-live); }
 /* Its border unseen (the frame is the form's) but kept, so that the box and its measured copy keep one height; up to seven lines, then it scrolls. */
-.parley-box { flex: 1; min-width: 0; box-sizing: border-box; font: inherit; line-height: 1.4; padding: .4em .25em; min-height: calc(2.2em + 2px); max-height: calc(10.2em + 2px); overflow-y: auto; border-radius: 0; border: 1px solid transparent; background: transparent; color: var(--parley-text); resize: none; field-sizing: content; }
+.parley-box { flex: 1; min-width: 0; box-sizing: border-box; font: inherit; line-height: 1.4; padding: .5em .25em; min-height: calc(2.4em + 2px); max-height: calc(10.2em + 2px); overflow-y: auto; border-radius: 0; border: 1px solid transparent; background: transparent; color: var(--parley-text); resize: none; field-sizing: content; }
 .parley-form .parley-box:focus-visible { outline: none; }
 /* Round buttons of one size, a sign each, against the last line: they never grow with the text. */
-.parley .parley-attach, .parley .parley-mic, .parley .parley-send { flex: none; align-self: flex-end; width: 36px; height: 36px; min-width: 0; min-height: 0; padding: 0; border: 0; border-radius: 50%; display: inline-grid; place-items: center; background: transparent; color: var(--parley-dim); }
+.parley .parley-attach, .parley .parley-mic, .parley .parley-send { flex: none; align-self: flex-end; width: 40px; height: 40px; min-width: 0; min-height: 0; padding: 0; border: 0; border-radius: 50%; display: inline-grid; place-items: center; background: transparent; color: var(--parley-dim); }
 .parley .parley-attach:hover:not(:disabled), .parley .parley-mic:hover:not([aria-pressed="true"]) { background: var(--parley-agent); color: var(--parley-text); }
-.parley-form .parley-sign { width: 20px; height: 20px; }
+.parley-form .parley-sign { width: 22px; height: 22px; }
 .parley .parley-send { background: var(--parley-action); color: var(--parley-on-action); }
 .parley .parley-send .parley-sign { stroke-width: 2.4; }
 .parley .parley-send:disabled { opacity: 1; background: var(--parley-agent); color: color-mix(in srgb, var(--parley-dim) 70%, transparent); }
-@media (pointer: coarse) { .parley .parley-attach, .parley .parley-mic, .parley .parley-send { width: 40px; height: 40px; } .parley-form { border-radius: 24px; } .parley-box { min-height: calc(2.6em + 2px); padding: .6em .25em; } }
+@media (pointer: coarse) { .parley .parley-attach, .parley .parley-mic, .parley .parley-send { width: 44px; height: 44px; } .parley-form .parley-sign { width: 24px; height: 24px; } .parley-form { border-radius: 26px; } .parley-box { min-height: calc(2.6em + 2px); padding: .6em .25em; } }
 /* Where the browser cannot size the box by its content: a hidden copy of it, with its text and width, measured instead of the box. */
-.parley-box-mirror { position: absolute; top: 0; left: 0; visibility: hidden; pointer-events: none; box-sizing: border-box; font: inherit; line-height: 1.4; padding: .4em .25em; border: 1px solid transparent; height: 0; min-height: 0; max-height: none; overflow: hidden; resize: none; }
+.parley-box-mirror { position: absolute; top: 0; left: 0; visibility: hidden; pointer-events: none; box-sizing: border-box; font: inherit; line-height: 1.4; padding: .5em .25em; border: 1px solid transparent; height: 0; min-height: 0; max-height: none; overflow: hidden; resize: none; }
 .parley-count { align-self: flex-end; margin: -.1em .3em .1em 0; font-size: .72em; color: var(--parley-dim); font-variant-numeric: tabular-nums; }
 .parley-count[data-level="mid"] { color: var(--parley-warning); }
 .parley-count[data-level="high"] { color: var(--parley-caution); font-weight: 600; }
