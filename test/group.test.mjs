@@ -178,7 +178,7 @@ test('the screen: one card, a step each, a summary with Modify, one Send; what i
     assert.equal(bubble.children.filter((c) => c.classList.contains('parley-reply-to')).length, 0, 'no Reply under the card: Other answer is in each step');
     assert.deepEqual($$('.parley-questions-tab').map((b) => b.textContent), ['1When', '2Batches', '3Note', 'Summary']);
     assert.equal($('.parley-questions-step').textContent, 'Question 1/3');
-    assert.match($('.parley-replying').textContent, /Before I go on:/, 'the box answers it by its introduction');
+    assert.equal($('.parley-replying').textContent, '', 'a card has its own Send: a message typed in the box beside it is a message, not its answer');
     /* Step 1: one choice moves on. */
     $('.parley-questions').querySelector('.parley-choices').querySelectorAll('button')[1].click();
     assert.equal($('.parley-questions-step').textContent, 'Question 2/3');

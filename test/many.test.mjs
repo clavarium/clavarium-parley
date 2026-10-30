@@ -172,3 +172,41 @@ test('the screen\'s data: many is said on the item; the quick answers above the 
     assert.equal(view(one, { words: texts('en') }).items[0].many, false);
     assert.equal(quick(one).length, 2);
 });
+
+test('the command: --help after a verb is help, an option it does not know is refused; neither is posted', (t) => {
+    const dir = folder(t);
+    const cmd = (...args) => run(args, { cwd: dir, env: {}, stdin: () => '' });
+    for (const verb of ['ask', 'tell', 'doing', 'read', 'show', 'close', 'status']) {
+        const r = cmd(verb, '--help');
+        assert.equal(r.code, 0); assert.equal(r.out, `${HELP}\n`);
+        assert.equal(cmd(verb, 'x', '-h').out, `${HELP}\n`);
+    }
+    assert.match(cmd('ask', '--many', 'Which?', '--choice', 'A', '--choice', 'B').err, /ask does not know --many/);
+    assert.match(cmd('tell', '--title', 'T', 'text').err, /tell does not know --title/);
+    assert.match(cmd('read', '--since', 'x').err, /read does not know --since/);
+    assert.throws(() => posted(dir), 'nothing was posted');
+    /* What looks like an option inside a sentence, or as the value of one, still goes. */
+    assert.equal(cmd('tell', 'use --dir to point at the folder').code, 0);
+    assert.equal(cmd('ask', 'Which flag?', '--choice', '--force', '--choice', '--dry-run').code, 0);
+    assert.notEqual(cmd('read', '--before', 'abc').code, 64, 'a value, not an option');
+    assert.deepEqual(posted(dir).map((m) => m.text), ['use --dir to point at the folder', 'Which flag?']);
+});
+
+test('the box: ↑ on its first line brings back the messages sent before, ↓ on its last line comes back down', async () => {
+    const { recalled } = await import('../ui/parley-ui.js');
+    const key = (k, more = {}) => ({ key: k, ...more });
+    const box = (value, at = value.length) => ({ value, selectionStart: at, selectionEnd: at });
+    const sent = ['first', 'second', 'third'];
+    assert.deepEqual(recalled(key('ArrowUp'), box(''), -1, sent), { at: 2, text: 'third' });
+    assert.deepEqual(recalled(key('ArrowUp'), box('a draft'), -1, sent), { at: 2, text: 'third' }, 'written or not');
+    assert.deepEqual(recalled(key('ArrowUp'), box('third'), 2, sent), { at: 1, text: 'second' });
+    assert.equal(recalled(key('ArrowUp'), box('first'), 0, sent), null, 'nothing older');
+    assert.equal(recalled(key('ArrowUp'), box('line 1\nline 2'), -1, sent), null, 'on the second line it moves the caret');
+    assert.deepEqual(recalled(key('ArrowUp'), box('line 1\nline 2', 3), -1, sent), { at: 2, text: 'third' });
+    assert.deepEqual(recalled(key('ArrowDown'), box('second'), 1, sent), { at: 2, text: 'third' });
+    assert.deepEqual(recalled(key('ArrowDown'), box('third'), 2, sent), { at: -1, text: '' }, 'back to what was written');
+    assert.equal(recalled(key('ArrowDown'), box('mine'), -1, sent), null, 'not recalling: ↓ is the caret\'s');
+    assert.equal(recalled(key('ArrowUp', { shiftKey: true }), box(''), -1, sent), null);
+    assert.equal(recalled(key('ArrowUp'), { value: 'abc', selectionStart: 0, selectionEnd: 2 }, -1, sent), null, 'a selection is left alone');
+    assert.equal(recalled(key('ArrowUp'), box(''), -1, []), null);
+});

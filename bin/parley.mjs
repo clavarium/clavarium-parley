@@ -164,6 +164,12 @@ export function showing(words, cwd = process.cwd()) {
     return { files, note: words.slice(i).join(' ') };
 }
 
+/* The options of each verb ("=": it takes a value). */
+const OPTIONS = {
+    read: ['--last=', '--days=', '--before=', '--all'], tell: ['--short='], ask: ['--short=', '--pick-many', '--group', '--choice='],
+    show: [], close: [], doing: [], status: [], forget: [],
+};
+
 /* Runs one command line. Resolves with { code, out, err }: nothing is printed
    here, so that it can be tested without a terminal. */
 export function run(argv, { env = process.env, cwd = process.cwd(), stdin = () => readFileSync(0, 'utf8') } = {}) {
@@ -199,6 +205,15 @@ export function run(argv, { env = process.env, cwd = process.cwd(), stdin = () =
         } catch { return { code: 1, out: '', err: '' }; }
     }
     if (!['read', 'tell', 'ask', 'show', 'close', 'doing', 'status', 'forget'].includes(verb)) return { code: 64, out: '', err: `Unknown: ${verb}. Run "parley --help".\n` };
+    /* --help after a verb is help, never words to post (`parley ask --help` posted "--help" as a
+       question); an option the verb does not know is refused, not posted either. */
+    if (rest.includes('--help') || rest.includes('-h')) return { code: 0, out: `${HELP}\n`, err: '' };
+    const valued = new Set(OPTIONS[verb].filter((o) => o.endsWith('=')).map((o) => o.slice(0, -1)));
+    const known = new Set(OPTIONS[verb].map((o) => o.replace(/=$/, '')));
+    for (let i = 0; i < rest.length; i += 1) {
+        if (valued.has(rest[i])) { i += 1; continue; }
+        if (/^--?[a-z][a-z-]*$/i.test(rest[i]) && !known.has(rest[i])) return { code: 64, out: '', err: `${verb} does not know ${rest[i]}. Run "parley --help".\n` };
+    }
     const folder = findFolder({ dir, env, from: cwd });
     if (!folder) return { code: 2, out: '', err: `No ${FOLDER} folder here or above. Run it from your work folder, or give --dir FOLDER.\n` };
     const text = (value) => (value === '-' ? stdin().replace(/\n$/, '') : value);

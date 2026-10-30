@@ -817,7 +817,9 @@ export function view(data, { words = {}, view: as = 'simple', now = Date.now(), 
         items: items.map(({ at, type, key, ...item }) => item),
         unread: Number(data?.unread) || 0,
         /* The one question that waits, for what is typed to answer by default. */
-        asking: (() => { const open = all.filter((m) => openQuestion(m, answered)); return open.length === 1 ? { id: String(open[0].id ?? ''), text: cut(open[0].short || (Array.isArray(open[0].questions) && open[0].questions.length > 1 ? open[0].intro || said(words, 'group-count', { count: open[0].questions.length }) : open[0].text), 90) } : null; })(),
+        /* The one question still open, that the box answers by itself -- not a card (several questions,
+           or a selector): it has its own fields and its own Send, and a message typed beside it is a message. */
+        asking: (() => { const open = all.filter((m) => openQuestion(m, answered)); const card = (m) => Array.isArray(m.questions) && (m.questions.length > 1 || m.questions.some((q) => q && q.input)); return open.length === 1 && !card(open[0]) ? { id: String(open[0].id ?? ''), text: cut(open[0].short || (Array.isArray(open[0].questions) && open[0].questions.length > 1 ? open[0].intro || said(words, 'group-count', { count: open[0].questions.length }) : open[0].text), 90) } : null; })(),
         files: detailed ? files.map((f) => ({ path: String(f.path ?? ''), name: nameOf(f.path), note: String(f.note ?? ''), open: typeof f.open === 'string' ? f.open : null, when: whole(stamp(f.at), locale) })) : [],
         summary: detailed ? `${said(words, 'files')} (${files.length})` : '',
         /* Detailed, on the side: what it does now and the steps of this turn; what the application says of its machine. */
@@ -948,6 +950,24 @@ export const joined = (before, said2) => {
 };
 
 /* A picture pasted without a name of its own is named by its time. */
+/* ↑ / ↓ in the box: which message sent before it brings back, or null to leave the key alone. `at`:
+   where it is in `sent` (-1: writing its own); the answer's `at` -1 is back to what was being written. */
+export function recalled(event, box, at, sent) {
+    if (event.isComposing || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return null;
+    if (box.selectionStart !== box.selectionEnd) return null;
+    const value = String(box.value ?? '');
+    if (event.key === 'ArrowUp') {
+        if (value.slice(0, box.selectionStart).includes('\n')) return null;
+        const next = at < 0 ? sent.length - 1 : at - 1;
+        return next >= 0 ? { at: next, text: sent[next] } : null;
+    }
+    if (event.key === 'ArrowDown') {
+        if (at < 0 || value.slice(box.selectionEnd).includes('\n')) return null;
+        return at + 1 < sent.length ? { at: at + 1, text: sent[at + 1] } : { at: -1, text: '' };
+    }
+    return null;
+}
+
 export function pastedName(file, now = new Date()) {
     const name = String(file?.name ?? '');
     if (name && !/^image\.(png|jpe?g|gif|webp)$/i.test(name)) return name;
@@ -2351,7 +2371,34 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
             case 'rank': {
                 if (a.value === undefined) a.value = [...x.items];
                 const list = el('ol', 'parley-input-rank');
-                const paintRank = () => { list.replaceChildren(...a.value.map((it, i) => { const li = el('li'); const up = button('↑', '', () => { if (i) { a.value.splice(i - 1, 0, a.value.splice(i, 1)[0]); paintRank(); say2(); } }); up.setAttribute('aria-label', said(words, 'rank-up')); const down = button('↓', '', () => { if (i < a.value.length - 1) { a.value.splice(i + 1, 0, a.value.splice(i, 1)[0]); paintRank(); say2(); } }); down.setAttribute('aria-label', said(words, 'rank-down')); li.append(el('span', 'parley-input-rank-n', String(i + 1)), el('span', 'parley-input-rank-t', it), up, down); return li; })); };
+                const paintRank = () => { list.replaceChildren(...a.value.map((it, i) => { const li = el('li'); const up = button('↑', '', () => { if (i) { a.value.splice(i - 1, 0, a.value.splice(i, 1)[0]); paintRank(); say2(); } }); up.setAttribute('aria-label', said(words, 'rank-up')); const down = button('↓', '', () => { if (i < a.value.length - 1) { a.value.splice(i + 1, 0, a.value.splice(i, 1)[0]); paintRank(); say2(); } }); down.setAttribute('aria-label', said(words, 'rank-down')); li.dataset.i = String(i); li.append(el('span', 'parley-input-rank-grip', '⋮⋮'), el('span', 'parley-input-rank-n', String(i + 1)), el('span', 'parley-input-rank-t', it), up, down); return li; })); };
+                /* Dragged into place: by its grip with a finger, anywhere on it with a mouse; the others make room as it passes. */
+                list.addEventListener('pointerdown', (e) => {
+                    const li = e.target.closest?.('li'); if (!li || e.target.closest('button') || e.button > 0) return;
+                    if (e.pointerType !== 'mouse' && !e.target.closest('.parley-input-rank-grip')) return;
+                    e.preventDefault();
+                    let moved = false;
+                    li.setPointerCapture?.(e.pointerId); li.classList.add('parley-input-rank-dragging');
+                    const move = (m) => {
+                        moved = true;
+                        for (const other of list.children) {
+                            if (other === li) continue;
+                            const r = other.getBoundingClientRect(); const mid = r.top + r.height / 2;
+                            const before = other.compareDocumentPosition(li) & 4;   /* li after it */
+                            if (before && m.clientY < mid) { list.insertBefore(li, other); break; }
+                            if (!before && m.clientY > mid && other.nextSibling !== li) { list.insertBefore(li, other.nextSibling); break; }
+                        }
+                        li.style.transform = ''; const r = li.getBoundingClientRect(); li.style.transform = `translateY(${m.clientY - (r.top + r.height / 2)}px)`;
+                    };
+                    const drop = () => {
+                        li.removeEventListener('pointermove', move); li.removeEventListener('pointerup', drop); li.removeEventListener('pointercancel', drop);
+                        li.classList.remove('parley-input-rank-dragging'); li.style.transform = '';
+                        const order = [...list.children].map((c) => a.value[Number(c.dataset.i)]);
+                        if (moved && order.some((v, k) => v !== a.value[k])) { a.value = order; say2(); }
+                        paintRank();
+                    };
+                    li.addEventListener('pointermove', move); li.addEventListener('pointerup', drop); li.addEventListener('pointercancel', drop);
+                });
                 paintRank(); box.append(list); break;
             }
             case 'split': {
@@ -3598,7 +3645,21 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
         void sendBox();
         stayIn();
     });
-    box.addEventListener('keydown', (event) => { if (sends(event, enter, keyboard)) { event.preventDefault(); form.requestSubmit(); } });
+    /* ---- what was sent, again: ↑ on the first line of the box brings back the messages sent before, ↓ on its
+       last line comes back down to what was being written (as in a terminal) ---- */
+    let recallAt = -1;
+    let recallDraft = '';
+    const recallTo = (text) => { box.value = text; box.selectionStart = box.selectionEnd = text.length; box.dispatchEvent(new Event('input', { bubbles: true })); };
+    box.addEventListener('input', (event) => { if (event.isTrusted) recallAt = -1; });
+    box.addEventListener('keydown', (event) => {
+        if (sends(event, enter, keyboard)) { event.preventDefault(); recallAt = -1; form.requestSubmit(); return; }
+        const r = recalled(event, box, recallAt, (latest?.messages ?? []).filter((m) => m && m.from === 'person' && typeof m.text === 'string' && m.text.trim()).map((m) => m.text));
+        if (!r) return;
+        event.preventDefault();
+        if (recallAt < 0) recallDraft = box.value;
+        recallAt = r.at;
+        recallTo(r.at < 0 ? recallDraft : r.text);
+    });
     /* ---- the quick answers ---- */
     let replies = Array.isArray(ready) ? ready : [];
     let quickShown = '';

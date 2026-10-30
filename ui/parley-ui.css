@@ -793,6 +793,9 @@ mark.parley-found[data-now="true"] { outline: 2px solid var(--parley-ask); }
 .parley-input-unit { align-self: center; padding: 0 .7em; color: var(--parley-dim); }
 .parley-input-rank { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: .3em; }
 .parley-input-rank li { display: flex; align-items: center; gap: .5em; border: 1px solid var(--parley-line); border-radius: 10px; padding: .2em .3em .2em .6em; background: var(--parley-bg); }
+.parley-input-rank-grip { color: var(--parley-dim); cursor: grab; touch-action: none; user-select: none; padding: .3em .2em; letter-spacing: -.15em; }
+.parley-input-rank li { cursor: grab; user-select: none; }
+.parley-input-rank li.parley-input-rank-dragging { position: relative; z-index: 2; cursor: grabbing; box-shadow: 0 6px 18px rgb(0 0 0 / .18); border-color: var(--parley-accent, currentColor); }
 .parley-input-rank-n { color: var(--parley-dim); min-width: 1.2em; font-variant-numeric: tabular-nums; }
 .parley-input-rank-t { flex: 1; min-width: 0; }
 .parley .parley-input-rank button { min-height: 2.2em; width: 2.2em; padding: 0; border: 0; border-radius: 8px; background: transparent; color: var(--parley-dim); cursor: pointer; }
