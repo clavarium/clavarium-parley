@@ -2302,7 +2302,9 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
         const valueOut = el('span', 'parley-input-value');
         const say2 = () => { const r = inputAnswer(q, a); valueOut.textContent = r ? r.text : ''; changed(); };
         const ends = (lo, hi) => { const e = el('div', 'parley-input-ends'); e.append(el('span', '', lo), valueOut, el('span', '', hi)); return e; };
-        const range = (val, onInput) => { const r = el('input'); r.type = 'range'; r.min = String(x.min); r.max = String(x.max); r.step = String(x.step); r.value = String(val); r.addEventListener('input', () => onInput(Number(r.value))); return r; };
+        const pct = (v) => `${((v - x.min) / (x.max - x.min)) * 100}%`;
+        const fill = (r) => r.style?.setProperty?.('--fill', pct(Number(r.value)));
+        const range = (val, onInput) => { const r = el('input'); r.type = 'range'; r.min = String(x.min); r.max = String(x.max); r.step = String(x.step); r.value = String(val); fill(r); r.addEventListener('input', () => { fill(r); onInput(Number(r.value)); }); return r; };
         switch (x.kind) {
             case 'yesno': {
                 const row = el('div', 'parley-pickrow');
@@ -2318,6 +2320,9 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
                 const two = el('div', 'parley-input-two');
                 const lo = range(a.value[0], (n) => { a.value = [Math.min(n, a.value[1]), a.value[1]]; lo.value = String(a.value[0]); say2(); });
                 const hi = range(a.value[1], (n) => { a.value = [a.value[0], Math.max(n, a.value[0])]; hi.value = String(a.value[1]); say2(); });
+                const span2 = () => { two.style?.setProperty?.('--lo', pct(a.value[0])); two.style?.setProperty?.('--hi', pct(a.value[1])); };
+                for (const r of [lo, hi]) r.addEventListener('input', span2);
+                span2();
                 two.append(lo, hi); box.append(two, ends(withUnit(fmt(x.min), x.unit), withUnit(fmt(x.max), x.unit))); break;
             }
             case 'scale': {
@@ -2352,14 +2357,14 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
             case 'split': {
                 if (a.value === undefined) { const each = Math.floor(x.total / x.items.length); a.value = x.items.map((_, i) => (i === x.items.length - 1 ? x.total - each * (x.items.length - 1) : each)); }
                 const rows = x.items.map((it, i) => {
-                    const r = el('input'); r.type = 'range'; r.min = '0'; r.max = String(x.total); r.step = '1'; r.value = String(a.value[i]);
+                    const r = el('input'); r.type = 'range'; r.min = '0'; r.max = String(x.total); r.step = '1'; r.value = String(a.value[i]); r.style?.setProperty?.('--fill', `${a.value[i] / x.total * 100}%`);
                     const out = el('span', 'parley-input-value', withUnit(fmt(a.value[i]), x.unit));
                     r.addEventListener('input', () => {
                         /* The others give or take what this one took, so the total holds. */
                         const n = Number(r.value); const rest = x.total - n; const others = a.value.map((v, k) => (k === i ? 0 : v)); const sum = others.reduce((s2, v) => s2 + v, 0);
                         a.value = a.value.map((v, k) => (k === i ? n : sum ? Math.round(v * rest / sum) : Math.round(rest / (x.items.length - 1))));
                         const drift = x.total - a.value.reduce((s2, v) => s2 + v, 0); const j = a.value.findIndex((_, k) => k !== i); if (j >= 0) a.value[j] += drift;
-                        rows.forEach((row2, k) => { row2.range.value = String(a.value[k]); row2.out.textContent = withUnit(fmt(a.value[k]), x.unit); });
+                        rows.forEach((row2, k) => { row2.range.value = String(a.value[k]); row2.range.style?.setProperty?.('--fill', `${a.value[k] / x.total * 100}%`); row2.out.textContent = withUnit(fmt(a.value[k]), x.unit); });
                         say2();
                     });
                     const line = el('div', 'parley-input-split-row'); line.append(el('span', '', it), r, out);
