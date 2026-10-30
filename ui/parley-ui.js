@@ -1961,6 +1961,7 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
     const foldKept = new Set();
     const foldDone = new Set();
     const FOLD_MS = 15_000;
+    const FOLD_FADE_MS = 320;
     /* #109: only fold a message tall enough to be worth it. A short one (a line
        or two) collapsing to a bar is just noise. The outgoing message is still
        on screen from the last draw when we decide, so measure it there. */
@@ -2377,30 +2378,37 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
        negative delay; a tap keeps the message open; when the fill reaches the end the
        message folds. */
     function foldBar(id, elapsed) {
-        const bar = el('button', 'parley-fold'); bar.type = 'button';
+        const bar = el('button', `parley-fold${elapsed < 400 ? ' parley-fold-new' : ''}${elapsed >= FOLD_MS ? ' parley-fold-going' : ''}`); bar.type = 'button';
         bar.setAttribute('aria-label', said(words, 'fold-keep'));
         const fill = el('span', 'parley-fold-fill');
         fill.style.animationDuration = `${FOLD_MS}ms`;
         fill.style.animationDelay = `-${elapsed}ms`;
         bar.append(fill, el('span', 'parley-fold-label', said(words, 'fold-soon')));
         bar.addEventListener('click', (e) => { e.stopPropagation(); foldKept.add(id); foldAt.delete(id); repaint(); });
+        /* Its end, in order (#183): the bar fades away; then the message is drawn folded, and its
+           height eases from what it was to what the folded form really takes -- measured, never a
+           guess -- so nothing hides, comes back and hides again. */
         fill.addEventListener('animationend', () => {
-            if (!foldAt.has(id)) return;
-            const finish = () => { foldAt.delete(id); foldDone.add(id); repaint(); };
+            if (!foldAt.has(id) || bar.dataset.ending) return;
+            bar.dataset.ending = 'true';
             const bubble = bar.closest('.parley-said');
-            /* Fold in one motion: pin the message's height, ease it down to a line
-               while the bar fades, and draw the folded form once the slide ends. */
+            const finish = () => { foldAt.delete(id); foldDone.add(id); repaint(); };
             if (!bubble || reduceMotion()) { finish(); return; }
             bar.classList.add('parley-fold-going');
-            bubble.style.overflow = 'hidden';
-            bubble.style.transition = 'max-height .45s ease';
-            bubble.style.maxHeight = `${bubble.scrollHeight}px`;
-            bubble.getBoundingClientRect();
-            bubble.style.maxHeight = '2.6em';
-            let done = false;
-            const end = () => { if (done) return; done = true; bubble.removeEventListener('transitionend', end); finish(); };
-            bubble.addEventListener('transitionend', end);
-            setTimeout(end, 700);
+            setTimeout(() => {
+                const was = bubble.isConnected ? bubble.getBoundingClientRect().height : 0;
+                finish();
+                const sel = (typeof CSS !== 'undefined' && CSS.escape) ? CSS.escape(id) : id;
+                const now = thread.querySelector(`.parley-said[data-id="${sel}"]`);
+                if (!now || !was) return;
+                const to = now.getBoundingClientRect().height;
+                if (to >= was) return;
+                now.style.overflow = 'hidden'; now.style.height = `${was}px`;
+                now.getBoundingClientRect();
+                now.style.transition = 'height .5s cubic-bezier(.2, .7, .2, 1)'; now.style.height = `${to}px`;
+                const clear = () => { now.style.height = ''; now.style.transition = ''; now.style.overflow = ''; };
+                now.addEventListener('transitionend', clear, { once: true }); setTimeout(clear, 900);
+            }, FOLD_FADE_MS);
         });
         return bar;
     }
@@ -2426,7 +2434,8 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
         /* #87: a message the newest just pushed up stays full, with a slow countdown bar, until the countdown ends -- then it folds. A tap on the bar keeps it open. */
         if (!reduceMotion() && foldAt.has(item.id)) {
             const elapsed = Date.now() - foldAt.get(item.id);
-            if (elapsed < FOLD_MS) { const full = item.short ? [shortLine(), whole2()] : [whole2()]; return [...full, foldBar(item.id, elapsed)]; }
+            /* Until its end has played (the bar fading, the height easing), it is drawn full: a redraw meanwhile changes nothing. */
+            if (elapsed < FOLD_MS + FOLD_FADE_MS + 600) { const full = item.short ? [shortLine(), whole2()] : [whole2()]; return [...full, foldBar(item.id, elapsed)]; }
             foldAt.delete(item.id); foldDone.add(item.id);
         }
         const isOpen = expanded.has(item.id);

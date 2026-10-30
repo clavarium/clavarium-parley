@@ -271,6 +271,9 @@
 .parley-fold-label { position: relative; }
 /* As the message slides shut (its max-height eased in JS), the bar fades with it. */
 .parley-fold.parley-fold-going { opacity: 0; transition: opacity .3s ease; pointer-events: none; }
+/* #183: the bar comes in softly, it does not pop up. */
+.parley-fold.parley-fold-new { animation: parley-fold-in .4s ease both; }
+@keyframes parley-fold-in { from { opacity: 0; transform: translateY(-3px); } to { opacity: 1; transform: none; } }
 @keyframes parley-fold-count { from { width: 0; } to { width: 100%; } }
 @media (prefers-reduced-motion: reduce) { .parley-fold-fill { animation: none; width: 100%; } }
 /* The alerts of GitHub, as boxes. */
