@@ -66,7 +66,7 @@
   "secret-hint": "Un secret que tu as collé, gardé hors du fil -- l'outil s'en sert, tu ne le vois jamais, et il s'efface tout seul.",
   "secret-left": "expire dans {mins} min",
   "secret-forget": "Oublier maintenant",
-  "fold-soon": "Se replie bientôt -- touche pour garder ouvert",
+  "fold-soon": "Se replie bientôt · toucher pour garder ouvert",
   "fold-keep": "Garder ouvert",
   "see-details": "Voir le détail",
   "see-more": "Voir la suite",
