@@ -96,3 +96,18 @@ test('the screen: one question with a selector is a card of one; steps: true kee
     assert.ok(root2.querySelector('.parley-input-number'), 'and the selector in its step');
     h2.destroy();
 });
+
+test('the host passes a selector on to the page (and one question alone with it), and takes its answer', async (t) => {
+    const { Parley } = await import('../host/parley-host.mjs');
+    const dir = folder(t);
+    const agent = bridge(join(dir, '.parley'));
+    agent.ask('Avis', undefined, { steps: true, questions: [{ id: 'note', question: 'Note ?', input: { kind: 'stars', max: 5 } }, { id: 'ord', question: 'Ordre ?', input: { kind: 'rank', items: ['A', 'B'] } }] });
+    agent.ask('Mémoire ?', undefined, { input: { kind: 'number', min: 2, max: 16, unit: 'Go', value: 4 } });
+    const host = new Parley(join(dir, '.parley'));
+    const [two, one] = host.read().messages;
+    assert.deepEqual(two.questions.map((q) => q.input), [{ kind: 'stars', max: 5 }, { kind: 'rank', items: ['A', 'B'] }]);
+    assert.equal(two.steps, true);
+    assert.deepEqual(one.questions[0].input, { kind: 'number', min: 2, max: 16, step: 1, unit: 'Go', value: 4 });
+    host.say('', one.id, [], { replies: [{ id: 'answer', text: '8 Go' }] });
+    assert.match(readFileSync(join(dir, '.parley', 'to-agent.jsonl'), 'utf8'), /8 Go/);
+});

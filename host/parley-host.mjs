@@ -321,6 +321,22 @@ export function install(dir, { as = dir } = {}) {
     return { name: 'parley', command: ['node', `${as}/server.mjs`] };
 }
 
+/* A SELECTOR OF A QUESTION (#195), as the page gets it: its kind, and plain values only --
+   numbers, short words, small lists and tables -- never more than a selector needs. */
+const INPUT_KINDS = new Set(['yesno', 'slider', 'number', 'range', 'scale', 'stars', 'rank', 'split', 'table', 'date', 'time', 'datetime', 'text']);
+function inputKept(x) {
+    if (!x || typeof x !== 'object' || !INPUT_KINDS.has(x.kind)) return null;
+    const n = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : undefined);
+    const w = (v, max = 60) => (typeof v === 'string' || typeof v === 'number' ? oneLine(String(v), max) : undefined);
+    const words = (l, hi, max = 60) => (Array.isArray(l) ? l.slice(0, hi).map((v) => w(v, max)).filter(Boolean) : undefined);
+    const out = { kind: x.kind, min: n(x.min), max: n(x.max), step: n(x.step), unit: w(x.unit, 12), total: n(x.total), lines: n(x.lines), labels: words(x.labels, 2, 40), items: words(x.items, 10), columns: words(x.columns, 6, 30), rows: words(x.rows, 8) };
+    if (Array.isArray(x.value)) out.value = x.value.slice(0, 2).map(n).filter((v) => v !== undefined);
+    else if (typeof x.value === 'number') out.value = n(x.value);
+    else if (typeof x.value === 'string') out.value = w(x.value, 30);
+    if (x.kind === 'table' && Array.isArray(x.values)) out.values = x.values.slice(0, 8).map((r) => (Array.isArray(r) ? r.slice(0, 6).map((c) => w(c ?? '', 60) ?? '') : []));
+    return Object.fromEntries(Object.entries(out).filter(([, v]) => v !== undefined && !(Array.isArray(v) && !v.length && v !== out.values)));
+}
+
 export class Parley {
     #dir; #on; #reach; #now; #reactions; #keep;
 
@@ -354,9 +370,11 @@ export class Parley {
             const ids = new Set();
             const list = m.questions.slice(0, GROUP_MAX).filter((q) => q && typeof q === 'object' && typeof q.id === 'string' && GROUP_ID.test(q.id) && !ids.has(q.id) && ids.add(q.id)).map((q) => {
                 const choices = Array.isArray(q.choices) ? q.choices.slice(0, 8).map((x) => oneLine(x, 200)).filter(Boolean) : [];
-                return { id: q.id, label: oneLine(q.label, 40), question: clean(q.question).slice(0, 1000).trim(), choices, ...(q.many === true && choices.length > 1 ? { many: true } : {}) };
+                const input = inputKept(q.input);
+                return { id: q.id, label: oneLine(q.label, 40), question: clean(q.question).slice(0, 1000).trim(), choices, ...(q.many === true && choices.length > 1 ? { many: true } : {}), ...(input && !choices.length ? { input } : {}) };
             }).filter((q) => q.question);
-            if (list.length > 1) { entry.questions = list; entry.choices = []; if (typeof m.intro === 'string' && clean(m.intro).trim()) entry.intro = clean(m.intro).slice(0, 2000).trim(); }
+            /* Two questions or more; or one alone with its selector (#195). */
+            if (list.length > 1 || (list.length === 1 && list[0].input)) { entry.questions = list; entry.choices = []; if (m.steps === true) entry.steps = true; if (typeof m.intro === 'string' && clean(m.intro).trim()) entry.intro = clean(m.intro).slice(0, 2000).trim(); }
         }
         if (kind === 'say' || kind === 'ask') {
             /* The paths it cites that the person can open: a link, or a picture, on the screen. */
