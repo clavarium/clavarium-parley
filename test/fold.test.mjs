@@ -13,7 +13,7 @@ const at = (m) => new Date(Date.UTC(2030, 0, 1, 9, m)).toISOString();
 test('a message the newest pushes up gets the folding countdown; a tap keeps it open', async (t) => {
     const leave = fakePage();
     const root = document.createElement('div'); document.body.append(root);
-    const messages = [{ from: 'agent', id: 'm', at: at(0), kind: 'say', text: 'First message, long enough to matter.\n\nA second paragraph of it.' }];
+    const messages = [{ from: 'agent', id: 'm', at: at(0), kind: 'say', short: 'First message, in short.', text: 'First message, long enough to matter.\n\nA second paragraph of it.' }];
     const handle = mount(root, { load: async () => ({ messages: [...messages] }), send: async () => {}, words: texts('en'), every: 0, touch: false, markdown: true });
     t.after(() => { try { handle.destroy(); } catch { /* page already gone */ } leave(); });
     await settle(); await settle();
@@ -34,4 +34,16 @@ test('a message the newest pushes up gets the folding countdown; a tap keeps it 
     await settle();
     assert.equal(root.querySelector('.parley-fold'), null, 'after a tap the bar is gone');
     assert.ok(root.querySelector('.parley-md'), 'the message is still full (kept open)');
+});
+
+test('a message that would look the same folded gets no countdown (no short version, not long)', async (t) => {
+    const leave = fakePage();
+    const root = document.createElement('div'); document.body.append(root);
+    const messages = [{ from: 'agent', id: 'm', at: at(0), kind: 'say', text: 'A few words.\n\nAnd a second line.' }];
+    const handle = mount(root, { load: async () => ({ messages: [...messages] }), send: async () => {}, words: texts('en'), every: 0, touch: false, markdown: true });
+    t.after(() => { try { handle.destroy(); } catch { /* page already gone */ } leave(); });
+    await settle(); await settle();
+    messages.push({ from: 'agent', id: 'n', at: at(1), kind: 'say', text: 'A newer message.' });
+    await handle.refresh(); await settle();
+    assert.equal(root.querySelector('.parley-fold'), null, 'nothing would fold: no "folds soon" bar');
 });
