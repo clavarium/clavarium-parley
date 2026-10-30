@@ -956,13 +956,15 @@ export function recalled(event, box, at, sent) {
     if (event.isComposing || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return null;
     if (box.selectionStart !== box.selectionEnd) return null;
     const value = String(box.value ?? '');
+    /* A message brought back and not changed: the arrows go on through the messages, whatever line the caret is on. */
+    const browsing = at >= 0 && value === sent[at];
     if (event.key === 'ArrowUp') {
-        if (value.slice(0, box.selectionStart).includes('\n')) return null;
+        if (!browsing && value.slice(0, box.selectionStart).includes('\n')) return null;
         const next = at < 0 ? sent.length - 1 : at - 1;
         return next >= 0 ? { at: next, text: sent[next] } : null;
     }
     if (event.key === 'ArrowDown') {
-        if (at < 0 || value.slice(box.selectionEnd).includes('\n')) return null;
+        if (at < 0 || (!browsing && value.slice(box.selectionEnd).includes('\n'))) return null;
         return at + 1 < sent.length ? { at: at + 1, text: sent[at + 1] } : { at: -1, text: '' };
     }
     return null;

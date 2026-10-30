@@ -209,4 +209,9 @@ test('the box: ↑ on its first line brings back the messages sent before, ↓ o
     assert.equal(recalled(key('ArrowUp', { shiftKey: true }), box(''), -1, sent), null);
     assert.equal(recalled(key('ArrowUp'), { value: 'abc', selectionStart: 0, selectionEnd: 2 }, -1, sent), null, 'a selection is left alone');
     assert.equal(recalled(key('ArrowUp'), box(''), -1, []), null);
+    /* A message of several lines brought back, unchanged: the arrows go on through the messages. */
+    const long = ['one', 'a\nb\nc', 'last'];
+    assert.deepEqual(recalled(key('ArrowUp'), box('a\nb\nc'), 1, long), { at: 0, text: 'one' }, 'caret on its last line');
+    assert.deepEqual(recalled(key('ArrowDown'), box('a\nb\nc', 0), 1, long), { at: 2, text: 'last' }, 'caret on its first line');
+    assert.equal(recalled(key('ArrowUp'), box('a\nb\nc changed'), 1, long), null, 'changed: the caret\'s again');
 });
