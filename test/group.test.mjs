@@ -69,7 +69,7 @@ test('MCP: ask takes questions, five at most, each described; the guidance says 
     const qs = ask.inputSchema.properties.questions;
     assert.equal(qs.type, 'array');
     assert.equal(qs.maxItems, GROUP_MAX);
-    assert.deepEqual(Object.keys(qs.items.properties), ['id', 'label', 'question', 'choices', 'many', 'input']);
+    assert.deepEqual(Object.keys(qs.items.properties), ['id', 'label', 'question', 'choices', 'many', 'recommended', 'input']);
     assert.deepEqual(qs.items.required, ['question']);
     assert.ok(ask.description.includes(GROUPING));
     assert.match(GROUPING, /5 questions at most, never more/);

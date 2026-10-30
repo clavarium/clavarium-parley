@@ -817,3 +817,15 @@ mark.parley-found[data-now="true"] { outline: 2px solid var(--parley-ask); }
 .parley-input-table td input:focus { outline: 2px solid var(--parley-action); outline-offset: -2px; }
 .parley-input input[type=date], .parley-input input[type=time], .parley-input input[type=datetime-local] { font: inherit; padding: .4em .6em; border-radius: 10px; border: 1px solid var(--parley-line); background: var(--parley-bg); color: var(--parley-text); max-width: 16em; }
 .parley-reply-to.parley-other { font-size: .9em; margin-top: .25em; }
+
+/* ---- what the agent recommends, and the reply it suggests (#198) ---- */
+.parley-recommended { display: inline-flex; align-items: center; margin-left: .45em; padding: .05em .5em; border-radius: 999px; font-size: .72em; font-weight: 650; letter-spacing: .01em; color: var(--parley-action); background: color-mix(in srgb, var(--parley-action) 12%, transparent); white-space: nowrap; vertical-align: .1em; }
+.parley [data-recommended="true"] { border-color: color-mix(in srgb, var(--parley-action) 60%, var(--parley-line)); }
+.parley-input > .parley-recommended { align-self: flex-start; margin: 0 0 .35em; }
+.parley .parley-suggest { display: flex; align-items: center; gap: .55em; width: 100%; max-width: var(--parley-column); margin-inline: auto; box-sizing: border-box; min-height: 0; padding: .45em .8em; border: 1px dashed color-mix(in srgb, var(--parley-action) 45%, var(--parley-line)); border-radius: 14px; background: color-mix(in srgb, var(--parley-action) 5%, var(--parley-bg)); color: var(--parley-text); text-align: left; cursor: pointer; }
+.parley .parley-suggest[hidden] { display: none; }
+.parley .parley-suggest:hover { background: color-mix(in srgb, var(--parley-action) 10%, var(--parley-bg)); }
+.parley-suggest-label { flex: none; font-size: .78em; font-weight: 650; color: var(--parley-action); }
+.parley-suggest-text { flex: 1; min-width: 0; color: var(--parley-dim); font-style: italic; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; white-space: pre-line; }
+.parley-suggest-key { flex: none; font: 600 .72em/1 ui-monospace, monospace; padding: .2em .4em; border: 1px solid var(--parley-line); border-radius: 5px; color: var(--parley-dim); }
+@media (pointer: coarse) { .parley-suggest-key { display: none; } }

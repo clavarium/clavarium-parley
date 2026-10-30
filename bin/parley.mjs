@@ -63,11 +63,17 @@ export const HELP = `parley: talk with the person you work for. They read and an
   parley ask [--short "title"] [--pick-many] "question" [--choice "answer" ...]
                                        ask them something; give the answers they can pick when you can,
                                        each with --choice (the question first; "-" for the question
-                                       read from standard input); --pick-many: they may tick several
+                                       read from standard input); --pick-many: they may tick several;
+                                       --recommend "answer": the choice you recommend, only when you do
+                                       (marked Recommended on their screen; they decide)
+  --suggest "reply"                    with tell or ask, only when you would answer in their place:
+                                       the reply you suggest, greyed in their box, theirs with Tab or a touch
   parley ask [--short "title"] --group - <<'EOF' ... EOF
                                        (a question may carry an "input" selector instead of choices:
                                        slider, range, scale, stars, number, rank, split, table, date,
-                                       time, datetime, text, yesno; "steps": true for long ones)
+                                       time, datetime, text, yesno; "steps": true for long ones;
+                                       "recommended": the choice you recommend, or in "input" the value
+                                       its selector starts at)
                                        several questions at once, one card, one Send: JSON on standard
                                        input, {"question": "intro, optional", "questions": [{"id",
                                        "label", "question", "choices"?, "many"?}]}, ${GROUP_MAX} at most
@@ -166,7 +172,7 @@ export function showing(words, cwd = process.cwd()) {
 
 /* The options of each verb ("=": it takes a value). */
 const OPTIONS = {
-    read: ['--last=', '--days=', '--before=', '--all'], tell: ['--short='], ask: ['--short=', '--pick-many', '--group', '--choice='],
+    read: ['--last=', '--days=', '--before=', '--all'], tell: ['--short=', '--suggest='], ask: ['--short=', '--pick-many', '--group', '--choice=', '--recommend=', '--suggest='],
     show: [], close: [], doing: [], status: [], forget: [],
 };
 
@@ -241,6 +247,16 @@ export function run(argv, { env = process.env, cwd = process.cwd(), stdin = () =
             const at2 = rest.indexOf('--short');
             let short;
             if (at2 >= 0) { short = rest[at2 + 1]; if (short === undefined) return { code: 64, out: '', err: '--short needs a title.\n' }; rest.splice(at2, 2); }
+            /* --suggest "reply", anywhere: the answer it would give in their place (#198). */
+            const at3 = rest.indexOf('--suggest');
+            let suggest;
+            if (at3 >= 0) { suggest = rest[at3 + 1]; if (suggest === undefined) return { code: 64, out: '', err: '--suggest needs the reply you suggest.\n' }; rest.splice(at3, 2); }
+            /* --recommend "choice", once each, anywhere: what it recommends among its choices. */
+            const recommend = [];
+            for (let i = rest.indexOf('--recommend'); verb === 'ask' && i >= 0; i = rest.indexOf('--recommend')) {
+                if (rest[i + 1] === undefined) return { code: 64, out: '', err: '--recommend needs one of the choices.\n' };
+                recommend.push(rest[i + 1]); rest.splice(i, 2);
+            }
             /* --pick-many, anywhere: several of its choices may be ticked. */
             const many = verb === 'ask' && rest.includes('--pick-many');
             if (many) rest.splice(rest.indexOf('--pick-many'), 1);
@@ -253,11 +269,11 @@ export function run(argv, { env = process.env, cwd = process.cwd(), stdin = () =
                 const asked = Array.isArray(given) ? { questions: given } : given && typeof given === 'object' ? given : {};
                 /* One question with a selector: {"question", "input"}; several: {"questions": [...], "steps"?}. */
                 said = asked.input !== undefined && asked.questions === undefined
-                    ? verbs.ask(asked.question ?? '', undefined, { short: short ?? asked.short, input: asked.input })
+                    ? verbs.ask(asked.question ?? '', undefined, { short: short ?? asked.short, input: asked.input, recommended: asked.recommended, suggest: suggest ?? asked.suggest })
                     : verbs.ask(asked.question ?? asked.intro ?? '', undefined, { short: short ?? asked.short, questions: asked.questions ?? null, steps: asked.steps === true });
                 return { code: 0, out: `${said}\n`, err: '' };
             }
-            if (verb === 'tell') said = verbs.tell(text(rest.join(' ')), { short });
+            if (verb === 'tell') said = verbs.tell(text(rest.join(' ')), { short, suggest });
             else {
                 /* Its answers: --choice "...", once each, anywhere; or, as before, the words after the question. */
                 const choices = [];
@@ -271,7 +287,7 @@ export function run(argv, { env = process.env, cwd = process.cwd(), stdin = () =
                 if (rest.slice(1).includes('-')) return { code: 64, out: '', err: 'The question comes first, then its answers: parley ask [--short "title"] "question" (or -) [--choice "answer" ...].\n' };
                 const question = rest[0] === undefined ? '' : text(rest[0]);
                 if (!String(question).trim()) return { code: 64, out: '', err: 'A question needs its text: parley ask "question" [--choice "answer" ...].\n' };
-                said = verbs.ask(question, [...rest.slice(1), ...choices], { short, many });
+                said = verbs.ask(question, [...rest.slice(1), ...choices], { short, many, ...(recommend.length ? { recommended: many ? recommend : recommend[0] } : {}), suggest });
             }
         }
         else if (verb === 'close') said = verbs.close(rest[0], text(rest.slice(1).join(' ')));

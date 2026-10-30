@@ -333,6 +333,10 @@ function inputKept(x) {
     if (Array.isArray(x.value)) out.value = x.value.slice(0, 2).map(n).filter((v) => v !== undefined);
     else if (typeof x.value === 'number') out.value = n(x.value);
     else if (typeof x.value === 'string') out.value = w(x.value, 30);
+    /* What the agent recommends (#198): a number, [a, b], yes or no, or (rank) true -- its items are in that order. */
+    if (typeof x.recommended === 'number') out.recommended = n(x.recommended);
+    else if (Array.isArray(x.recommended)) out.recommended = x.recommended.slice(0, 2).map(n).filter((v) => v !== undefined);
+    else if (x.recommended === 'yes' || x.recommended === 'no' || x.recommended === true) out.recommended = x.recommended;
     if (x.kind === 'table' && Array.isArray(x.values)) out.values = x.values.slice(0, 8).map((r) => (Array.isArray(r) ? r.slice(0, 6).map((c) => w(c ?? '', 60) ?? '') : []));
     return Object.fromEntries(Object.entries(out).filter(([, v]) => v !== undefined && !(Array.isArray(v) && !v.length && v !== out.values)));
 }
@@ -365,13 +369,17 @@ export class Parley {
         if ((kind === 'say' || kind === 'ask') && typeof m.short === 'string' && oneLine(m.short, SHORT_KEPT)) entry.short = oneLine(m.short, SHORT_KEPT);
         /* Several of its choices may be ticked, sent together. */
         if (kind === 'ask' && m.many === true && entry.choices.length > 1) entry.many = true;
+        /* What it recommends among its choices, and the reply it would give in their place (#198). */
+        if (kind === 'ask' && Array.isArray(m.recommended)) { const r = m.recommended.map((x) => oneLine(x, 200)).filter((x) => entry.choices.includes(x)); if (r.length) entry.recommended = r; }
+        if ((kind === 'say' || kind === 'ask') && typeof m.suggest === 'string' && clean(m.suggest).trim()) entry.suggest = clean(m.suggest).slice(0, 1000).trim();
         /* Several questions at once, one card: each well formed, ids unique; fewer than two, none (the text says them). */
         if (kind === 'ask' && Array.isArray(m.questions)) {
             const ids = new Set();
             const list = m.questions.slice(0, GROUP_MAX).filter((q) => q && typeof q === 'object' && typeof q.id === 'string' && GROUP_ID.test(q.id) && !ids.has(q.id) && ids.add(q.id)).map((q) => {
                 const choices = Array.isArray(q.choices) ? q.choices.slice(0, 8).map((x) => oneLine(x, 200)).filter(Boolean) : [];
                 const input = inputKept(q.input);
-                return { id: q.id, label: oneLine(q.label, 40), question: clean(q.question).slice(0, 1000).trim(), choices, ...(q.many === true && choices.length > 1 ? { many: true } : {}), ...(input && !choices.length ? { input } : {}) };
+                const recommended = Array.isArray(q.recommended) ? q.recommended.map((x) => oneLine(x, 200)).filter((x) => choices.includes(x)) : [];
+                return { id: q.id, label: oneLine(q.label, 40), question: clean(q.question).slice(0, 1000).trim(), choices, ...(q.many === true && choices.length > 1 ? { many: true } : {}), ...(recommended.length ? { recommended } : {}), ...(input && !choices.length ? { input } : {}) };
             }).filter((q) => q.question);
             /* Two questions or more; or one alone with its selector (#195). */
             if (list.length > 1 || (list.length === 1 && list[0].input)) { entry.questions = list; entry.choices = []; if (m.steps === true) entry.steps = true; if (typeof m.intro === 'string' && clean(m.intro).trim()) entry.intro = clean(m.intro).slice(0, 2000).trim(); }

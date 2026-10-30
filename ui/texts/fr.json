@@ -182,5 +182,10 @@
   "series-left": "Il reste {count} réponse(s)",
   "rank-up": "Monter",
   "rank-down": "Descendre",
-  "split-total": "Total {total}"
+  "split-total": "Total {total}",
+  "recommended": "Recommandé",
+  "recommended-value": "Recommandé : {value}",
+  "recommended-order": "Ordre recommandé",
+  "suggestion": "Suggestion",
+  "suggest-take": "Reprendre cette réponse (Tab)"
 }

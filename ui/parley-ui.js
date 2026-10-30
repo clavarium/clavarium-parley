@@ -237,6 +237,7 @@ export const VIEWS = Object.freeze(['simple', 'detailed']);
 export const KEYS = Object.freeze(['send', 'placeholder', 'empty', 'view', 'simple', 'detailed', 'working', 'waiting', 'done', 'no-status', 'asks', 'open', 'outside',
     'not-read', 'read', 'remind', 'reminded', 'steps', 'no-steps', 'files', 'no-files', 'terminal', 'not-sent', 'step-one', 'steps-many', 'today', 'yesterday', 'quiet', 'stopped',
     'mic', 'mic-stop', 'auto-send', 'auto-on', 'settings', 'voice-placeholder', 'voice-calibrating', 'voice-listening', 'voice-hearing', 'voice-transcribing', 'voice-wait', 'voice-off', 'replies', 'replies-more', 'replies-less',
+    'recommended', 'recommended-value', 'recommended-order', 'suggestion', 'suggest-take',
     'attach', 'remove-file', 'sending-files', 'attach-where', 'draw-open', 'draw-again', 'drawn-from', 'draw-marked', 'draw-colour', 'draw-undo', 'draw-clear', 'draw-cancel', 'draw-done', 'draw-note', 'draw-hint',
     'copy', 'copied', 'see-details', 'see-more', 'see-less', 'note', 'tip', 'important', 'warning', 'caution', 'badge-ok', 'badge-todo', 'badge-blocked', 'badge-warn',
     'waits-you', 'waits-you-note', 'busy', 'pulse', 'state-sent', 'state-read', 'state-working', 'state-done', 'sent-at', 'read-at', 'done-at',
@@ -674,9 +675,11 @@ export function view(data, { words = {}, view: as = 'simple', now = Date.now(), 
             choices: m.kind === 'ask' && !answered.has(m.id) ? (m.choices ?? []).map(String) : [],
             /* Several of its choices may be ticked, then sent together. */
             many: m.kind === 'ask' && m.many === true && Array.isArray(m.choices) && m.choices.length > 1,
+            /* What the agent recommends among its choices (#198): marked, never picked for them. */
+            recommended: m.kind === 'ask' && Array.isArray(m.recommended) ? m.recommended.map(String).filter((x) => (m.choices ?? []).includes(x)) : [],
             /* Several questions asked together, while not answered: one card, a step each. */
             questions: m.kind === 'ask' && !answered.has(m.id) && Array.isArray(m.questions) ? m.questions.filter((q) => q && typeof q.id === 'string' && typeof q.question === 'string' && q.question.trim()).slice(0, GROUP_MAX)
-                .map((q) => ({ id: q.id, label: cut(String(q.label ?? ''), 40), question: q.question, choices: (Array.isArray(q.choices) ? q.choices : []).map(String).slice(0, 8), many: q.many === true && Array.isArray(q.choices) && q.choices.length > 1, ...(q.input && typeof q.input === 'object' && typeof q.input.kind === 'string' ? { input: q.input } : {}) })) : [],
+                .map((q) => ({ id: q.id, label: cut(String(q.label ?? ''), 40), question: q.question, choices: (Array.isArray(q.choices) ? q.choices : []).map(String).slice(0, 8), many: q.many === true && Array.isArray(q.choices) && q.choices.length > 1, recommended: Array.isArray(q.recommended) ? q.recommended.map(String) : [], ...(q.input && typeof q.input === 'object' && typeof q.input.kind === 'string' ? { input: q.input } : {}) })) : [],
             /* Long questions: one at a time, with tabs (#195); else all on one card. */
             steps: m.steps === true,
             open,
@@ -2243,7 +2246,10 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
     /* What floats over the chat first; then the chat, top to bottom. */
     /* The box and what goes with it: apart from the thread, by a line and some room. */
     const composer = el('div', 'parley-composer');
-    composer.append(quickRow, replyRow, form, countEl, problem);
+    /* THE REPLY THE AGENT SUGGESTS (#198), while their box is empty: one click, one touch or Tab makes it theirs. */
+    const suggestRow = el('button', 'parley-suggest'); suggestRow.type = 'button'; suggestRow.hidden = true;
+    let suggestion = '';
+    composer.append(quickRow, replyRow, suggestRow, form, countEl, problem);
     const reacting = reactionPicker();
     const shelf = mediaShelf();
     root.replaceChildren(zoom.box, drawer.box, shelf.box, reacting.box, dropZone, top, finder, main, panelBox, composer);
@@ -2329,6 +2335,15 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
         const x = q.input;
         const box = el('div', `parley-input parley-input-${x.kind}`);
         const valueOut = el('span', 'parley-input-value');
+        /* What the agent recommends (#198): where it starts, and said above it whatever is chosen then. */
+        if (x.recommended !== undefined && a.value === undefined) {
+            if (x.kind === 'yesno') a.value = x.recommended === 'yes';
+            else if (x.kind === 'scale' || x.kind === 'stars') a.value = x.recommended;
+        }
+        if (x.recommended !== undefined) {
+            const r = x.kind === 'rank' ? null : inputAnswer(q, { value: x.kind === 'yesno' ? x.recommended === 'yes' : x.recommended });
+            box.append(el('span', 'parley-recommended', r ? said(words, 'recommended-value', { value: r.text }) : said(words, 'recommended-order')));
+        }
         const say2 = () => { const r = inputAnswer(q, a); valueOut.textContent = r ? r.text : ''; changed(); };
         const ends = (lo, hi) => { const e = el('div', 'parley-input-ends'); e.append(el('span', '', lo), valueOut, el('span', '', hi)); return e; };
         const pct = (v) => `${((v - x.min) / (x.max - x.min)) * 100}%`;
@@ -2452,11 +2467,17 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
     }
     /* QUESTIONS ON ONE CARD (#195), the default: each with its control -- choices, a selector, or
        its own words -- one under the other, one Send once all are answered. */
+    /* A choice the agent recommends (#198): a small "Recommended" on it, its words unchanged. */
+    function recommend(b) {
+        b.dataset.recommended = 'true';
+        b.append(el('span', 'parley-recommended', said(words, 'recommended')));
+    }
     function seriesCard(item) {
         const qs = item.questions;
         const d = draftOf(item.id);
         const card = el('div', 'parley-questions parley-series'); card.dataset.draft = item.id;
-        const slot = (q) => { if (!d.answers.has(q.id)) d.answers.set(q.id, { picked: [], own: !q.input && q.choices.length === 0, text: '' }); return d.answers.get(q.id); };
+        /* A card just drawn starts on what the agent recommends (#198): marked, and theirs to change. */
+        const slot = (q) => { if (!d.answers.has(q.id)) d.answers.set(q.id, { picked: q.choices.length ? [...(q.recommended ?? [])] : [], own: !q.input && q.choices.length === 0, text: '' }); return d.answers.get(q.id); };
         const answerOf = (q) => { const a = slot(q); if (q.input) return inputAnswer(q, a); if (a.own) return a.text.trim() ? { text: a.text.trim() } : null; const picked = q.choices.filter((c) => a.picked.includes(c)); return picked.length ? { picked } : null; };
         const sendBtn = button(said(words, qs.length > 1 ? 'series-send' : 'series-send-one'), 'parley-questions-send', () => {
             const all = qs.map(answerOf);
@@ -2480,8 +2501,10 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
             } else if (q.choices.length) {
                 const chips = el('div', 'parley-pickrow');
                 for (const c of q.choices) {
-                    const b = button(c, '', () => { a.own = false; a.picked = q.many ? (a.picked.includes(c) ? a.picked.filter((y) => y !== c) : [...a.picked, c]) : [c]; for (const y of chips.children) y.setAttribute('aria-pressed', String(a.picked.includes(y.textContent))); check(); });
+                    const b = button(c, '', () => { a.own = false; a.picked = q.many ? (a.picked.includes(c) ? a.picked.filter((y) => y !== c) : [...a.picked, c]) : [c]; for (const y of chips.children) y.setAttribute('aria-pressed', String(a.picked.includes(y.dataset.choice))); check(); });
+                    b.dataset.choice = c;
                     b.setAttribute('aria-pressed', String(a.picked.includes(c)));
+                    if (q.recommended.includes(c)) recommend(b);
                     chips.append(b);
                 }
                 row.append(chips);
@@ -2546,6 +2569,7 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
                         const b = el('button', 'parley-pick'); b.type = 'button'; b.setAttribute('role', 'checkbox'); b.setAttribute('aria-checked', String(!a.own && a.picked.includes(c)));
                         const mark = el('span', 'parley-pick-box'); mark.setAttribute('aria-hidden', 'true'); mark.append(icon('check', 'parley-sign'));
                         b.append(mark, el('span', 'parley-pick-text', c));
+                        if (q.recommended.includes(c)) recommend(b);
                         b.addEventListener('click', () => { if (a.own) { a.own = false; a.picked = []; } a.picked = a.picked.includes(c) ? a.picked.filter((x) => x !== c) : [...a.picked, c]; paint2(); });
                         picks.append(b);
                     }
@@ -2557,6 +2581,7 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
                         const on = !a.own && a.picked.includes(c);
                         b.setAttribute('aria-pressed', String(on));
                         if (on) b.replaceChildren(icon('check', 'parley-sign'), c);
+                        if (q.recommended.includes(c)) recommend(b);
                         row.append(b);
                     }
                     parts.push(row);
@@ -2839,6 +2864,7 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
                 const b = el('button', 'parley-pick'); b.type = 'button'; b.setAttribute('role', 'checkbox'); b.setAttribute('aria-checked', String(ticked.has(choice)));
                 const mark = el('span', 'parley-pick-box'); mark.setAttribute('aria-hidden', 'true'); mark.append(icon('check', 'parley-sign'));
                 b.append(mark, el('span', 'parley-pick-text', choice));
+                if (item.recommended.includes(choice)) recommend(b);
                 b.addEventListener('click', () => {
                     if (ticked.has(choice)) ticked.delete(choice); else ticked.add(choice);
                     b.setAttribute('aria-checked', String(ticked.has(choice)));
@@ -2852,7 +2878,11 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
             bubble.append(item.steps ? groupCard(item) : seriesCard(item));
         } else if (item.choices.length > 0) {
             const choices = el('div', 'parley-choices');
-            for (const choice of item.choices) choices.append(button(choice, '', () => { for (const x of choices.children) x.disabled = true; void say(choice, item.id); }));
+            for (const choice of item.choices) {
+                const b = button(choice, '', () => { for (const x of choices.children) x.disabled = true; void say(choice, item.id); });
+                if (item.recommended.includes(choice)) recommend(b);
+                choices.append(b);
+            }
             bubble.append(choices);
         }
         /* A question: answered by what is typed, once Reply is pressed; under choices, a quiet
@@ -3103,6 +3133,7 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
     function paint(data) {
         latest = data;
         paintQuick();
+        paintSuggest();
         const v = view(data, { words, view: as, locale, agentName, agentTool, receivedAfter, noAnswerAfter });
         paintReply(v);
         const small = narrow();
@@ -3584,7 +3615,7 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
         mic.title = auto ? `${label} - ${said(words, 'auto-on')}` : label; mic.setAttribute('aria-label', mic.title);
         autoButton.setAttribute('aria-pressed', String(auto));
         field.dataset.voice = form.dataset.voice = on ? hearing || 'listening' : '';
-        paintGo();
+        paintGo(); paintSuggest();
         box.placeholder = said(words, on ? 'voice-placeholder' : 'placeholder');
         if (on) tell(hearing || 'listening', writing ? said(words, 'voice-wait') : said(words, `voice-${hearing || 'listening'}`));
         else if (!hush) { heard.hidden = true; heard.dataset.state = ''; heardSaid.textContent = ''; }
@@ -3660,10 +3691,29 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
        last line comes back down to what was being written (as in a terminal) ---- */
     let recallAt = -1;
     let recallDraft = '';
-    const recallTo = (text) => { box.value = text; box.selectionStart = box.selectionEnd = text.length; box.dispatchEvent(new Event('input', { bubbles: true })); };
-    box.addEventListener('input', (event) => { if (event.isTrusted) recallAt = -1; });
+    const recallTo = (text) => { box.value = text; box.selectionStart = box.selectionEnd = text.length; grow(); paintSuggest(); };
+    box.addEventListener('input', (event) => { if (event.isTrusted) recallAt = -1; paintSuggest(); });
+    /* The newest reply the agent suggested, if nothing was written to it since. */
+    function paintSuggest() {
+        const all = Array.isArray(latest?.messages) ? latest.messages : [];
+        let offer = '';
+        for (let i = all.length - 1; i >= 0; i--) {
+            const m = all[i];
+            if (!m || m.from === 'person') break;
+            if (m.from === 'agent' && typeof m.suggest === 'string' && m.suggest.trim()) { offer = m.suggest.trim(); break; }
+        }
+        suggestion = offer;
+        const show = Boolean(offer) && !box.value && !stopping && Boolean(send);
+        if (suggestRow.hidden === !show && suggestRow.dataset.text === offer) return;
+        suggestRow.hidden = !show; suggestRow.dataset.text = offer;
+        suggestRow.replaceChildren(el('span', 'parley-suggest-label', said(words, 'suggestion')), el('span', 'parley-suggest-text', offer), el('kbd', 'parley-suggest-key', 'Tab'));
+        suggestRow.title = said(words, 'suggest-take'); suggestRow.setAttribute('aria-label', `${said(words, 'suggestion')} : ${offer}. ${said(words, 'suggest-take')}`);
+    }
+    const takeSuggestion = () => { if (!suggestion) return; recallTo(suggestion); focusBox(); };
+    suggestRow.addEventListener('click', takeSuggestion);
     box.addEventListener('keydown', (event) => {
         if (sends(event, enter, keyboard)) { event.preventDefault(); recallAt = -1; form.requestSubmit(); return; }
+        if (event.key === 'Tab' && !event.shiftKey && !box.value && suggestion && !suggestRow.hidden) { event.preventDefault(); takeSuggestion(); return; }
         const r = recalled(event, box, recallAt, (latest?.messages ?? []).filter((m) => m && m.from === 'person' && typeof m.text === 'string' && m.text.trim()).map((m) => m.text));
         if (!r) return;
         event.preventDefault();
