@@ -303,6 +303,8 @@ export const LEVELS = Object.freeze(['needs-you', 'news', 'trace']);
 export const ALERTS = Object.freeze(['note', 'tip', 'important', 'warning', 'caution']);
 export const BADGES = Object.freeze(['ok', 'todo', 'blocked', 'warn']);
 const PICTURE = /\.(png|jpe?g|gif|webp)$/i;
+/* A sound shown or attached: played in the thread, as a picture is shown (the application serves it by the same address). */
+const SOUND = /\.(wav|mp3|ogg|oga|opus|m4a)$/i;
 /* A file's name as a title, when it was given none: no extension, no dashes. */
 export const titleOf = (name) => { const t = String(name ?? '').split('/').pop().replace(/\.[a-z0-9]{1,8}$/i, '').replace(/[-_.]+/g, ' ').replace(/\s+/g, ' ').trim(); return t ? t[0].toUpperCase() + t.slice(1) : String(name ?? ''); };
 
@@ -1961,6 +1963,15 @@ const fileGlyph = (name) => { const holder = el('span', 'parley-card-icon'); hol
 const kindLine = (name, size) => el('span', 'parley-size', [extOf(name), size].filter(Boolean).join(' · '));
 /* A file, as one card: its kind's icon, its name, its kind and size. One that can be opened IS the button:
    a tap anywhere on it opens it, no "Open" beside it to aim for. */
+/* A player for a sound file: the browser's own, the file's card above it to open or download it. */
+function soundView(f, url, words, open, size) {
+    const box = el('div', 'parley-sound');
+    box.append(card(f, words, open, size));
+    const audio = el('audio', 'parley-audio'); audio.controls = true; audio.preload = 'metadata'; audio.src = url;
+    box.append(audio);
+    return box;
+}
+
 function card(file, words, open, size, title) {
     const opens = Boolean(open && file.open !== null);
     const c = opens ? button('', 'parley-card parley-open', () => open(file)) : el('span', 'parley-card');
@@ -2825,6 +2836,7 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
         else if (item.text) { const p = el('p', 'parley-text'); textWithSecrets(item.text, p, words, liveSecrets, forget); bubble.append(p); }
         if (item.file) {
             if (item.file.open !== null && item.file.picture && pictureUrl(item.file)) bubble.append(fileView(item.file));
+            else if (item.file.open !== null && SOUND.test(item.file.name) && pictureUrl(item.file)) bubble.append(soundView(item.file, pictureUrl(item.file), words, open));
             else {
                 const row2 = el('div', 'parley-file');
                 row2.append(card({ ...item.file, name: item.file.name }, words, open));
@@ -2840,6 +2852,7 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
                 const url = f.picture && f.open !== null ? pictureUrl(f) : null;
                 const cell = el('figure', 'parley-gallery-item');
                 if (url) cell.append(painter({ words, refs: new Map(), open, cache, urls, zoom: zoomFrom }).thumb(f, url, f.title));
+                else if (f.open !== null && SOUND.test(f.name) && pictureUrl(f)) cell.append(soundView(f, pictureUrl(f), words, open));
                 else { cell.append(card(f, words, open, '', f.title)); }
                 if (f.shown) cell.append(el('span', 'parley-path', f.shown));
                 gallery.append(cell);
@@ -2853,6 +2866,8 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
                 const url = f.picture && f.open !== null ? pictureUrl(f) : null;
                 /* What they wrote about this file alone, under it. */
                 if (url) { const v = fileView(f); if (f.note) { const fig = el('figure', 'parley-noted'); fig.append(v, el('figcaption', 'parley-file-note', f.note)); pictures.append(fig); } else pictures.append(v); continue; }
+                const sound = f.open !== null && SOUND.test(f.name) ? pictureUrl(f) : null;
+                if (sound) { bubble.append(soundView(f, sound, words, open, f.size)); continue; }
                 const row2 = el('div', 'parley-file'); row2.dataset.attached = 'true';
                 row2.append(card(f, words, open, f.size));
                 if (f.shown) row2.append(el('span', 'parley-path', f.shown));
