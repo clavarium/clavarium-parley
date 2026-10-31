@@ -215,3 +215,12 @@ test('the box: ↑ on its first line brings back the messages sent before, ↓ o
     assert.deepEqual(recalled(key('ArrowDown'), box('a\nb\nc', 0), 1, long), { at: 2, text: 'last' }, 'caret on its first line');
     assert.equal(recalled(key('ArrowUp'), box('a\nb\nc changed'), 1, long), null, 'changed: the caret\'s again');
 });
+
+test('a long text pasted becomes a file: past PASTE_CHARS characters or PASTE_LINES lines', async () => {
+    const { longPaste, pastedTextName, PASTE_CHARS, PASTE_LINES } = await import('../ui/parley-ui.js');
+    assert.equal(longPaste('short'), false);
+    assert.equal(longPaste('x'.repeat(PASTE_CHARS)), true);
+    assert.equal(longPaste(Array(PASTE_LINES).fill('l').join('\n')), true);
+    assert.equal(longPaste(Array(PASTE_LINES - 1).fill('l').join('\n')), false);
+    assert.equal(pastedTextName(new Date(2026, 9, 31, 8, 5, 9)), 'pasted-2026-10-31-080509.txt');
+});

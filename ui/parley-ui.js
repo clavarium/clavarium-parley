@@ -973,6 +973,14 @@ export function recalled(event, box, at, sent) {
     return null;
 }
 
+/* A paste is long enough to become a file: this many characters, or this many lines. */
+export const PASTE_CHARS = 2000;
+export const PASTE_LINES = 40;
+export const longPaste = (text) => typeof text === 'string' && (text.length >= PASTE_CHARS || text.split('\n').length >= PASTE_LINES);
+export function pastedTextName(now = new Date()) {
+    const p = (n) => String(n).padStart(2, '0');
+    return `pasted-${now.getFullYear()}-${p(now.getMonth() + 1)}-${p(now.getDate())}-${p(now.getHours())}${p(now.getMinutes())}${p(now.getSeconds())}.txt`;
+}
 export function pastedName(file, now = new Date()) {
     const name = String(file?.name ?? '');
     if (name && !/^image\.(png|jpe?g|gif|webp)$/i.test(name)) return name;
@@ -3581,7 +3589,15 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
         const data = event.clipboardData;
         const files = [...(data?.files ?? [])];
         if (!files.length) for (const item of data?.items ?? []) if (item.kind === 'file') { const f = item.getAsFile?.(); if (f) files.push(f); }
-        if (!files.length) return;
+        /* A long text pasted becomes a file beside the message, as in the chat apps: the box stays
+           readable, and the agent reads it whole as an attached file. */
+        if (!files.length) {
+            const text = data?.getData?.('text/plain') ?? '';
+            if (!longPaste(text) || typeof File !== 'function') return;
+            event.preventDefault();
+            add([new File([text], pastedTextName(), { type: 'text/plain' })]);
+            return;
+        }
         event.preventDefault();
         add(files.map((f) => { const name = pastedName(f); return name === f.name || typeof File !== 'function' ? f : new File([f], name, { type: f.type }); }));
     });
