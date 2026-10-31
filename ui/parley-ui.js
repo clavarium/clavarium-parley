@@ -246,7 +246,7 @@ export const KEYS = Object.freeze(['send', 'placeholder', 'empty', 'view', 'simp
     'zoom-in', 'zoom-out', 'zoom-actual', 'zoom-fit', 'zoom-actual-short', 'zoom-fit-short', 'close', 'previous', 'next', 'search', 'found', 'newest', 'dictation', 'auto-send-off',
     'react', 'react-remove', 'react-agree', 'react-go', 'react-disagree', 'react-unclear', 'react-stop', 'react-redo', 'react-later', 'react-love',
     'react-agree-hint', 'react-go-hint', 'react-disagree-hint', 'react-unclear-hint', 'react-stop-hint', 'react-redo-hint', 'react-later-hint', 'react-love-hint',
-    'decide', 'media', 'media-pictures', 'media-files', 'media-none', 'see-in-thread', 'done-end', 'done-end-note', 'dictated', 'said-by', 'said-to', 'side-now', 'side-machine', 'side-nothing', 'history-changed',
+    'decide', 'media', 'media-pictures', 'media-files', 'media-none', 'see-in-thread', 'done-end', 'done-end-note', 'dictated', 'said-to', 'side-now', 'side-machine', 'side-nothing', 'history-changed',
     'earlier', 'media-earlier', 'panel', 'panel-show', 'panel-hide', 'panel-empty', 'panel-done', 'panel-not-saved']);
 /* THE REACTIONS offered by default, each with its Lucide icon; their words
    are "react-<id>" (shown under the icon) and "react-<id>-hint" (on hover).
@@ -709,8 +709,9 @@ export function view(data, { words = {}, view: as = 'simple', now = Date.now(), 
     /* Who says it: once above each run of messages of one side. */
     let side = '';
     for (const item of items) {
-        const who = item.from === 'system' ? '' : item.from;
-        item.name = who && who !== side ? (who === 'person' ? said(words, 'you') : agentName2) : '';
+        /* A voice box is a speaker of its own (#215): named by itself, never "You". */
+        const who = item.from === 'system' ? '' : item.by ? `by:${item.by}` : item.from;
+        item.name = who && who !== side ? (item.by ? item.by : who === 'person' ? said(words, 'you') : agentName2) : '';
         side = who;
     }
     /* It waits, its last word a message that is not a question with choices: a
@@ -2941,7 +2942,6 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
             }
         }
         /* Whose words (a voice box) and for whom (#215): a small tab astride its top edge. */
-        if (item.by) { const b = el('span', 'parley-tab parley-by', item.by); b.title = said(words, 'said-by', { name: item.by }); bubble.classList.add('parley-tabbed'); bubble.prepend(b); }
         if (item.toNames?.length) { const t = el('span', 'parley-tab parley-to', `\u2192 ${item.toNames.join(' \u00b7 ')}`); t.title = said(words, 'said-to', { names: item.toNames.join(', ') }); bubble.classList.add('parley-tabbed'); bubble.prepend(t); }
         /* Dictated: a small microphone, said in words to whoever does not see it. */
         if (item.dictated) { const d = el('span', 'parley-dictated'); d.title = said(words, 'dictated'); d.setAttribute('role', 'img'); d.setAttribute('aria-label', d.title); d.append(icon('mic', 'parley-sign')); bubble.append(d); }

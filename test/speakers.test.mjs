@@ -39,6 +39,7 @@ test('a voice box speaks in its own name; the agent answers it by its id, and th
     const rows = view(host.read(), { words: {} });
     const flat = JSON.stringify(rows);
     assert.match(flat, /"by":"Kitchen · Lake house"/);
+    assert.match(flat, /"name":"Kitchen · Lake house"/, "named by itself, not You");
     assert.match(flat, /"toNames":\["Big kitchen · Lake house","Garden"\]/);
 });
 
