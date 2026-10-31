@@ -187,5 +187,7 @@
   "recommended-value": "Recommandé : {value}",
   "recommended-order": "Ordre recommandé",
   "suggestion": "Suggestion",
-  "suggest-take": "Reprendre cette réponse (Tab)"
+  "suggest-take": "Reprendre cette réponse (Tab)",
+  "said-by": "Dit par {name}",
+  "said-to": "Pour {names}"
 }

@@ -59,7 +59,7 @@ export const HELP = `parley: talk with the person you work for. They read and an
   parley read --last 100               the end of the exchange, both sides, oldest first (or --days 2):
                                        to pick up the thread after a restart; it ends with how to read
                                        what came before: parley read --before ID (as far back as needed)
-  parley tell [--short "title"] "text" tell them something: where you are, what you did, what you found
+  parley tell [--short "title"] [--to ID,ID] "text" tell them something; --to: voice boxes that say it aloud
   parley ask [--short "title"] [--pick-many] "question" [--choice "answer" ...]
                                        ask them something; give the answers they can pick when you can,
                                        each with --choice (the question first; "-" for the question
@@ -172,7 +172,7 @@ export function showing(words, cwd = process.cwd()) {
 
 /* The options of each verb ("=": it takes a value). */
 const OPTIONS = {
-    read: ['--last=', '--days=', '--before=', '--all'], tell: ['--short=', '--suggest='], ask: ['--short=', '--pick-many', '--group', '--choice=', '--recommend=', '--suggest='],
+    read: ['--last=', '--days=', '--before=', '--all'], tell: ['--short=', '--suggest=', '--to='], ask: ['--short=', '--pick-many', '--group', '--choice=', '--recommend=', '--suggest='],
     show: [], close: [], doing: [], status: [], forget: [],
 };
 
@@ -273,7 +273,10 @@ export function run(argv, { env = process.env, cwd = process.cwd(), stdin = () =
                     : verbs.ask(asked.question ?? asked.intro ?? '', undefined, { short: short ?? asked.short, questions: asked.questions ?? null, steps: asked.steps === true });
                 return { code: 0, out: `${said}\n`, err: '' };
             }
-            if (verb === 'tell') said = verbs.tell(text(rest.join(' ')), { short, suggest });
+            /* --to ID,ID: voice boxes that say it aloud (#215). */
+            let to;
+            if (verb === 'tell' && rest.includes('--to')) { const i = rest.indexOf('--to'); to = rest[i + 1]; rest.splice(i, 2); if (!to) return { code: 64, out: '', err: '--to needs the ids, comma-separated.\n' }; }
+            if (verb === 'tell') said = verbs.tell(text(rest.join(' ')), { short, suggest, to });
             else {
                 /* Its answers: --choice "...", once each, anywhere; or, as before, the words after the question. */
                 const choices = [];

@@ -174,6 +174,16 @@ that message has scrolled away (or a keyboard took the room), the same
 choices come first above the box, never twice on the screen. Every size is
 in `em` and `rem`: the page's text size is the box's.
 
+## Other speakers: voice boxes
+
+Beside the person, other speakers may talk in the thread: voice boxes in rooms, each `{ id,
+name, place }`, set by the application (`host.setSpeakers(list)`, kept in the folder as
+`speakers.json`). What one hears is said by it (`host.say(text, …, { by })`): the screen shows
+its name on a small tab astride the message, and the agent reads "Message from Kitchen (Lake
+house), a voice box". The agent answers aloud by their ids (`tell` with `to`, or `parley tell
+--to ID,ID`): only the text is said, the screen shows "→ Kitchen · Garden" by their names of the
+moment, and the application hears it in `agent-said` (`message.to`).
+
 ## A panel beside the thread
 
 A list the application keeps -- its tasks, its batches, what the agent may

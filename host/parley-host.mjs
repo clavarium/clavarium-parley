@@ -112,6 +112,15 @@ export function languageName(lang) {
    line of the application's: it is put in double quotes as it is); without
    it, the agent is told Parley is installed. `shared`: the folder
    whose files the person can open. */
+/* Another speaker of the person's side: { id, name, place? }, each one short line (a voice box: its room, and where it is). */
+export const SPEAKERS_FILE = 'speakers.json';
+export const SPEAKERS_MAX = 20;
+export function byOf(v) {
+    if (!v || typeof v !== 'object') return null;
+    const id = oneLine(v.id, 80); const name = oneLine(v.name, 40); const place = oneLine(v.place, 40);
+    return id && name ? { id, name, ...(place ? { place } : {}) } : null;
+}
+
 export function invitation({ lang = 'en', install, shared } = {}) {
     return [
         install ? `Install Parley, a small command to talk with the person you work for on their screen: run "${install}", then read "parley --help".` : 'Parley is installed: run "parley --help". It is how you talk with the person you work for, on their screen.',
@@ -372,6 +381,12 @@ export class Parley {
         /* What it recommends among its choices, and the reply it would give in their place (#198). */
         if (kind === 'ask' && Array.isArray(m.recommended)) { const r = m.recommended.map((x) => oneLine(x, 200)).filter((x) => entry.choices.includes(x)); if (r.length) entry.recommended = r; }
         if ((kind === 'say' || kind === 'ask') && typeof m.suggest === 'string' && clean(m.suggest).trim()) entry.suggest = clean(m.suggest).slice(0, 1000).trim();
+        /* Whom it is for (#215): the ids of those who speak here; shown by their names of the moment. */
+        if ((kind === 'say' || kind === 'ask') && Array.isArray(m.to)) {
+            const names = new Map(this.speakers().map((x) => [x.id, x.place ? `${x.name} \u00b7 ${x.place}` : x.name]));
+            const to = m.to.slice(0, SPEAKERS_MAX).map((x) => oneLine(x, 80)).filter(Boolean);
+            if (to.length) { entry.to = to; entry.toNames = to.map((id) => names.get(id) ?? id); }
+        }
         /* Several questions at once, one card: each well formed, ids unique; fewer than two, none (the text says them). */
         if (kind === 'ask' && Array.isArray(m.questions)) {
             const ids = new Set();
@@ -495,7 +510,7 @@ export class Parley {
             const seen = i < toRaw.length - unread;
             const e = { from: 'person', id: String(m.id ?? ''), at: String(m.at ?? ''), kind: 'say', text: clean(m.text), choices: [], seen, ...(seen && seenAt(i) ? { seenAt: seenAt(i) } : {}),
                 ...(m.answers ? { answers: String(m.answers), question: oneLine(m.question, 300) } : {}), ...(m.answers && Array.isArray(m.picked) ? { picked: m.picked.slice(0, 8).map((x) => oneLine(x, 200)).filter(Boolean) } : {}),
-                ...(m.answers && Array.isArray(m.replies) ? { replies: m.replies.slice(0, GROUP_MAX).filter((r) => r && typeof r === 'object' && typeof r.id === 'string').map((r) => ({ id: oneLine(r.id, 30), ...(oneLine(r.label, 40) ? { label: oneLine(r.label, 40) } : {}), ...(Array.isArray(r.picked) ? { picked: r.picked.slice(0, 8).map((x) => oneLine(x, 200)).filter(Boolean) } : { text: clean(r.text).slice(0, 2000) }) })) } : {}), ...(m.re ? { re: String(m.re), quote: oneLine(m.quote, 300) } : {}), ...(Array.isArray(m.files) && m.files.length ? { files: this.#files(m.files) } : {}), ...(m.via === 'voice' ? { via: 'voice' } : {}), ...(aboutOf(m.about) ? { about: aboutOf(m.about) } : {}) };
+                ...(m.answers && Array.isArray(m.replies) ? { replies: m.replies.slice(0, GROUP_MAX).filter((r) => r && typeof r === 'object' && typeof r.id === 'string').map((r) => ({ id: oneLine(r.id, 30), ...(oneLine(r.label, 40) ? { label: oneLine(r.label, 40) } : {}), ...(Array.isArray(r.picked) ? { picked: r.picked.slice(0, 8).map((x) => oneLine(x, 200)).filter(Boolean) } : { text: clean(r.text).slice(0, 2000) }) })) } : {}), ...(m.re ? { re: String(m.re), quote: oneLine(m.quote, 300) } : {}), ...(Array.isArray(m.files) && m.files.length ? { files: this.#files(m.files) } : {}), ...(m.via === 'voice' ? { via: 'voice' } : {}), ...(aboutOf(m.about) ? { about: aboutOf(m.about) } : {}), ...(byOf(m.by) ? { by: byOf(m.by) } : {}) };
             place.set(e, i);
             person.push(e);
         });
@@ -636,7 +651,20 @@ export class Parley {
        one per line, for an agent that reads the text alone. `about`: what
        they tapped to say it (aboutOf). The application is told (person-wrote),
        and decides how to tell the agent. */
-    say(text, answers, files = [], { via, picked, replies, about } = {}) {
+    /* THOSE WHO SPEAK HERE beside the person (#215): voice boxes, each { id, name }, set by the
+       application. The agent addresses a message to some of them by id (tell --to); a screen
+       shows their names of the moment. Kept in the folder, where the agent reads it too. */
+    speakers() {
+        try { const v = JSON.parse(readFileSync(`${this.#dir}/${SPEAKERS_FILE}`, 'utf8')); return Array.isArray(v) ? v.map(byOf).filter(Boolean).slice(0, SPEAKERS_MAX) : []; } catch { return []; }
+    }
+    setSpeakers(list) {
+        const clean2 = (Array.isArray(list) ? list : []).map(byOf).filter(Boolean).slice(0, SPEAKERS_MAX);
+        if (JSON.stringify(clean2) === JSON.stringify(this.speakers())) return clean2;
+        writeFileSync(`${this.#dir}/${SPEAKERS_FILE}`, `${JSON.stringify(clean2)}\n`);
+        return clean2;
+    }
+
+    say(text, answers, files = [], { via, picked, replies, about, by } = {}) {
         const given = Array.isArray(files) ? files : [];
         if (given.length > FILES_MAX) throw new RangeError(`${FILES_MAX} files at most in one message.`);
         const attached = given.map((f) => ({ path: oneLine(f?.path, 1000), name: oneLine(f?.name, 200), size: Number.isInteger(f?.size) && f.size >= 0 ? f.size : undefined, note: oneLine(f?.note, NOTE_MAX) }));
@@ -678,6 +706,8 @@ export class Parley {
         if (!said && attached.length === 0) throw new RangeError('Write something.');
         const entry = { id: randomUUID(), at: this.#now().toISOString(), text: said };
         if (via === 'voice') entry.via = 'voice';
+        /* Said by another speaker of the person's side (a voice box, #215): its name, its id. */
+        if (byOf(by)) entry.by = byOf(by);
         const tapped = aboutOf(about);
         if (tapped) entry.about = tapped;
         if (attached.length) entry.files = attached.map((f) => ({ path: f.path, name: f.name || f.path.split('/').pop(), ...(f.size === undefined ? {} : { size: f.size }), ...(f.note ? { note: f.note } : {}) }));

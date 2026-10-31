@@ -246,7 +246,7 @@ export const KEYS = Object.freeze(['send', 'placeholder', 'empty', 'view', 'simp
     'zoom-in', 'zoom-out', 'zoom-actual', 'zoom-fit', 'zoom-actual-short', 'zoom-fit-short', 'close', 'previous', 'next', 'search', 'found', 'newest', 'dictation', 'auto-send-off',
     'react', 'react-remove', 'react-agree', 'react-go', 'react-disagree', 'react-unclear', 'react-stop', 'react-redo', 'react-later', 'react-love',
     'react-agree-hint', 'react-go-hint', 'react-disagree-hint', 'react-unclear-hint', 'react-stop-hint', 'react-redo-hint', 'react-later-hint', 'react-love-hint',
-    'decide', 'media', 'media-pictures', 'media-files', 'media-none', 'see-in-thread', 'done-end', 'done-end-note', 'dictated', 'side-now', 'side-machine', 'side-nothing', 'history-changed',
+    'decide', 'media', 'media-pictures', 'media-files', 'media-none', 'see-in-thread', 'done-end', 'done-end-note', 'dictated', 'said-by', 'said-to', 'side-now', 'side-machine', 'side-nothing', 'history-changed',
     'earlier', 'media-earlier', 'panel', 'panel-show', 'panel-hide', 'panel-empty', 'panel-done', 'panel-not-saved']);
 /* THE REACTIONS offered by default, each with its Lucide icon; their words
    are "react-<id>" (shown under the icon) and "react-<id>-hint" (on hover).
@@ -667,6 +667,10 @@ export function view(data, { words = {}, view: as = 'simple', now = Date.now(), 
             last: !person && m.id === newestAgent,
             decide: false,
             dictated: person && m.via === 'voice',
+            /* Said by another speaker of the person's side (a voice box, #215), by its name of the moment. */
+            by: person && m.by && typeof m.by.name === 'string' ? cut(m.by.place ? `${m.by.name} \u00b7 ${m.by.place}` : m.by.name, 80) : '',
+            /* For some of them only: their names of the moment, on a small tab astride the message. */
+            toNames: !person && Array.isArray(m.toNames) ? m.toNames.slice(0, 20).map((x) => cut(String(x), 40)).filter(Boolean) : [],
             tool: detailed && !person && agentTool ? String(agentTool) : '',
             /* What the person attached: by name, opened the application's way; its whole path in the detailed view. */
             files: (person && Array.isArray(m.files) ? m.files : []).slice(0, FILES_MAX).filter((f) => f && typeof f === 'object').map((f) => ({ path: String(f.path ?? ''), name: String(f.name || nameOf(f.path)), open: typeof f.open === 'string' ? f.open : null, shown: detailed ? String(f.path ?? '') : '', size: sizeText(f.size), picture: PICTURE.test(String(f.name || f.path || '')), ...(String(f.note ?? '').trim() ? { note: cut(String(f.note).replace(/\s+/g, ' ').trim(), 500) } : {}) })),
@@ -2936,6 +2940,9 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
                 bubble.append(row2);
             }
         }
+        /* Whose words (a voice box) and for whom (#215): a small tab astride its top edge. */
+        if (item.by) { const b = el('span', 'parley-tab parley-by', item.by); b.title = said(words, 'said-by', { name: item.by }); bubble.classList.add('parley-tabbed'); bubble.prepend(b); }
+        if (item.toNames?.length) { const t = el('span', 'parley-tab parley-to', `\u2192 ${item.toNames.join(' \u00b7 ')}`); t.title = said(words, 'said-to', { names: item.toNames.join(', ') }); bubble.classList.add('parley-tabbed'); bubble.prepend(t); }
         /* Dictated: a small microphone, said in words to whoever does not see it. */
         if (item.dictated) { const d = el('span', 'parley-dictated'); d.title = said(words, 'dictated'); d.setAttribute('role', 'img'); d.setAttribute('aria-label', d.title); d.append(icon('mic', 'parley-sign')); bubble.append(d); }
         if (item.from === 'person' && item.time) bubble.append(time(item.time, item.when));

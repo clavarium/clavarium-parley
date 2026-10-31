@@ -33,7 +33,7 @@ import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import { createInterface } from 'node:readline';
 
-export const VERSION = '0.17.31-next.1';
+export const VERSION = '0.17.32-next.1';
 /* A message may be long: the screen folds it, and shows its short version first. */
 export const TEXT_MAX = 16000;
 /* Its short version: a title of one or two lines. */
@@ -166,6 +166,16 @@ export function bridge(dir, { how = 'run `parley read`', back = (id) => `parley 
     const PULSE = join(dir, 'pulse.json');
     /* Requests to forget a short-lived secret, for the parloir (host) to act on: not part of the thread. */
     const FORGET = join(dir, 'forget.jsonl');
+    /* Those who speak here beside the person (voice boxes, #215), as the application set them. */
+    const speakers = () => { try { const v = JSON.parse(readFileSync(join(dir, 'speakers.json'), 'utf8')); return Array.isArray(v) ? v.filter((x) => x && typeof x.id === 'string' && typeof x.name === 'string').slice(0, 20) : []; } catch { return []; } };
+    const toOf = (to) => {
+        if (to === undefined || to === null || (Array.isArray(to) && to.length === 0)) return undefined;
+        const ids = (Array.isArray(to) ? to : String(to).split(',')).map((x) => String(x).trim()).filter(Boolean);
+        const known = new Map(speakers().map((x) => [x.id, x.name]));
+        const unknown = ids.filter((id) => !known.has(id));
+        if (unknown.length) throw new Error(`no one here has the id ${unknown.join(', ')}; those who do: ${[...known].map(([id, name]) => `${name} (${id})`).join(', ') || 'nobody'}. Nothing was sent.`);
+        return ids;
+    };
     const post = (entry) => {
         mkdirSync(dir, { recursive: true });
         const id = randomUUID();
@@ -347,13 +357,14 @@ export function bridge(dir, { how = 'run `parley read`', back = (id) => `parley 
     };
     return {
         standing,
-        tell(text, { short, suggest } = {}) {
+        tell(text, { short, suggest, to } = {}) {
             const body = whole(text, TEXT_MAX, 'message');
             if (!body.trim()) throw new Error('the text is empty');
             if (short !== undefined) whole(short, SHORT_KEPT, 'short version');
             const offer = suggestOf(suggest);
-            post({ kind: 'say', text: body, ...brief(short), ...(offer ? { suggest: offer } : {}) });
-            return `Posted. They will read it on their screen.${tooLong(short)}${nudge()}`;
+            const ids = toOf(to);
+            post({ kind: 'say', text: body, ...brief(short), ...(offer ? { suggest: offer } : {}), ...(ids ? { to: ids } : {}) });
+            return `Posted. ${ids ? 'It is said aloud where you sent it, and shown on their screen.' : 'They will read it on their screen.'}${tooLong(short)}${nudge()}`;
         },
         /* `many`: several of its choices may be ticked, sent together; a screen
            that does not know it shows them as single choices, which still answer. */
@@ -499,8 +510,11 @@ export function bridge(dir, { how = 'run `parley read`', back = (id) => `parley 
             if (fresh.length === 0) return `No new message.${pending}`;
             /* What they wrote is work: said, so that their screen shows it moving (or still, said so). */
             const next = stale() || (standing()?.state === 'working' ? '' : '\nWhen you start on it, say so: parley doing "what you do"; when you finish: parley status done.');
-            const said = (m) => (m.reaction ? reacted(m) : `${m.answers ? `Answer to your question "${plain(m.question, 200)}": ` : m.re ? `Reply to your message "${plain(m.quote, 200)}"${m.via === 'voice' ? ` (${DICTATED})` : ''}: ` : m.via === 'voice' ? `Message (${DICTATED}): ` : 'Message: '}${m.answers ? answerText(m) : plain(m.text)}${aboutText(m)}${attached(m)}`);
-            return `${fresh.map((m) => `${shownId(m.id) ? `[${shownId(m.id)}] ` : ''}${said(m)}`).join('\n')}${pending}${next}`;
+            const from = (m) => (m.by && typeof m.by.name === 'string' ? `Message from ${plain(m.by.name, 40)}${m.by.place ? ` (${plain(m.by.place, 40)})` : ''}, a voice box (to answer it aloud, tell with to: ["${plain(m.by.id, 80)}"]) (${DICTATED}): ` : null);
+            /* Who may hear an answer, when a voice box spoke: each by its room, its place and its id. */
+            const boxes = () => { const list = speakers(); return list.length ? `\nVoice boxes here (tell with to: their ids; "the kitchen" said from one place means the one there, unless told otherwise): ${list.map((x) => `${x.name}${x.place ? ` · ${x.place}` : ''} (${x.id})`).join(', ')}.` : ''; };
+            const said = (m) => (m.reaction ? reacted(m) : `${from(m) ?? (m.answers ? `Answer to your question "${plain(m.question, 200)}": ` : m.re ? `Reply to your message "${plain(m.quote, 200)}"${m.via === 'voice' ? ` (${DICTATED})` : ''}: ` : m.via === 'voice' ? `Message (${DICTATED}): ` : 'Message: ')}${m.answers ? answerText(m) : plain(m.text)}${aboutText(m)}${attached(m)}`);
+            return `${fresh.map((m) => `${shownId(m.id) ? `[${shownId(m.id)}] ` : ''}${said(m)}`).join('\n')}${fresh.some((m) => m.by) ? boxes() : ''}${pending}${next}`;
         },
     };
 }
@@ -517,7 +531,7 @@ export const ASKING = 'Which form: one choice for a decision; several to tick wh
 export const GROUPING = `Several decisions you need at once: ask them together, as one card (${GROUP_MAX} questions at most, never more); each one choice, several to tick, or free.`;
 export const TOOLS = [
     { name: 'tell', description: `Tell the person you work for something: where you are, what you did, what you found. They read it on their own screen, not in this terminal. It does not wait for an answer. ${WRITING} ${SHORTER} ${RICH}`,
-        inputSchema: { type: 'object', properties: { text: { type: 'string', description: 'What to tell them, in Markdown.' }, short: { type: 'string', description: 'Optional, for a long text: its title, one or two lines.' }, suggest: { type: 'string', description: 'Optional, only when you would answer in their place: the reply you suggest, in their words and language (one to three lines). It is shown greyed in their box; one key (Tab) or one touch makes it theirs, to send or change.' } }, required: ['text'] } },
+        inputSchema: { type: 'object', properties: { text: { type: 'string', description: 'What to tell them, in Markdown.' }, to: { type: 'array', items: { type: 'string' }, description: 'Optional: the ids of voice boxes that say it aloud (a message from one gives its id). The text alone is said: never put their names in it to address them.' }, short: { type: 'string', description: 'Optional, for a long text: its title, one or two lines.' }, suggest: { type: 'string', description: 'Optional, only when you would answer in their place: the reply you suggest, in their words and language (one to three lines). It is shown greyed in their box; one key (Tab) or one touch makes it theirs, to send or change.' } }, required: ['text'] } },
     { name: 'ask', description: `Ask the person you work for a question, instead of asking it in the terminal. It does NOT wait: it posts the question and returns at once. Stop or go on with something else; you will be told in the terminal when a message arrives, then call read. A question they answered another way (a message typed later): close it with close. ${ASKING} Several to tick: many: true. ${GROUPING} Together: questions, instead of question and choices. ${WRITING} ${RICH}`,
         inputSchema: { type: 'object', properties: { question: { type: 'string' }, choices: { type: 'array', items: { type: 'string' }, description: 'Optional: the answers they can pick from.' }, many: { type: 'boolean', description: 'Optional, with two choices or more: they may tick several, sent together; read lists those ticked.' },
             questions: { type: 'array', maxItems: GROUP_MAX, description: `Optional: 2 to ${GROUP_MAX} questions asked together, as one card, answered with one Send; read gives each answer by its id. question is then an optional introduction.`,
@@ -539,7 +553,7 @@ export const TOOLS = [
 export function serve(dir, { input = process.stdin, output = process.stdout } = {}) {
     const verbs = bridge(dir, { how: 'call read', back: (id) => `call read with before: "${id}"` });
     const call = (name, args = {}) => {
-        if (name === 'tell') return verbs.tell(args.text, { short: args.short, suggest: args.suggest });
+        if (name === 'tell') return verbs.tell(args.text, { short: args.short, suggest: args.suggest, to: args.to });
         if (name === 'ask') return verbs.ask(args.question, args.choices, { short: args.short, many: args.many === true, steps: args.steps === true, recommended: args.recommended, suggest: args.suggest, ...(args.input !== undefined ? { input: args.input } : {}), ...(args.questions !== undefined ? { questions: args.questions } : {}) });
         if (name === 'close') return verbs.close(args.id, args.answer);
         if (name === 'show') return verbs.show(Array.isArray(args.files) ? args.files : Array.isArray(args.paths) ? args.paths : args.path, args.note);
