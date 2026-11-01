@@ -671,6 +671,7 @@ export function view(data, { words = {}, view: as = 'simple', now = Date.now(), 
             dictated: person && m.via === 'voice',
             /* Said by another speaker of the person's side (a voice box, #215), by its name of the moment. */
             by: person && m.by && typeof m.by.name === 'string' ? cut(m.by.place ? `${m.by.name} \u00b7 ${m.by.place}` : m.by.name, 80) : '',
+            byWhy: person && m.by && typeof m.by.why === 'string' ? cut(m.by.why, 120) : '',
             /* For some of them only: their names of the moment, on a small tab astride the message. */
             toNames: !person && Array.isArray(m.toNames) ? m.toNames.slice(0, 20).map((x) => cut(String(x), 40)).filter(Boolean) : [],
             tool: detailed && !person && agentTool ? String(agentTool) : '',
@@ -2829,6 +2830,8 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
                 bubble.append(r);
             }
         } else if (item.name) bubble.append(el('p', 'parley-who-person', item.name));
+        /* Why a voice box listened, and what it cut short: small, beside the words (01-11). */
+        if (item.byWhy) bubble.append(el('p', 'parley-by-why', item.byWhy));
         if (item.label) bubble.append(el('p', 'parley-label', item.label));
         if (item.reply) bubble.append(el('p', 'parley-inreply', item.reply));
         if (item.closed) bubble.append(el('p', 'parley-closed', item.closed));

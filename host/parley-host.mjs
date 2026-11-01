@@ -118,7 +118,10 @@ export const SPEAKERS_MAX = 20;
 export function byOf(v) {
     if (!v || typeof v !== 'object') return null;
     const id = oneLine(v.id, 80); const name = oneLine(v.name, 40); const place = oneLine(v.place, 40);
-    return id && name ? { id, name, ...(place ? { place } : {}) } : null;
+    /* Why it listened (a voice box: the wake word and its score, the button, a conversation going on...), and
+       what it cut short: shown beside the message, never in its words (01-11). */
+    const why = oneLine(v.why, 120);
+    return id && name ? { id, name, ...(place ? { place } : {}), ...(why ? { why } : {}) } : null;
 }
 
 export function invitation({ lang = 'en', install, shared } = {}) {

@@ -231,3 +231,9 @@ test('where the browser sizes a field by its content, the box is sized by the st
     assert.equal($('.parley-box-mirror'), null, 'no copy needed');
     assert.match(CSS, /\.parley-box \{[^}]*field-sizing: content/);
 });
+
+test('a voice box says why it listened, beside its words: kept short, shown to the agent', async () => {
+    const { byOf } = await import('../host/parley-host.mjs');
+    assert.deepEqual(byOf({ id: 'b1', name: 'Salon', why: 'mot d\'éveil (93 %) ; a coupé sa propre phrase' }), { id: 'b1', name: 'Salon', why: 'mot d\'éveil (93 %) ; a coupé sa propre phrase' });
+    assert.deepEqual(byOf({ id: 'b1', name: 'Salon', why: '' }), { id: 'b1', name: 'Salon' });
+});

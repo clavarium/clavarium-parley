@@ -838,3 +838,6 @@ mark.parley-found[data-now="true"] { outline: 2px solid var(--parley-ask); }
 /* A sound in the thread: its card, the browser's player under it, as wide as the bubble allows. */
 .parley-sound { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; max-width: 100%; }
 .parley-audio { width: 100%; max-width: 420px; min-width: 0; height: 40px; }
+
+/* Why a voice box listened: one quiet line under its name. */
+.parley-by-why { margin: 0 0 4px; font-size: 0.78em; opacity: 0.7; }

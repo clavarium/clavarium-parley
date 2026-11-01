@@ -33,7 +33,7 @@ import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import { createInterface } from 'node:readline';
 
-export const VERSION = '0.17.34-next.1';
+export const VERSION = '0.17.35-next.1';
 /* A message may be long: the screen folds it, and shows its short version first. */
 export const TEXT_MAX = 16000;
 /* Its short version: a title of one or two lines. */
@@ -510,7 +510,7 @@ export function bridge(dir, { how = 'run `parley read`', back = (id) => `parley 
             if (fresh.length === 0) return `No new message.${pending}`;
             /* What they wrote is work: said, so that their screen shows it moving (or still, said so). */
             const next = stale() || (standing()?.state === 'working' ? '' : '\nWhen you start on it, say so: parley doing "what you do"; when you finish: parley status done.');
-            const from = (m) => (m.by && typeof m.by.name === 'string' ? `Message from ${plain(m.by.name, 40)}${m.by.place ? ` (${plain(m.by.place, 40)})` : ''}, a voice box (to answer it aloud, tell with to: ["${plain(m.by.id, 80)}"]) (${DICTATED}): ` : null);
+            const from = (m) => (m.by && typeof m.by.name === 'string' ? `Message from ${plain(m.by.name, 40)}${m.by.place ? ` (${plain(m.by.place, 40)})` : ''}, a voice box${m.by.why ? ` [${plain(m.by.why, 120)}]` : ''} (to answer it aloud, tell with to: ["${plain(m.by.id, 80)}"]) (${DICTATED}): ` : null);
             /* Who may hear an answer, when a voice box spoke: each by its room, its place and its id. */
             const boxes = () => { const list = speakers(); return list.length ? `\nVoice boxes here (tell with to: their ids; "the kitchen" said from one place means the one there, unless told otherwise): ${list.map((x) => `${x.name}${x.place ? ` · ${x.place}` : ''} (${x.id})`).join(', ')}.` : ''; };
             const said = (m) => (m.reaction ? reacted(m) : `${from(m) ?? (m.answers ? `Answer to your question "${plain(m.question, 200)}": ` : m.re ? `Reply to your message "${plain(m.quote, 200)}"${m.via === 'voice' ? ` (${DICTATED})` : ''}: ` : m.via === 'voice' ? `Message (${DICTATED}): ` : 'Message: ')}${m.answers ? answerText(m) : plain(m.text)}${aboutText(m)}${attached(m)}`);
