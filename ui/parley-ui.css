@@ -601,7 +601,7 @@ mark.parley-found[data-now="true"] { outline: 2px solid var(--parley-ask); }
 @container parley (min-width: 60rem) { .parley[data-view="detailed"] .parley-composer { padding-right: calc(20rem + var(--parley-gap)); } }
 /* A decision it waits for: Go ahead and Disagree under the message, in sight. */
 .parley-decide { display: flex; flex-wrap: wrap; gap: .5em; margin-top: .6em; }
-.parley .parley-decide-choice { display: inline-flex; align-items: center; gap: .45em; min-height: 2.5em; padding: 0 1em; border-radius: 999px; font-weight: 600; background: var(--parley-bg); }
+.parley .parley-decide-choice { display: inline-flex; align-items: center; gap: .45em; min-height: 2.3em; padding: 0 1em; border-radius: 999px; font-weight: 400; border: 1px solid var(--parley-line); background: transparent; }   /* like the choices of a question (02-11) */
 .parley .parley-decide-choice[data-reaction="go"] { border-color: var(--parley-react-go); }
 .parley-decide-choice .parley-sign { width: 1.15em; height: 1.15em; }
 .parley-decide-choice[data-reaction="go"] .parley-sign { color: var(--parley-react-go); }

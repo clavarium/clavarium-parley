@@ -722,7 +722,10 @@ export function view(data, { words = {}, view: as = 'simple', now = Date.now(), 
        the person reacts or writes. */
     const waitsSince = status?.state === 'waiting' ? stamp(status.at) : null;
     const lastTalk = items.filter((x) => x.from !== 'system').at(-1);
+    /* 02-11: only when that last word asks something (it ends with « ? »): under a report, the two buttons
+       came "n'importe quand", and were not understood. */
     if (waitsSince !== null && lastTalk?.from === 'agent' && (lastTalk.kind === 'say' || lastTalk.kind === 'show') && !lastTalk.reaction
+        && /\?\s*$/.test(String(lastTalk.text ?? '').replace(/[»"')\]\s]+$/u, '').trim() + (/\?["»')\]\s]*$/u.test(String(lastTalk.text ?? '')) ? '?' : ''))
         && !all.some((m) => m.from === 'person' && (stamp(m.at) ?? 0) >= waitsSince)) lastTalk.decide = true;
     /* A step, as shown: a state is said with its word, what it does with its own words. */
     const step = (s) => {
@@ -2949,7 +2952,7 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
             if (two.length === 2) {
                 const row2 = el('div', 'parley-decide'); row2.setAttribute('role', 'group'); row2.setAttribute('aria-label', said(words, 'decide'));
                 for (const r of two) {
-                    const b = el('button', 'parley-decide-choice'); b.type = 'button'; b.dataset.reaction = r.id; b.title = `${said(words, `react-${r.id}`)} : ${said(words, `react-${r.id}-hint`)}`;   /* its name on hover: the row shows icons only (02-11) */
+                    const b = el('button', 'parley-decide-choice'); b.type = 'button'; b.dataset.reaction = r.id; b.title = said(words, `react-${r.id}-hint`);
                     b.append(icon(r.icon, 'parley-sign'), el('span', '', said(words, `react-${r.id}`)));
                     b.addEventListener('click', async (event) => {
                         event.stopPropagation();

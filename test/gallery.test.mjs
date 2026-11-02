@@ -214,7 +214,7 @@ test('a short tap of a finger on a message shows its reaction button a while; a 
 });
 
 test('a decision it waits for on a message: Go ahead and Disagree under it, until the person reacts or writes', async (t) => {
-    const said2 = { from: 'agent', id: 'p', at: at(0), kind: 'say', text: 'I propose to merge the branch.' };
+    const said2 = { from: 'agent', id: 'p', at: at(0), kind: 'say', text: 'I propose to merge the branch. Shall I?' };
     const waiting = { state: 'waiting', at: at(1), note: 'your decision' };
     const c = chat(t, { messages: [said2], status: waiting });
     await settle(); await settle();
@@ -260,4 +260,10 @@ test('dictated: what the microphone wrote goes with "via: voice", once', async (
     await settle();
     assert.deepEqual(c.sent.at(-1), ['typed only', undefined], 'a message typed: nothing more');
     void fakeEvent;
+});
+
+test('a report that asks nothing gets no decision buttons under it (02-11)', async (t) => {
+    const c = chat(t, { messages: [{ from: 'agent', id: 'r', at: at(0), kind: 'say', text: 'The beta is out.' }], status: { state: 'waiting', at: at(1) } });
+    await settle(); await settle();
+    assert.equal(c.$('.parley-decide'), null);
 });
