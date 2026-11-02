@@ -804,7 +804,7 @@ export function view(data, { words = {}, view: as = 'simple', now = Date.now(), 
         }
         packed.push(row);
     }
-    for (const row of packed) if (row.type === 'group') { row.text = row.lines.length === 1 ? (row.lines[0].brief || row.lines[0].text) : said(words, 'grouped', { topic: row.topic, count: row.lines.length, briefs: row.lines.map((l) => l.brief || l.text).join(', ') }); row.time = row.lines.at(-1).time; row.lines = row.lines.map(({ at, end, trail, ...l }) => l); }
+    for (const row of packed) if (row.type === 'group') { row.text = row.lines.length === 1 ? row.lines[0].text : said(words, 'grouped', { topic: row.topic, count: row.lines.length, briefs: row.lines.map((l) => l.brief || l.text).join(', ') }); row.time = row.lines.at(-1).time; row.lines = row.lines.map(({ at, end, trail, ...l }) => l); }
     /* The day when it changes, the time when long passed. */
     const shown = [];
     let previous = null;
