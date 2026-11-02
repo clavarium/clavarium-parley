@@ -24,6 +24,9 @@
 .parley p, .parley h3, .parley ol, .parley ul { margin: 0; }
 .parley-top { display: flex; align-items: center; justify-content: space-between; gap: .6em; flex-wrap: wrap; }
 .parley-top { flex-wrap: nowrap; }
+/* No band of its own (02-11): the settings float at the top right, over the thread; the thread starts at the top. */
+.parley[data-view="simple"] > .parley-top { position: relative; z-index: 3; margin-bottom: -2.6em; pointer-events: none; justify-content: flex-end; }
+.parley[data-view="simple"] > .parley-top > * { pointer-events: auto; }
 .parley-status { flex: 1; font-weight: 600; color: var(--parley-dim); min-width: 0; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow-wrap: anywhere; }
 .parley-status[hidden] { display: none; }
 .parley-status[data-state="waiting"] { color: var(--parley-ask); }
@@ -47,8 +50,9 @@
 /* The person's: a bubble on the right. */
 .parley-said[data-from="person"] { align-self: flex-end; max-width: min(36em, 85%); border-radius: 14px 14px 4px 14px; padding: .55em .8em; background: var(--parley-person); }
 .parley-who { display: flex; align-items: baseline; gap: .6em; font-size: .8em; color: var(--parley-dim); margin-bottom: .15em; }
-.parley-who .parley-name { font-weight: 650; color: var(--parley-text); }
-.parley-who-person { font-size: .8em; color: var(--parley-dim); font-weight: 600; text-align: right; margin-bottom: .1em; }
+.parley-who .parley-name { font-weight: 400; color: var(--parley-dim); }
+.parley[data-view="simple"] .parley-said[data-same="true"] .parley-who .parley-name, .parley[data-view="simple"] .parley-said[data-same="true"] .parley-who-person { display: none; }
+.parley-who-person { font-size: .8em; color: var(--parley-dim); font-weight: 400; text-align: right; margin-bottom: .1em; }
 .parley-row[data-from="person"] { align-items: flex-end; }
 /* An open question: outlined, whether the steps that led to it are folded or not. */
 .parley-said[data-asking="true"] { box-shadow: inset 0 0 0 2px var(--parley-ask); }
@@ -475,7 +479,7 @@ mark.parley-found[data-now="true"] { outline: 2px solid var(--parley-ask); }
 .parley-auto-off[hidden] { display: none; }
 
 /* ---- room between the thread and the box; the box set apart by a line ---- */
-.parley-composer { display: flex; flex-direction: column; gap: var(--parley-gap); padding-top: .75rem; border-top: 1px solid var(--parley-line); box-shadow: 0 -10px 16px -14px rgba(0, 0, 0, .25); }
+.parley-composer { display: flex; flex-direction: column; gap: var(--parley-gap); padding-top: .75rem; }   /* no rule above (02-11): the field is enough */
 /* The line of what it does, and its states, with room of their own. */
 .parley-row[data-type="now"], .parley-row[data-type="received"], .parley-row[data-type="waits"], .parley-row[data-type="done"] { margin-top: .35rem; }
 /* ---- a wide screen: the column grows, running text keeps a reading measure; tables, code, drawings and galleries take the width ---- */

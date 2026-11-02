@@ -799,11 +799,12 @@ export function view(data, { words = {}, view: as = 'simple', now = Date.now(), 
         const prev = packed.at(-1);
         if (!detailed && row.from === 'system' && row.level === 'news' && row.topic) {
             if (prev?.type === 'group' && prev.topic === row.topic) { prev.lines.push(row); prev.end = row.at; continue; }
-            if (prev?.from === 'system' && prev.level === 'news' && prev.topic === row.topic && prev.type === 'message') { packed[packed.length - 1] = { type: 'group', key: `G:${prev.id}`, topic: row.topic, lines: [prev, row], at: prev.at, end: row.at }; continue; }
+            /* Alone, it is folded the same (02-11, "less is more"): one quiet line, its buttons a click away. */
+            packed.push({ type: 'group', key: `G:${row.id}`, topic: row.topic, lines: [row], at: row.at, end: row.at }); continue;
         }
         packed.push(row);
     }
-    for (const row of packed) if (row.type === 'group') { row.text = said(words, 'grouped', { topic: row.topic, count: row.lines.length, briefs: row.lines.map((l) => l.brief || l.text).join(', ') }); row.time = row.lines.at(-1).time; row.lines = row.lines.map(({ at, end, trail, ...l }) => l); }
+    for (const row of packed) if (row.type === 'group') { row.text = row.lines.length === 1 ? (row.lines[0].brief || row.lines[0].text) : said(words, 'grouped', { topic: row.topic, count: row.lines.length, briefs: row.lines.map((l) => l.brief || l.text).join(', ') }); row.time = row.lines.at(-1).time; row.lines = row.lines.map(({ at, end, trail, ...l }) => l); }
     /* The day when it changes, the time when long passed. */
     const shown = [];
     let previous = null;
@@ -3205,6 +3206,8 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
         seenKeys = new Set([...(seenKeys ?? []), ...v.rows.map((row) => row.key).filter(Boolean)]);
         if (firstLook && !v.rows.length) seenKeys = new Set();
         thread.replaceChildren(...made);
+        /* Its name once (02-11): said again only when the one speaking changes. */
+        { let last = null; for (const b of thread.querySelectorAll('.parley-said')) { const who = `${b.dataset.from}:${b.querySelector('.parley-name, .parley-who-person')?.textContent ?? ''}`; b.dataset.same = String(who === last); last = who; } }
         /* The same box, moved: given the focus back at once, and its cursor (a NodeList has no find). */
         if (typing) { const back2 = [...thread.querySelectorAll('textarea')].find((x) => x.dataset.draft === typing.key); if (back2 && document.activeElement !== back2) { back2.focus({ preventScroll: true }); try { back2.setSelectionRange(typing.from, typing.to ?? typing.from); } catch { /* not a text field */ } } }
         for (const r of made) if (r.dataset.arrived) setTimeout(() => { delete r.dataset.arrived; }, 1700);
