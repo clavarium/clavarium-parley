@@ -849,13 +849,12 @@ mark.parley-found[data-now="true"] { outline: 2px solid var(--parley-ask); }
 /* Its numbers are for the detailed view (02-11): the simple one shows the words alone. */
 .parley[data-view="simple"] .parley-by-why { display: none; }
 
-/* REACTIONS IN ONE ROW (02-11, "less is more"): icons only, each named on hover and to a screen reader;
-   reply and attach in the same row. Same choices, same actions. */
-.parley-react { flex-direction: row; flex-wrap: wrap; align-items: center; gap: .1em; padding: .25em .4em; border-radius: 999px; }
-.parley-react[data-sheet="true"] { border-radius: 14px 14px 0 0; justify-content: center; }
+/* REACTIONS, COMPACT (02-11, "less is more", but each still says what it is): small chips, an icon and
+   its word, wrapping on two or three lines; reply and attach among them. Same choices, same actions. */
+.parley-react { flex-direction: row; flex-wrap: wrap; align-items: center; gap: .3em; padding: .45em; max-width: min(24rem, calc(100% - 1rem)); border-radius: 12px; }
+.parley-react[data-sheet="true"] { border-radius: 14px 14px 0 0; }
 .parley-react[data-sheet="true"]::before { display: none; }
-.parley-react-grid, .parley-react[data-sheet="true"] .parley-react-grid { display: flex; flex-wrap: wrap; gap: .1em; }
-.parley .parley-react-choice, .parley .parley-react-reply { width: 2.4em; min-height: 2.4em; padding: 0; border-radius: 50%; border-color: transparent; background: transparent; }
-.parley .parley-react-reply { margin-left: .15em; }
-.parley-react-choice .parley-sign, .parley-react-reply .parley-sign { width: 1.25em; height: 1.25em; }
-.parley-react-word, .parley-react-reply > span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.parley-react-grid, .parley-react[data-sheet="true"] .parley-react-grid { display: flex; flex-wrap: wrap; gap: .3em; }
+.parley .parley-react-choice, .parley .parley-react-reply { flex-direction: row; gap: .35em; min-height: 2em; width: auto; padding: 0 .7em; border-radius: 999px; border: 1px solid var(--parley-line); background: transparent; font-size: .85em; font-weight: 400; }
+.parley-react-choice .parley-sign, .parley-react-reply .parley-sign { width: 1.05em; height: 1.05em; }
+.parley-react-word { font-size: inherit; }
