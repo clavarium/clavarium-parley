@@ -55,7 +55,7 @@
 .parley-who-person { font-size: .8em; color: var(--parley-dim); font-weight: 400; text-align: right; margin-bottom: .1em; }
 .parley-row[data-from="person"] { align-items: flex-end; }
 /* An open question: outlined, whether the steps that led to it are folded or not. */
-.parley-said[data-asking="true"] { box-shadow: inset 0 0 0 2px var(--parley-ask); }
+.parley-said[data-asking="true"] { box-shadow: inset 2px 0 0 var(--parley-ask); }   /* 02-11: a thin brass line at its left, not a frame */
 .parley-text { white-space: pre-wrap; overflow-wrap: anywhere; }
 .parley-label { font-size: .85em; font-weight: 650; color: var(--parley-ask); }
 .parley-file { display: flex; align-items: center; gap: .6em; flex-wrap: wrap; margin-top: .35em; }
@@ -64,7 +64,8 @@
 .parley-foot { margin-top: .25em; font-size: .8em; color: var(--parley-dim); }
 .parley-choices { display: flex; flex-wrap: wrap; gap: .45em; margin-top: .55em; }
 .parley button { font: inherit; min-height: 2.6em; padding: 0 1em; border-radius: 10px; border: 1px solid var(--parley-line); background: var(--parley-bg); color: var(--parley-text); cursor: pointer; }
-.parley .parley-choices button { border: 1px solid var(--parley-action); background: transparent; color: var(--parley-text); border-radius: 999px; min-height: 2.6em; padding: 0 1.1em; font-weight: 600; }
+.parley .parley-choices button { border: 1px solid var(--parley-line); background: transparent; color: var(--parley-text); border-radius: 999px; min-height: 2.4em; padding: 0 1em; font-weight: 400; }
+.parley .parley-choices button:hover:not(:disabled) { border-color: var(--parley-action); color: var(--parley-action); }
 .parley .parley-choices button:hover:not(:disabled) { background: color-mix(in srgb, var(--parley-action) 12%, var(--parley-bg)); }
 .parley .parley-remind { min-height: 2em; padding: 0 .7em; font-size: inherit; }
 .parley button:disabled { opacity: .5; cursor: default; }
@@ -101,7 +102,7 @@
 .parley .parley-attach, .parley .parley-mic, .parley .parley-send { flex: none; align-self: flex-end; width: 40px; height: 40px; min-width: 0; min-height: 0; padding: 0; border: 0; border-radius: 50%; display: inline-grid; place-items: center; background: transparent; color: var(--parley-dim); }
 .parley .parley-attach:hover:not(:disabled), .parley .parley-mic:hover:not([aria-pressed="true"]) { background: var(--parley-agent); color: var(--parley-text); }
 .parley-form .parley-sign { width: 22px; height: 22px; }
-.parley .parley-send { background: var(--parley-action); color: var(--parley-on-action); }
+.parley .parley-send { background: transparent; color: var(--parley-action); }
 .parley .parley-send .parley-sign { stroke-width: 2.4; }
 .parley .parley-send:disabled { opacity: 1; background: var(--parley-agent); color: color-mix(in srgb, var(--parley-dim) 70%, transparent); }
 @media (pointer: coarse) { .parley .parley-attach, .parley .parley-mic, .parley .parley-send { width: 44px; height: 44px; } .parley-form .parley-sign { width: 24px; height: 24px; } .parley-form { border-radius: 26px; } .parley-box, .parley-box-mirror { --parley-btn: 44px; } }
@@ -124,7 +125,7 @@
 .parley[data-view="simple"] .parley-said:hover .parley-time, .parley[data-view="simple"] .parley-said[data-reveal="true"] .parley-time { opacity: 1; }
 /* Detailed: in the bubble, always. */
 .parley[data-view="detailed"] .parley-said > .parley-time { display: block; text-align: right; margin-top: .15em; }
-.parley-said[data-asking="true"] { border-radius: 12px; padding: .55em .8em; }
+.parley-said[data-asking="true"] { border-radius: 0; padding: .2em .2em .2em 1em; }
 .parley-divider { align-self: center; text-align: center; font-size: .8em; color: var(--parley-dim); }
 .parley-divider span { display: inline-block; padding: .15em .8em; border-radius: 999px; background: var(--parley-agent); }
 .parley-divider[data-kind="gap"] span { background: transparent; }
@@ -211,7 +212,7 @@
 .parley-replies { flex: 1; min-width: 0; display: flex; flex-wrap: wrap; gap: .4em; overflow: hidden; padding: 2px; }
 .parley-quick[data-open="true"] .parley-replies { max-height: 40vh; overflow-y: auto; }
 .parley .parley-replies button, .parley .parley-replies-more { min-height: 2.3em; padding: 0 .9em; border-radius: 999px; font-size: .9em; white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
-.parley .parley-replies .parley-answer { border-color: var(--parley-action); background: var(--parley-action); color: var(--parley-on-action); font-weight: 650; }
+.parley .parley-replies .parley-answer { border-color: var(--parley-action); background: transparent; color: var(--parley-action); font-weight: 650; }
 .parley .parley-replies .parley-reply[data-send="false"] { border-style: dashed; }
 .parley .parley-replies-more { flex: none; margin: 2px; color: var(--parley-dim); background: transparent; }
 .parley .parley-replies-more[hidden] { display: none; }
@@ -348,7 +349,7 @@
 .parley-card-icon { position: relative; flex: none; width: 2.2em; height: 2.2em; display: inline-flex; align-items: center; justify-content: center; color: var(--parley-dim); }
 .parley-card-icon .parley-sign { width: 1.9em; height: 1.9em; stroke-width: 1.6; }
 .parley-card-about { display: flex; flex-direction: column; min-width: 0; line-height: 1.25; }
-.parley-card-about .parley-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.parley-card-about .parley-name { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .parley-card .parley-open { flex: none; margin-left: .3em; }
 /* ---- a question, a reply, a closed question ---- */
 .parley .parley-reply-to { min-height: 2.6em; margin-top: .5em; padding: 0 1.1em; border-radius: 999px; font-size: .95em; font-weight: 600; color: var(--parley-text); background: var(--parley-agent); }
@@ -454,7 +455,7 @@ mark.parley-found[data-now="true"] { outline: 2px solid var(--parley-ask); }
 .parley .parley-zoom-bar .parley-draw-colour[aria-checked="true"] { outline: 3px solid #f2f3f5; outline-offset: 2px; }
 .parley-draw .parley-zoom-undo .parley-zoom-word, .parley-draw .parley-zoom-clear .parley-zoom-word { display: none; }
 .parley-draw .parley-zoom-close .parley-zoom-word, .parley-draw .parley-zoom-done .parley-zoom-word { display: inline; }
-.parley .parley-zoom-bar .parley-zoom-done { border-color: transparent; background: var(--parley-action); color: var(--parley-on-action); font-weight: 650; padding: 0 .9em 0 .6em; }
+.parley .parley-zoom-bar .parley-zoom-done { border-color: transparent; background: transparent; color: var(--parley-action); font-weight: 650; padding: 0 .9em 0 .6em; }
 .parley .parley-zoom-bar button:disabled { opacity: .4; }
 .parley-draw-foot { display: flex; flex-direction: column; gap: .3em; padding: .4em .6em calc(.5em + env(safe-area-inset-bottom)); background: rgba(0, 0, 0, .4); }
 .parley-draw-hint { margin: 0; font-size: .8em; opacity: .75; text-align: center; }
@@ -528,7 +529,7 @@ mark.parley-found[data-now="true"] { outline: 2px solid var(--parley-ask); }
 .parley-react[data-sheet="true"] .parley-react-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 @keyframes parley-sheet-up { from { transform: translateY(100%); } to { transform: none; } }
 @media (prefers-reduced-motion: reduce) { .parley-react[data-sheet="true"] { animation: none; } }
-.parley-said[data-reacting="true"] { outline: 2px solid var(--parley-action); outline-offset: 3px; }
+.parley-said[data-reacting="true"] { outline: 0; background: color-mix(in srgb, var(--parley-action) 9%, transparent); border-radius: 10px; }
 .parley-react:focus { outline: none; }
 .parley-react-grid { display: grid; grid-template-columns: repeat(4, minmax(4.6em, 1fr)); gap: .25em; }
 .parley .parley-react-choice { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: .25em; min-height: 4em; padding: .4em .3em; border-color: transparent; border-radius: 10px; background: transparent; font-size: .82em; line-height: 1.15; text-align: center; }
@@ -617,7 +618,7 @@ mark.parley-found[data-now="true"] { outline: 2px solid var(--parley-ask); }
 .parley-pick[aria-checked="true"] .parley-pick-box { border-color: var(--parley-action); background: var(--parley-action); color: var(--parley-on-action); }
 .parley-pick-box .parley-sign { width: 1em; height: 1em; stroke-width: 3.2; }
 .parley-pick-text { min-width: 0; overflow-wrap: anywhere; }
-.parley .parley-picks .parley-picks-send { align-self: flex-start; min-width: 8em; margin-top: .2em; border-color: var(--parley-action); background: var(--parley-action); color: var(--parley-on-action); font-weight: 650; }
+.parley .parley-picks .parley-picks-send { align-self: flex-start; min-width: 8em; margin-top: .2em; border-color: var(--parley-action); background: transparent; color: var(--parley-action); font-weight: 650; }
 /* ---- questions asked together: one card, a step each, a summary, one Send ---- */
 .parley-questions { display: flex; flex-direction: column; gap: .35em; margin-top: .35em; }
 .parley-questions-tabs { display: flex; flex-wrap: wrap; gap: .35em; margin-bottom: .35em; }
@@ -628,7 +629,7 @@ mark.parley-found[data-now="true"] { outline: 2px solid var(--parley-ask); }
 .parley-questions-tab[data-done="true"] .parley-questions-n { border-color: var(--parley-action); background: var(--parley-action); color: var(--parley-on-action); }
 .parley-questions-n .parley-sign { width: .95em; height: .95em; stroke-width: 3; }
 .parley-questions-step { font-size: .8em; font-weight: 650; color: var(--parley-dim); }
-.parley-questions-question { font-weight: 650; white-space: pre-wrap; overflow-wrap: anywhere; }
+.parley-questions-question { font-weight: 400; white-space: pre-wrap; overflow-wrap: anywhere; }
 .parley-questions-hint { font-size: .85em; color: var(--parley-dim); }
 .parley-questions .parley-choices { margin-top: .2em; }
 .parley .parley-questions .parley-choices button[aria-pressed="true"] { display: inline-flex; align-items: center; gap: .4em; }
@@ -636,7 +637,7 @@ mark.parley-found[data-now="true"] { outline: 2px solid var(--parley-ask); }
 .parley-questions-free { width: 100%; max-width: 34em; box-sizing: border-box; min-height: 5.5em; margin-top: .2em; padding: .6em .8em; font: inherit; border-radius: 10px; border: 1px solid var(--parley-line); background: var(--parley-bg); color: var(--parley-text); resize: vertical; }
 .parley-questions-free:focus-visible { outline: 2px solid var(--parley-action); outline-offset: 2px; }
 .parley-questions-nav { display: flex; flex-wrap: wrap; align-items: center; gap: .6em; margin-top: .5em; }
-.parley .parley-questions-next, .parley .parley-questions-send { min-width: 8em; border-color: var(--parley-action); background: var(--parley-action); color: var(--parley-on-action); font-weight: 650; }
+.parley .parley-questions-next, .parley .parley-questions-send { min-width: 8em; border-color: var(--parley-action); background: transparent; color: var(--parley-action); font-weight: 650; }
 .parley .parley-questions-back { background: transparent; }
 .parley-questions-summary { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: .15em .8em; align-items: baseline; max-width: 42em; margin: .2em 0 0; }
 .parley-questions-asked { grid-column: 1 / -1; margin-top: .45em; font-size: .9em; color: var(--parley-dim); overflow-wrap: anywhere; }
@@ -712,7 +713,7 @@ mark.parley-found[data-now="true"] { outline: 2px solid var(--parley-ask); }
 .parley .parley-zone-card-line { color: var(--parley-dim); margin-top: .1em; font-size: .95em; }
 .parley-zone-card-acts { display: flex; gap: .45em; margin-top: .55em; flex-wrap: wrap; }
 .parley .parley-zone-card-acts button { min-height: 2.3em; padding: 0 .85em; border-radius: 999px; font-size: .92em; }
-.parley .parley-zone-card-main { border-color: var(--parley-action); background: var(--parley-action); color: var(--parley-on-action); font-weight: 650; }
+.parley .parley-zone-card-main { border-color: var(--parley-action); background: transparent; color: var(--parley-action); font-weight: 650; }
 /* THE PANEL BESIDE THE THREAD (`side`): wide, a column of its own on the right, the
    thread and the box keeping theirs; narrow, a sheet over the thread, from the bar. */
 .parley[data-panel] { position: relative; }
@@ -764,10 +765,10 @@ mark.parley-found[data-now="true"] { outline: 2px solid var(--parley-ask); }
 .parley .parley-choices button[aria-pressed="true"], .parley .parley-pickrow button[aria-pressed="true"], .parley .parley-input-scale button[aria-pressed="true"],
 .parley .parley-picks .parley-pick[aria-checked="true"] { border-color: var(--parley-action); background: color-mix(in srgb, var(--parley-action) 18%, var(--parley-bg)); color: var(--parley-text); font-weight: 700; outline: none; box-shadow: none; }
 .parley-series { display: flex; flex-direction: column; gap: .8em; container-type: inline-size; container-name: parleyseries; }
-.parley-said:has(.parley-series) > .parley-text { font-weight: 650; }
+.parley-said:has(.parley-series) > .parley-text { font-weight: 400; }
 .parley-series-q { display: flex; flex-direction: column; gap: .4em; padding-top: .8em; border-top: 1px dashed var(--parley-line); }
 .parley-series-q:first-child { border-top: 0; padding-top: 0; }
-.parley-series-q .parley-questions-question { margin: 0; font-weight: 650; }
+.parley-series-q .parley-questions-question { margin: 0; font-weight: 400; }
 @container parleyseries (min-width: 40rem) {
   .parley-series-q:has(.parley-input-number, .parley-input-yesno, .parley-input-slider, .parley-input-range, .parley-input-stars, .parley-input-date, .parley-input-time, .parley-input-datetime) { display: grid; grid-template-columns: 1fr minmax(12em, 18em); align-items: center; column-gap: 1.2em; }
 }
@@ -794,7 +795,7 @@ mark.parley-found[data-now="true"] { outline: 2px solid var(--parley-ask); }
 .parley-input-two input::-webkit-slider-thumb { pointer-events: auto; }
 .parley-input-two input::-moz-range-thumb { pointer-events: auto; }
 .parley-pickrow { display: flex; flex-wrap: wrap; gap: .4em; }
-.parley .parley-pickrow button { font: inherit; min-height: 2.4em; padding: 0 1.1em; border-radius: 999px; border: 1px solid var(--parley-line); background: var(--parley-bg); color: var(--parley-text); cursor: pointer; font-weight: 600; }
+.parley .parley-pickrow button { font: inherit; min-height: 2.4em; padding: 0 1.1em; border-radius: 999px; border: 1px solid var(--parley-line); background: var(--parley-bg); color: var(--parley-text); cursor: pointer; font-weight: 400; }
 .parley-input-scale { display: flex; flex-wrap: wrap; gap: .3em; }
 .parley .parley-input-scale button { min-width: 2.4em; min-height: 2.4em; padding: 0; border-radius: 8px; border: 1px solid var(--parley-line); background: var(--parley-bg); color: var(--parley-text); font: inherit; cursor: pointer; }
 .parley-input-stars { display: flex; gap: .1em; }
@@ -847,3 +848,14 @@ mark.parley-found[data-now="true"] { outline: 2px solid var(--parley-ask); }
 .parley-by-why { margin: 0 0 4px; font-size: 0.78em; opacity: 0.7; }
 /* Its numbers are for the detailed view (02-11): the simple one shows the words alone. */
 .parley[data-view="simple"] .parley-by-why { display: none; }
+
+/* REACTIONS IN ONE ROW (02-11, "less is more"): icons only, each named on hover and to a screen reader;
+   reply and attach in the same row. Same choices, same actions. */
+.parley-react { flex-direction: row; flex-wrap: wrap; align-items: center; gap: .1em; padding: .25em .4em; border-radius: 999px; }
+.parley-react[data-sheet="true"] { border-radius: 14px 14px 0 0; justify-content: center; }
+.parley-react[data-sheet="true"]::before { display: none; }
+.parley-react-grid, .parley-react[data-sheet="true"] .parley-react-grid { display: flex; flex-wrap: wrap; gap: .1em; }
+.parley .parley-react-choice, .parley .parley-react-reply { width: 2.4em; min-height: 2.4em; padding: 0; border-radius: 50%; border-color: transparent; background: transparent; }
+.parley .parley-react-reply { margin-left: .15em; }
+.parley-react-choice .parley-sign, .parley-react-reply .parley-sign { width: 1.25em; height: 1.25em; }
+.parley-react-word, .parley-react-reply > span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }

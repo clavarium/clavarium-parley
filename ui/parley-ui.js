@@ -2698,6 +2698,8 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
         return bar;
     }
     function body(item, v) {
+        /* Files shown whose words are only a file's name (« SPEC.md »): the cards say it already (02-11). */
+        if (item.kind === 'show' && (item.files?.length || item.gallery?.length || item.file) && [...(item.files ?? []), ...(item.gallery ?? []), ...(item.file ? [item.file] : [])].some((f) => f && String(item.text ?? '').trim() === String(f.name ?? '').split('/').pop())) return [];
         if (!rich) return [el('p', 'parley-text', maskSecrets(item.text))];
         const refs = new Map(item.refs.map((r) => [r.path, r.open]));
         const paint2 = painter({ words, refs, open, picture: picture ? pictureUrl : null, pictureUrl, diagram, highlight, cache, urls, zoom: zoomFrom, math: formula, targets: zoneRefs, secrets: liveSecrets, forget,
@@ -2947,7 +2949,7 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
             if (two.length === 2) {
                 const row2 = el('div', 'parley-decide'); row2.setAttribute('role', 'group'); row2.setAttribute('aria-label', said(words, 'decide'));
                 for (const r of two) {
-                    const b = el('button', 'parley-decide-choice'); b.type = 'button'; b.dataset.reaction = r.id; b.title = said(words, `react-${r.id}-hint`);
+                    const b = el('button', 'parley-decide-choice'); b.type = 'button'; b.dataset.reaction = r.id; b.title = `${said(words, `react-${r.id}`)} : ${said(words, `react-${r.id}-hint`)}`;   /* its name on hover: the row shows icons only (02-11) */
                     b.append(icon(r.icon, 'parley-sign'), el('span', '', said(words, `react-${r.id}`)));
                     b.addEventListener('click', async (event) => {
                         event.stopPropagation();
@@ -2982,9 +2984,9 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
     function reactionPicker() {
         const box = el('div', 'parley-react'); box.hidden = true; box.setAttribute('role', 'dialog'); box.setAttribute('aria-label', said(words, 'react')); box.tabIndex = -1;
         const grid = el('div', 'parley-react-grid');
-        const replyB = el('button', 'parley-react-reply'); replyB.type = 'button'; replyB.append(icon('reply', 'parley-sign'), el('span', '', said(words, 'reply')));
+        const replyB = el('button', 'parley-react-reply'); replyB.type = 'button'; replyB.title = said(words, 'reply'); replyB.append(icon('reply', 'parley-sign'), el('span', '', said(words, 'reply')));
         /* The host's own: this message attached to a card of its binders (card(message), optional). */
-        const cardB = el('button', 'parley-react-reply parley-react-card'); cardB.type = 'button'; cardB.append(icon('paperclip', 'parley-sign'), el('span', '', said(words, 'to-card')));
+        const cardB = el('button', 'parley-react-reply parley-react-card'); cardB.type = 'button'; cardB.title = said(words, 'to-card'); cardB.append(icon('paperclip', 'parley-sign'), el('span', '', said(words, 'to-card')));
         box.append(grid, replyB, cardB);
         let target = null;
         let marked = null;
