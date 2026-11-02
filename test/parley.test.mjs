@@ -20,7 +20,7 @@ const until = async (what, check, ms = 5000) => { const end = Date.now() + ms; f
 
 /* Speaks MCP to the agent's side as an agent would: one JSON message per line. */
 async function agent(dir, calls, script = SERVER) {
-    const child = spawn(process.execPath, [script, '--dir', dir], { stdio: ['pipe', 'pipe', 'inherit'] });
+    const child = spawn(process.execPath, [script, '--dir', dir], { stdio: ['pipe', 'pipe', 'inherit'], env: { ...process.env, PARLEY_NO_RELAY: '1' } });
     let out = '';
     child.stdout.on('data', (d) => { out += d; });
     const send = (m) => child.stdin.write(`${JSON.stringify(m)}\n`);

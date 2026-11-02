@@ -29,11 +29,11 @@
  */
 import { appendFileSync, readFileSync, writeFileSync, mkdirSync, existsSync, statSync, lstatSync, realpathSync, renameSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import { createInterface } from 'node:readline';
 
-export const VERSION = '0.17.41-next.1';
+export const VERSION = '0.17.42-next.1';
 /* A message may be long: the screen folds it, and shows its short version first. */
 export const TEXT_MAX = 16000;
 /* Its short version: a title of one or two lines. */
@@ -589,5 +589,20 @@ if (main) {
     const at = process.argv.indexOf('--dir');
     const given = at > 0 ? process.argv[at + 1] : undefined;
     const beside = existsSync(join(dirname(HERE), 'from-agent.jsonl')) ? dirname(HERE) : undefined;
-    serve(findFolder({ dir: given ?? (process.env.PARLEY_DIR ? undefined : beside) }) ?? beside ?? dirname(HERE));
+    /* Run under a relay (02-11): a new version installed is taken up between two requests, the session
+       never restarted. --child: the server itself, as the relay starts it. */
+    if (process.argv.includes('--child') || process.env.PARLEY_NO_RELAY === '1') serve(findFolder({ dir: given ?? (process.env.PARLEY_DIR ? undefined : beside) }) ?? beside ?? dirname(HERE));
+    else {
+        /* The server to run: the package installed on this machine (a copy put beside a .parley by an
+           application stays as it was copied -- 02-11: one still at 0.17.11 when 0.17.38 was installed),
+           else this very file. */
+        const own = join(dirname(HERE), '..', 'package.json');
+        const global = join(dirname(process.execPath), '..', 'lib', 'node_modules', 'clavarium-parley');
+        const pkg = existsSync(join(global, 'package.json')) ? join(global, 'package.json') : existsSync(own) ? own : null;
+        const target = pkg === join(global, 'package.json') ? join(global, 'server', 'parley-mcp.mjs') : HERE;
+        const dirArgs = given ? [] : ['--dir', findFolder({ dir: process.env.PARLEY_DIR ? undefined : beside }) ?? beside ?? dirname(HERE)];
+        if (!pkg) serve(findFolder({ dir: given ?? (process.env.PARLEY_DIR ? undefined : beside) }) ?? beside ?? dirname(HERE));
+        else void import(pathToFileURL(join(dirname(target), 'relay.mjs')).href).then(({ relay }) => relay({ args: [target, ...process.argv.slice(2), ...dirArgs, '--child'], packageJson: pkg }))
+            .catch(() => serve(findFolder({ dir: given ?? (process.env.PARLEY_DIR ? undefined : beside) }) ?? beside ?? dirname(HERE)));
+    }
 }
