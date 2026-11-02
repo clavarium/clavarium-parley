@@ -111,7 +111,6 @@
 .parley-count { align-self: flex-end; margin: -.1em .3em .1em 0; font-size: .72em; color: var(--parley-dim); font-variant-numeric: tabular-nums; }
 .parley-count[data-level="mid"] { color: var(--parley-warning); }
 .parley-count[data-level="high"] { color: var(--parley-caution); font-weight: 600; }
-.parley .parley-send { background: var(--parley-action); border-color: var(--parley-action); color: var(--parley-on-action); font-weight: 650; }
 .parley-empty { color: var(--parley-dim); }
 .parley-problem { color: var(--parley-ask); }
 
