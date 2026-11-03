@@ -848,15 +848,18 @@ mark.parley-found[data-now="true"] { outline: 2px solid var(--parley-ask); }
 /* Its numbers are for the detailed view (02-11): the simple one shows the words alone. */
 .parley[data-view="simple"] .parley-by-why { display: none; }
 
-/* REACTIONS, COMPACT (02-11, "less is more", but each still says what it is): small chips, an icon and
-   its word, wrapping on two or three lines; reply and attach among them. Same choices, same actions. */
-.parley-react { flex-direction: row; flex-wrap: wrap; align-items: center; gap: .3em; padding: .45em; max-width: min(24rem, calc(100% - 1rem)); border-radius: 12px; }
-.parley-react[data-sheet="true"] { border-radius: 14px 14px 0 0; }
-.parley-react[data-sheet="true"]::before { display: none; }
-.parley-react-grid, .parley-react[data-sheet="true"] .parley-react-grid { display: flex; flex-wrap: wrap; gap: .3em; }
-.parley .parley-react-choice, .parley .parley-react-reply { flex-direction: row; gap: .35em; min-height: 2em; width: auto; padding: 0 .7em; border-radius: 999px; border: 1px solid var(--parley-line); background: transparent; font-size: .85em; font-weight: 400; }
-.parley-react-choice .parley-sign, .parley-react-reply .parley-sign { width: 1.05em; height: 1.05em; }
+/* REACTIONS AS A LIST (03-11, his choice « A »): one choice a line, its icon and its word, like a menu;
+   reply and attach under a thin line. Same choices, same actions. */
+.parley-react { flex-direction: column; align-items: stretch; gap: 0; padding: .3em; width: 15.5em; max-width: calc(100% - 1rem); border-radius: 12px; }
+.parley-react[data-sheet="true"] { width: auto; border-radius: 14px 14px 0 0; }
+.parley-react[data-sheet="true"]::before { display: block; }
+.parley-react-grid, .parley-react[data-sheet="true"] .parley-react-grid { display: flex; flex-direction: column; gap: 0; padding-bottom: .25em; margin-bottom: .25em; border-bottom: 1px solid var(--parley-line); }
+.parley .parley-react-choice, .parley .parley-react-reply { flex-direction: row; justify-content: flex-start; gap: .7em; width: 100%; min-height: 2.2em; padding: 0 .7em; border: 0; border-radius: 8px; background: transparent; font-size: .92em; font-weight: 400; text-align: left; }
+.parley .parley-react-choice:hover, .parley .parley-react-reply:hover { background: var(--parley-agent); }
+.parley .parley-react-choice[aria-pressed="true"] { background: var(--parley-agent); box-shadow: inset 0 0 0 1px var(--parley-action); font-weight: 400; }
+.parley-react-choice .parley-sign, .parley-react-reply .parley-sign { width: 1.1em; height: 1.1em; flex: none; }
 .parley-react-word { font-size: inherit; }
+.parley-react[data-sheet="true"] .parley-react-choice, .parley-react[data-sheet="true"] .parley-react-reply { min-height: 2.6em; font-size: 1em; }
 
 /* 03-11: what is being sent, at once, faint; the mark of a dictated message only in the detailed view. */
 .parley-sending { opacity: .55; }
