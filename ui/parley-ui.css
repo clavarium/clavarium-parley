@@ -864,3 +864,9 @@ mark.parley-found[data-now="true"] { outline: 2px solid var(--parley-ask); }
 /* 03-11: what is being sent, at once, faint; the mark of a dictated message only in the detailed view. */
 .parley-sending { opacity: .55; }
 .parley[data-view="simple"] .parley-dictated { display: none; }
+/* The list in three groups (03-11: "avec des séparations entre les principales parties"): yes, not quite, no. */
+.parley-react-choice[data-reaction="go"] { order: 1; } .parley-react-choice[data-reaction="agree"] { order: 2; } .parley-react-choice[data-reaction="love"] { order: 3; }
+.parley-react-choice[data-reaction="unclear"] { order: 4; } .parley-react-choice[data-reaction="later"] { order: 5; } .parley-react-choice[data-reaction="redo"] { order: 6; }
+.parley-react-choice[data-reaction="disagree"] { order: 7; } .parley-react-choice[data-reaction="stop"] { order: 8; }
+.parley .parley-react-choice[data-reaction="unclear"], .parley .parley-react-choice[data-reaction="disagree"] { margin-top: .3em; position: relative; }
+.parley .parley-react-choice[data-reaction="unclear"]::before, .parley .parley-react-choice[data-reaction="disagree"]::before { content: ""; position: absolute; left: .4em; right: .4em; top: -.18em; height: 1px; background: var(--parley-line); }
