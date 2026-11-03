@@ -242,7 +242,7 @@ export const KEYS = Object.freeze(['send', 'placeholder', 'empty', 'view', 'simp
     'copy', 'copied', 'see-details', 'see-more', 'see-less', 'note', 'tip', 'important', 'warning', 'caution', 'badge-ok', 'badge-todo', 'badge-blocked', 'badge-warn',
     'waits-you', 'waits-you-note', 'busy', 'pulse', 'state-sent', 'state-read', 'state-working', 'state-done', 'sent-at', 'read-at', 'done-at',
     'reply', 'to-card', 'other-answer', 'group-count', 'group-step', 'group-next', 'group-back', 'group-review', 'group-check', 'group-modify', 'group-send', 'group-several', 'group-own', 'group-missing',
-    'replying', 'not-a-reply', 'in-reply', 'closed', 'you', 'agent', 'drop', 'picture', 'diagram', 'not-shown', 'grouped',
+    'replying', 'not-a-reply', 'in-reply', 'closed', 'you', 'agent', 'drop', 'picture', 'diagram', 'not-shown', 'grouped', 'issue-machine', 'issue-fixed', 'issue-details',
     'zoom-in', 'zoom-out', 'zoom-actual', 'zoom-fit', 'zoom-actual-short', 'zoom-fit-short', 'close', 'previous', 'next', 'search', 'found', 'newest', 'dictation', 'auto-send-off',
     'react', 'react-remove', 'react-agree', 'react-go', 'react-disagree', 'react-unclear', 'react-stop', 'react-redo', 'react-later', 'react-love',
     'react-agree-hint', 'react-go-hint', 'react-disagree-hint', 'react-unclear-hint', 'react-stop-hint', 'react-redo-hint', 'react-later-hint', 'react-love-hint',
@@ -796,9 +796,37 @@ export function view(data, { words = {}, view: as = 'simple', now = Date.now(), 
         const note = String(status.note ?? '').trim();
         rows.push({ type: 'done', key: 'D', text: note ? said(words, 'done-end-note', { note }) : said(words, 'done-end'), time: clock(doneStatus, locale), when: whole(doneStatus, locale), at: null, end: null });
     }
+    /* Simple: ONE LINE PER PROBLEM of the machine (03-11, "less is more"): its lines, however far apart in the
+       thread, gathered where it began -- it changes ("×2", then fixed) instead of piling up; its details one tap
+       away. Fixed and an hour old: gone from the simple view (the detailed one keeps every line). */
+    const gathered = [];
+    if (!detailed) {
+        let open = null;
+        for (const row of rows) {
+            if (row.from === 'system' && row.topic && row.topic === 'Machine') {
+                const problem = row.level === 'needs-you';
+                if (problem) { if (!open) { open = { type: 'issue', key: `I:${row.id}`, topic: row.topic, lines: [], at: row.at, end: row.at }; gathered.push(open); } open.lines.push(row); open.end = row.at; continue; }
+                if (open) { open.lines.push(row); open.fixed = row; open.end = row.at; open = null; continue; }
+            }
+            gathered.push(row);
+        }
+        for (const row of gathered) if (row.type === 'issue') {
+            const problems = row.lines.filter((l) => l.level === 'needs-you' && !/^(Said|Not said) to its agent/.test(l.text));
+            const first = problems[0] ?? row.lines[0];
+            const name = first.brief || said(words, 'issue-machine');
+            row.text = row.fixed ? said(words, 'issue-fixed', { what: name }) : problems.length > 1 ? `${name} \u00d7${problems.length}` : name;
+            row.time = (row.fixed ?? row.lines.at(-1)).time; row.when = (row.fixed ?? row.lines.at(-1)).when;
+            row.tone = row.fixed ? '' : problems.some((l) => l.tone === 'bad') ? 'bad' : 'warn';
+            /* Its one useful button: the first of the last problem's, while it is not fixed. */
+            const last = [...problems].reverse().find((l) => l.actions.length);
+            row.main = !row.fixed && last ? { ...last.actions[0], line: last } : null;
+            row.old = Boolean(row.fixed && row.fixed.at && now - row.fixed.at > 3600_000);
+        }
+    }
+    const keptRows = detailed ? rows : gathered.filter((r) => !(r.type === "issue" && r.old));
     /* Simple: a run of news of one topic is one compact line. */
     const packed = [];
-    for (const row of rows) {
+    for (const row of keptRows) {
         const prev = packed.at(-1);
         if (!detailed && row.from === 'system' && row.level === 'news' && row.topic) {
             if (prev?.type === 'group' && prev.topic === row.topic) { prev.lines.push(row); prev.end = row.at; continue; }
@@ -2787,6 +2815,20 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
         if (row.type === 'waits') { const p = el('p', 'parley-waits', row.text); p.title = row.when; p.setAttribute('role', 'status'); return p; }
         /* Done: said once, quietly, at the end. */
         if (row.type === 'done') { const p = el('p', 'parley-done', row.text); p.title = row.when; p.setAttribute('role', 'status'); return p; }
+        if (row.type === 'issue') {
+            /* One problem of the machine: its name, its time, its one button; its lines folded under it. */
+            const holder = el('div', 'parley-issue'); if (row.tone) holder.dataset.tone = row.tone; if (row.fixed) holder.dataset.fixed = 'true';
+            const head = el('div', 'parley-issue-head');
+            head.append(el('span', 'parley-issue-dot'), el('span', 'parley-issue-text', row.text), time(row.time, row.when));
+            if (row.main && act) { const b = button(row.main.label, 'parley-act parley-issue-act', () => { try { act(row.main.id, { id: row.main.line.id, text: row.main.line.text }); } catch { /* the application's business */ } }); b.dataset.act = row.main.id; head.append(b); }
+            const more = button(said(words, 'issue-details'), 'parley-issue-more', () => {});
+            head.append(more);
+            const list = el('div', 'parley-issue-lines');
+            for (const l of row.lines) list.append(systemLine(l));
+            holder.append(head, list);
+            folding({ key: row.key, open: false }, holder, more, list);
+            return holder;
+        }
         if (row.type === 'group') {
             /* A run of news of one topic: one line, unfolded on a click. */
             const holder = el('div', 'parley-group'); holder.dataset.level = 'news';

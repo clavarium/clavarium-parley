@@ -188,5 +188,8 @@
   "recommended-order": "Ordre recommandé",
   "suggestion": "Suggestion",
   "suggest-take": "Reprendre cette réponse (Tab)",
-  "said-to": "Pour {names}"
+  "said-to": "Pour {names}",
+  "issue-machine": "Souci de la machine",
+  "issue-fixed": "{what} : réglé",
+  "issue-details": "détails"
 }

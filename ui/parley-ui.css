@@ -870,3 +870,18 @@ mark.parley-found[data-now="true"] { outline: 2px solid var(--parley-ask); }
 .parley-react-choice[data-reaction="disagree"] { order: 7; } .parley-react-choice[data-reaction="stop"] { order: 8; }
 .parley .parley-react-choice[data-reaction="unclear"], .parley .parley-react-choice[data-reaction="disagree"] { margin-top: .3em; position: relative; }
 .parley .parley-react-choice[data-reaction="unclear"]::before, .parley .parley-react-choice[data-reaction="disagree"]::before { content: ""; position: absolute; left: .4em; right: .4em; top: -.18em; height: 1px; background: var(--parley-line); }
+
+/* ONE LINE PER PROBLEM of the machine (03-11): a dot, its name, its time, its one button, its details folded. */
+.parley-issue { display: flex; flex-direction: column; gap: .35em; align-self: stretch; max-width: var(--parley-column, 48rem); margin-inline: auto; width: 100%; }
+.parley-issue-head { display: flex; align-items: center; flex-wrap: wrap; gap: .4em .6em; font-size: .9em; }
+.parley-issue-dot { width: .55em; height: .55em; border-radius: 50%; background: var(--parley-ask); flex: none; }
+.parley-issue[data-tone="bad"] .parley-issue-dot { background: var(--parley-live); }
+.parley-issue[data-fixed="true"] .parley-issue-dot { background: var(--parley-ok, #5fc39d); }
+.parley-issue-text { font-weight: 600; color: var(--parley-text); }
+.parley-issue[data-fixed="true"] .parley-issue-text { font-weight: 400; color: var(--parley-dim); }
+.parley .parley-issue-more { border: 0; background: transparent; padding: 0 .2em; min-height: 2.2em; font-weight: 400; font-size: .9em; color: var(--parley-dim); }
+.parley .parley-issue-more::after { content: " \25BE"; }
+.parley .parley-issue-more[aria-expanded="true"]::after { content: " \25B4"; }
+.parley-issue-lines { display: flex; flex-direction: column; gap: .3em; margin-left: .25em; padding-left: .75em; border-left: 2px solid var(--parley-line); }
+.parley-issue-lines[hidden] { display: none; }
+.parley-issue-lines .parley-system { border: 0; padding: 0; text-align: left; font-size: .85em; }
