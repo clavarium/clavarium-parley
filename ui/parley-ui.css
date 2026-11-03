@@ -885,3 +885,6 @@ mark.parley-found[data-now="true"] { outline: 2px solid var(--parley-ask); }
 .parley-issue-lines { display: flex; flex-direction: column; gap: .3em; margin-left: .25em; padding-left: .75em; border-left: 2px solid var(--parley-line); }
 .parley-issue-lines[hidden] { display: none; }
 .parley-issue-lines .parley-system { border: 0; padding: 0; text-align: left; font-size: .85em; }
+.parley-issue-lines .parley-system { align-items: flex-start; justify-content: flex-start; text-align: left; }
+.parley-issue-lines .parley-system-text { text-align: left; }
+.parley-issue-lines .parley-system:not(:last-child) .parley-system-actions { display: none; }   /* the buttons once, under the last line */
