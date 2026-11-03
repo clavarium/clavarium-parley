@@ -23,6 +23,7 @@ test('a voice box speaks in its own name; the agent answers it by its id, and th
     assert.match(read, /Voice boxes here .*Kitchen · Lake house \(box-1\), Garden \(box-2\)/);
 
     assert.throws(() => agent.tell('Ready.', { to: ['box-9'] }), /no one here has the id box-9; those who do: Kitchen \(box-1\), Garden \(box-2\)\. Nothing was sent/);
+    assert.doesNotThrow(() => agent.doing('Looking.', { to: '["box-1"]' }), 'a list sent as JSON text is a list (03-11)');
     assert.match(agent.tell('Ready in ten minutes.', { to: ['box-1', 'box-2'] }), /said aloud where you sent it/);
 
     const model = host.read();

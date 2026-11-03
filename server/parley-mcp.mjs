@@ -33,7 +33,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import { createInterface } from 'node:readline';
 
-export const VERSION = '0.17.50-next.1';
+export const VERSION = '0.17.51-next.1';
 /* A message may be long: the screen folds it, and shows its short version first. */
 export const TEXT_MAX = 16000;
 /* Its short version: a title of one or two lines. */
@@ -170,7 +170,10 @@ export function bridge(dir, { how = 'run `parley read`', back = (id) => `parley 
     const speakers = () => { try { const v = JSON.parse(readFileSync(join(dir, 'speakers.json'), 'utf8')); return Array.isArray(v) ? v.filter((x) => x && typeof x.id === 'string' && typeof x.name === 'string').slice(0, 20) : []; } catch { return []; } };
     const toOf = (to) => {
         if (to === undefined || to === null || (Array.isArray(to) && to.length === 0)) return undefined;
-        const ids = (Array.isArray(to) ? to : String(to).split(',')).map((x) => String(x).trim()).filter(Boolean);
+        /* A list written as JSON text ('["id"]', as some callers send it) is a list too (03-11). */
+        let list = to;
+        if (typeof list === 'string' && list.trim().startsWith('[')) { try { list = JSON.parse(list); } catch { /* left as text */ } }
+        const ids = (Array.isArray(list) ? list : String(list).split(',')).map((x) => String(x).trim()).filter(Boolean);
         const known = new Map(speakers().map((x) => [x.id, x.name]));
         const unknown = ids.filter((id) => !known.has(id));
         if (unknown.length) throw new Error(`no one here has the id ${unknown.join(', ')}; those who do: ${[...known].map(([id, name]) => `${name} (${id})`).join(', ') || 'nobody'}. Nothing was sent.`);
