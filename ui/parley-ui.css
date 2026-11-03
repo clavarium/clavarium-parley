@@ -887,4 +887,4 @@ mark.parley-found[data-now="true"] { outline: 2px solid var(--parley-ask); }
 .parley-issue-lines .parley-system { border: 0; padding: 0; text-align: left; font-size: .85em; }
 .parley-issue-lines .parley-system { align-items: flex-start; justify-content: flex-start; text-align: left; }
 .parley-issue-lines .parley-system-text { text-align: left; }
-.parley-issue-lines .parley-system:not(:last-child) .parley-system-actions { display: none; }   /* the buttons once, under the last line */
+.parley-issue-lines .parley-system:not(:last-child) .parley-system-actions { display: none; }   /* the buttons once, under the last line (03-11) */
