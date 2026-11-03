@@ -33,7 +33,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import { createInterface } from 'node:readline';
 
-export const VERSION = '0.17.51-next.1';
+export const VERSION = '0.17.52-next.1';
 /* A message may be long: the screen folds it, and shows its short version first. */
 export const TEXT_MAX = 16000;
 /* Its short version: a title of one or two lines. */
@@ -168,13 +168,24 @@ export function bridge(dir, { how = 'run `parley read`', back = (id) => `parley 
     const FORGET = join(dir, 'forget.jsonl');
     /* Those who speak here beside the person (voice boxes, #215), as the application set them. */
     const speakers = () => { try { const v = JSON.parse(readFileSync(join(dir, 'speakers.json'), 'utf8')); return Array.isArray(v) ? v.filter((x) => x && typeof x.id === 'string' && typeof x.name === 'string').slice(0, 20) : []; } catch { return []; } };
-    const toOf = (to) => {
+    /* The rooms it is a member of (#215), as the application set them: where it may answer, and who is there. */
+    const rooms = () => { try { const v = JSON.parse(readFileSync(join(dir, 'rooms.json'), 'utf8')); return Array.isArray(v) ? v.filter((x) => x && typeof x.id === 'string' && typeof x.name === 'string').slice(0, 20) : []; } catch { return []; } };
+    const roomOf = (room) => {
+        if (room === undefined || room === null || room === '') return undefined;
+        const id = String(room).trim(); const all = rooms();
+        const found = all.find((r) => r.id === id);
+        if (!found) throw new Error(`you are in no room with the id ${id}; your rooms: ${all.map((r) => `${r.name} (${r.id})`).join(', ') || 'none'}. Nothing was sent.`);
+        return found;
+    };
+    /* In a room: where it goes, and the room's message it answers (its id there, or its first 8 characters). */
+    const inRoom = (where, re, forward) => (where ? { room: where.id, ...(typeof re === 'string' && re.trim() ? { re: re.trim().slice(0, 80) } : {}), ...(typeof forward === 'string' && forward.trim() ? { forward: forward.trim().slice(0, 80) } : {}) } : {});
+    const toOf = (to, room) => {
         if (to === undefined || to === null || (Array.isArray(to) && to.length === 0)) return undefined;
         /* A list written as JSON text ('["id"]', as some callers send it) is a list too (03-11). */
         let list = to;
         if (typeof list === 'string' && list.trim().startsWith('[')) { try { list = JSON.parse(list); } catch { /* left as text */ } }
         const ids = (Array.isArray(list) ? list : String(list).split(',')).map((x) => String(x).trim()).filter(Boolean);
-        const known = new Map(speakers().map((x) => [x.id, x.name]));
+        const known = new Map((room ? (Array.isArray(room.members) ? room.members : []) : speakers()).filter((x) => x && typeof x.id === 'string').map((x) => [x.id, x.name]));
         const unknown = ids.filter((id) => !known.has(id));
         if (unknown.length) throw new Error(`no one here has the id ${unknown.join(', ')}; those who do: ${[...known].map(([id, name]) => `${name} (${id})`).join(', ') || 'nobody'}. Nothing was sent.`);
         return ids;
@@ -360,18 +371,23 @@ export function bridge(dir, { how = 'run `parley read`', back = (id) => `parley 
     };
     return {
         standing,
-        tell(text, { short, suggest, to } = {}) {
-            const body = whole(text, TEXT_MAX, 'message');
-            if (!body.trim()) throw new Error('the text is empty');
+        tell(text, { short, suggest, to, room, re, forward } = {}) {
+            /* Handing a room's message on, as it is (#280): its id (forward) and to whom (to: AIs of the room); no text needed. */
+            const handing = typeof forward === 'string' && forward.trim() !== '';
+            if (handing && (room === undefined || room === null || room === '')) throw new Error('forward is for a room: give room too');
+            if (handing && !(Array.isArray(to) ? to.length : String(to ?? '').trim())) throw new Error('forward needs to: the ids of the AIs of the room to hand it to');
+            const body = handing && (text === undefined || text === null) ? '' : whole(text, TEXT_MAX, 'message');
+            if (!body.trim() && !handing) throw new Error('the text is empty');
             if (short !== undefined) whole(short, SHORT_KEPT, 'short version');
             const offer = suggestOf(suggest);
-            const ids = toOf(to);
-            post({ kind: 'say', text: body, ...brief(short), ...(offer ? { suggest: offer } : {}), ...(ids ? { to: ids } : {}) });
-            return `Posted. ${ids ? 'It is said aloud where you sent it, and shown on their screen.' : 'They will read it on their screen.'}${tooLong(short)}${nudge()}`;
+            const where = roomOf(room);
+            const ids = toOf(to, where);
+            post({ kind: 'say', text: body, ...brief(short), ...(offer ? { suggest: offer } : {}), ...(ids ? { to: ids } : {}), ...inRoom(where, re, forward) });
+            return `Posted${where ? ` in the room ${where.name}` : ''}. ${ids ? 'It is said aloud where you sent it, and shown on their screen.' : 'They will read it on their screen.'}${tooLong(short)}${nudge()}`;
         },
         /* `many`: several of its choices may be ticked, sent together; a screen
            that does not know it shows them as single choices, which still answer. */
-        ask(question, choices, { short, many = false, questions, input, steps = false, recommended, suggest, to } = {}) {
+        ask(question, choices, { short, many = false, questions, input, steps = false, recommended, suggest, to, room, re } = {}) {
             if (questions !== undefined) { if (recommended !== undefined) throw new Error('asked together, each question says its own recommended'); return group(question, questions, short, { steps }); }
             /* One question with a selector: a card of one (what it recommends goes in its input). */
             if (input !== undefined) return group('', [{ id: 'answer', question, input: recommended === undefined || (input && typeof input === 'object' && input.recommended !== undefined) ? input : { ...input, recommended } }], short);
@@ -384,8 +400,9 @@ export function bridge(dir, { how = 'run `parley read`', back = (id) => `parley 
             const marked = recommendedOf(recommended, picked, many === true, 'the question');
             const offer = suggestOf(suggest);
             /* Asked on a voice box (03-11): said aloud there, and the box listens after for the answer. */
-            const ids = toOf(to);
-            post({ kind: 'ask', text: body, choices: picked, ...(many === true ? { many: true } : {}), ...(marked ? { recommended: marked } : {}), ...(offer ? { suggest: offer } : {}), ...(ids ? { to: ids } : {}), ...brief(short) });
+            const where = roomOf(room);
+            const ids = toOf(to, where);
+            post({ kind: 'ask', text: body, choices: picked, ...(many === true ? { many: true } : {}), ...(marked ? { recommended: marked } : {}), ...(offer ? { suggest: offer } : {}), ...(ids ? { to: ids } : {}), ...brief(short), ...inRoom(where, re) });
             return `Posted. Do not wait here: you will be told in the terminal when they answer; then ${how}.${tooLong(short)}${nudge()}`;
         },
         /* A question they answered another way (a message typed later): closed
@@ -425,12 +442,13 @@ export function bridge(dir, { how = 'run `parley read`', back = (id) => `parley 
         /* One line, said each time it moves to something new: it is shown while
            it works, and goes when its next message comes; what came before stays
            one click away. */
-        doing(text, { to } = {}) {
+        doing(text, { to, room } = {}) {
             const line = whole(text, DOING_MAX, 'line').replace(/\s+/g, ' ').trim();
             if (!line) throw new Error('the text is empty');
             /* Said aloud at once where it is sent too (a voice box spoken from, 03-11): what it is about to do. */
-            const ids = toOf(to);
-            post({ kind: 'doing', text: line, ...(ids ? { to: ids } : {}) });
+            const where = roomOf(room);
+            const ids = toOf(to, where);
+            post({ kind: 'doing', text: line, ...(ids ? { to: ids } : {}), ...inRoom(where) });
             return ids ? 'Noted, and said aloud there.' : 'Noted.';
         },
         /* FORGET A SHORT-LIVED SECRET given through the chat: ask the parloir (host) to drop it from its vault
@@ -517,11 +535,14 @@ export function bridge(dir, { how = 'run `parley read`', back = (id) => `parley 
             if (fresh.length === 0) return `No new message.${pending}`;
             /* What they wrote is work: said, so that their screen shows it moving (or still, said so). */
             const next = stale() || (standing()?.state === 'working' ? '' : '\nWhen you start on it, say so: parley doing "what you do"; when you finish: parley status done.');
-            const from = (m) => (m.by && typeof m.by.name === 'string' ? `Message from ${plain(m.by.name, 40)}${m.by.place ? ` (${plain(m.by.place, 40)})` : ''}, a voice box${m.by.why ? ` [${plain(m.by.why, 120)}]` : ''} (first, at once, say in a few words what you are about to do with doing to: ["${plain(m.by.id, 80)}"]; then answer it aloud with tell to: the same -- or with ask to: the same when your answer calls for theirs: the box listens after) (${DICTATED}): ` : null);
+            /* Said in a room (#215): which room, who, and how to answer there -- never in its own thread by default. */
+            const inRoomLine = (m) => (m.room && typeof m.room.id === 'string' ? `In the room "${plain(m.room.name, 60)}"${m.room.message ? ` [its message there: ${plain(m.room.message, 80).slice(0, ID_SHOWN)}]` : ''}, from ${m.by && typeof m.by.name === 'string' ? `${plain(m.by.name, 40)}${m.by.kind === 'box' ? ' (a voice box)' : m.by.kind === 'ai' ? ' (an AI)' : ''}` : 'the person'}: ` : null);
+            const roomsHint = () => { const list = rooms(); return list.length ? `\nTo answer in a room: tell (or ask, doing) with room: its id and re: its message there -- without room, your words stay in your own thread and nobody in the room sees them. A box says aloud only what is sent to it (to: its id). Another AI of the room gets a message only when it is sent to it (to: its id): to hand a message on as it is, tell with room, to and forward: its id (no text); to split a question, one tell per AI with to: that AI, then answer the person yourself in one message once they have answered. To name a member in your text, write @{its id}: the screen shows its name. Your rooms: ${list.map((r) => `${r.name} (${r.id}): ${(Array.isArray(r.members) ? r.members : []).map((x) => `${x.name}${x.kind ? ` [${x.kind}]` : ''} (${x.id})`).join(', ')}`).join('; ')}.` : ''; };
+            const from = (m) => inRoomLine(m) ?? (m.by && typeof m.by.name === 'string' ? `Message from ${plain(m.by.name, 40)}${m.by.place ? ` (${plain(m.by.place, 40)})` : ''}, a voice box${m.by.why ? ` [${plain(m.by.why, 120)}]` : ''} (first, at once, say in a few words what you are about to do with doing to: ["${plain(m.by.id, 80)}"]; then answer it aloud with tell to: the same -- or with ask to: the same when your answer calls for theirs: the box listens after) (${DICTATED}): ` : null);
             /* Who may hear an answer, when a voice box spoke: each by its room, its place and its id. */
             const boxes = () => { const list = speakers(); return list.length ? `\nVoice boxes here (tell with to: their ids; "the kitchen" said from one place means the one there, unless told otherwise): ${list.map((x) => `${x.name}${x.place ? ` · ${x.place}` : ''} (${x.id})`).join(', ')}.` : ''; };
             const said = (m) => (m.reaction ? reacted(m) : `${from(m) ?? (m.answers ? `Answer to your question "${plain(m.question, 200)}": ` : m.re ? `Reply to your message "${plain(m.quote, 200)}"${m.via === 'voice' ? ` (${DICTATED})` : ''}: ` : m.via === 'voice' ? `Message (${DICTATED}): ` : 'Message: ')}${m.answers ? answerText(m) : plain(m.text)}${aboutText(m)}${attached(m)}`);
-            return `${fresh.map((m) => `${shownId(m.id) ? `[${shownId(m.id)}] ` : ''}${said(m)}`).join('\n')}${fresh.some((m) => m.by) ? boxes() : ''}${pending}${next}`;
+            return `${fresh.map((m) => `${shownId(m.id) ? `[${shownId(m.id)}] ` : ''}${said(m)}`).join('\n')}${fresh.some((m) => m.room) ? roomsHint() : fresh.some((m) => m.by) ? boxes() : ''}${pending}${next}`;
         },
     };
 }
@@ -538,9 +559,9 @@ export const ASKING = 'Which form: one choice for a decision; several to tick wh
 export const GROUPING = `Several decisions you need at once: ask them together, as one card (${GROUP_MAX} questions at most, never more); each one choice, several to tick, or free.`;
 export const TOOLS = [
     { name: 'tell', description: `Tell the person you work for something: where you are, what you did, what you found. They read it on their own screen, not in this terminal. It does not wait for an answer. ${WRITING} ${SHORTER} ${RICH}`,
-        inputSchema: { type: 'object', properties: { text: { type: 'string', description: 'What to tell them, in Markdown.' }, to: { type: 'array', items: { type: 'string' }, description: 'Optional: the ids of voice boxes that say it aloud (a message from one gives its id). The text alone is said: never put their names in it to address them.' }, short: { type: 'string', description: 'Optional, for a long text: its title, one or two lines.' }, suggest: { type: 'string', description: 'Optional, only when you would answer in their place: the reply you suggest, in their words and language (one to three lines). It is shown greyed in their box; one key (Tab) or one touch makes it theirs, to send or change.' } }, required: ['text'] } },
+        inputSchema: { type: 'object', properties: { text: { type: 'string', description: 'What to tell them, in Markdown.' }, room: { type: 'string', description: 'Optional: the id of a room you are in, to answer there (a message from a room gives it); without it, your words stay in your own thread.' }, re: { type: 'string', description: 'Optional, with room: the id of the room message you answer (given as "its message there").' }, forward: { type: 'string', description: 'Optional, with room and to (AIs of the room): hand that room message on, as it is, to them (its id); text may then be left empty.' }, to: { type: 'array', items: { type: 'string' }, description: 'Optional: the ids of voice boxes that say it aloud (a message from one gives its id). The text alone is said: never put their names in it to address them.' }, short: { type: 'string', description: 'Optional, for a long text: its title, one or two lines.' }, suggest: { type: 'string', description: 'Optional, only when you would answer in their place: the reply you suggest, in their words and language (one to three lines). It is shown greyed in their box; one key (Tab) or one touch makes it theirs, to send or change.' } }, required: ['text'] } },
     { name: 'ask', description: `Ask the person you work for a question, instead of asking it in the terminal. It does NOT wait: it posts the question and returns at once. Stop or go on with something else; you will be told in the terminal when a message arrives, then call read. A question they answered another way (a message typed later): close it with close. ${ASKING} Several to tick: many: true. ${GROUPING} Together: questions, instead of question and choices. ${WRITING} ${RICH}`,
-        inputSchema: { type: 'object', properties: { to: { type: 'array', items: { type: 'string' }, description: 'Optional: voice boxes (their ids) to ask it aloud on; the box listens after for the answer.' }, question: { type: 'string' }, choices: { type: 'array', items: { type: 'string' }, description: 'Optional: the answers they can pick from.' }, many: { type: 'boolean', description: 'Optional, with two choices or more: they may tick several, sent together; read lists those ticked.' },
+        inputSchema: { type: 'object', properties: { room: { type: 'string', description: 'Optional: the id of a room you are in, to answer there (a message from a room gives it); without it, your words stay in your own thread.' }, re: { type: 'string', description: 'Optional, with room: the id of the room message you answer (given as "its message there").' }, to: { type: 'array', items: { type: 'string' }, description: 'Optional: voice boxes (their ids) to ask it aloud on; the box listens after for the answer.' }, question: { type: 'string' }, choices: { type: 'array', items: { type: 'string' }, description: 'Optional: the answers they can pick from.' }, many: { type: 'boolean', description: 'Optional, with two choices or more: they may tick several, sent together; read lists those ticked.' },
             questions: { type: 'array', maxItems: GROUP_MAX, description: `Optional: 2 to ${GROUP_MAX} questions asked together, as one card, answered with one Send; read gives each answer by its id. question is then an optional introduction.`,
                 items: { type: 'object', properties: { id: { type: 'string', description: 'Short, letters, digits, - or _: the answer names it.' }, label: { type: 'string', description: 'A word or two for its tab, in their language.' }, question: { type: 'string' }, choices: { type: 'array', items: { type: 'string' } }, many: { type: 'boolean' }, recommended: { description: 'Optional, only when you do recommend one: the choice you recommend, written exactly as in choices (with many: a list). It is marked Recommended on their screen, and ticked first on a card; they decide.' }, input: { type: 'object', description: 'Optional, instead of choices: a selector for the answer. recommended (only when you recommend one): the value it starts at, marked Recommended -- a number; [a, b] for a range; yes or no; for rank, the items in the order you recommend. kind: yesno | slider | number (min, max, step, unit, value, labels: [low end, high end]) | range (same, value: [a, b]) | scale (min, max: whole numbers, 11 steps at most, labels) | stars (max 3-10) | rank (items) | split (items, total: 100 by default, unit) | table (columns, rows, values: rows of cells) | date | time | datetime (value) | text (lines). The answer comes back as plain text.', properties: { kind: { type: 'string' } } } }, required: ['question'] } }, steps: { type: 'boolean', description: 'Optional, with long questions: one at a time, as steps with tabs, instead of all on one card.' }, input: { type: 'object', description: 'Optional, instead of choices: a selector for the answer. kind: yesno | slider | number (min, max, step, unit, value, labels: [low end, high end]) | range (same, value: [a, b]) | scale (min, max: whole numbers, 11 steps at most, labels) | stars (max 3-10) | rank (items) | split (items, total: 100 by default, unit) | table (columns, rows, values: rows of cells) | date | time | datetime (value) | text (lines). The answer comes back as plain text.', properties: { kind: { type: 'string' } } }, short: { type: 'string', description: 'Optional, for a long question: its title, one or two lines.' }, recommended: { description: 'Optional, only when you do recommend one: the choice you recommend, written exactly as in choices (or, with input, the value its selector starts at) (with many: a list). It is marked Recommended on their screen, and ticked first on a card; they decide.' }, suggest: { type: 'string', description: 'Optional, only when you would answer in their place: the reply you suggest, in their words and language (one to three lines). It is shown greyed in their box; one key (Tab) or one touch makes it theirs, to send or change.' } } } },
     { name: 'show', description: `Point the person you work for to a file you made (a report, a picture, a page), or to several at once, so that they can open them from their screen. ${GALLERY} Put them in a folder you share with them.`,
@@ -550,7 +571,7 @@ export const TOOLS = [
     { name: 'close', description: 'Close a question of yours that they answered another way (in a message typed later, not with its buttons), saying the answer you understood. Their screen shows it; they may still correct it. The id is the one read shows.',
         inputSchema: { type: 'object', properties: { id: { type: 'string', description: 'The id of the question, as read shows it.' }, answer: { type: 'string', description: 'The answer you understood, in one line.' } }, required: ['id', 'answer'] } },
     { name: 'doing', description: 'Say in one short line what you are doing right now ("reading the 12 recordings", "running the tests"), each time you move to something new. Their screen shows it while you work, and keeps what came before. It does not wait.',
-        inputSchema: { type: 'object', properties: { text: { type: 'string', description: 'One short line, in their language.' }, to: { type: 'array', items: { type: 'string' }, description: 'Optional: voice boxes (their ids) to say it aloud on at once -- when they spoke to you through one: first, in a few words, what you are about to do ("Je regarde ton agenda").' } }, required: ['text'] } },
+        inputSchema: { type: 'object', properties: { text: { type: 'string', description: 'One short line, in their language.' }, room: { type: 'string', description: 'Optional: the id of a room you are in, to show it there.' }, to: { type: 'array', items: { type: 'string' }, description: 'Optional: voice boxes (their ids) to say it aloud on at once -- when they spoke to you through one: first, in a few words, what you are about to do ("Je regarde ton agenda").' } }, required: ['text'] } },
     { name: 'status', description: 'Say in one word where you are, so that their screen shows it: "working" when you start; "done" when you stop and they have nothing to do; "waiting" only when you need their answer or action (it puts them on alert).',
         inputSchema: { type: 'object', properties: { state: { type: 'string', enum: STATES }, note: { type: 'string', description: 'Optional: one short line.' } }, required: ['state'] } },
     { name: 'forget', description: 'Forget a short-lived secret the person pasted in the chat, once you are done with it: the parloir drops it from its store and the machine at once, before its few minutes are up. The name is the one read shows, at /run/secrets/<name>. It clears itself anyway if you do not.',
@@ -560,13 +581,13 @@ export const TOOLS = [
 export function serve(dir, { input = process.stdin, output = process.stdout } = {}) {
     const verbs = bridge(dir, { how: 'call read', back: (id) => `call read with before: "${id}"` });
     const call = (name, args = {}) => {
-        if (name === 'tell') return verbs.tell(args.text, { short: args.short, suggest: args.suggest, to: args.to });
-        if (name === 'ask') return verbs.ask(args.question, args.choices, { to: args.to, short: args.short, many: args.many === true, steps: args.steps === true, recommended: args.recommended, suggest: args.suggest, ...(args.input !== undefined ? { input: args.input } : {}), ...(args.questions !== undefined ? { questions: args.questions } : {}) });
+        if (name === 'tell') return verbs.tell(args.text, { short: args.short, suggest: args.suggest, to: args.to, room: args.room, re: args.re, forward: args.forward });
+        if (name === 'ask') return verbs.ask(args.question, args.choices, { to: args.to, room: args.room, re: args.re, short: args.short, many: args.many === true, steps: args.steps === true, recommended: args.recommended, suggest: args.suggest, ...(args.input !== undefined ? { input: args.input } : {}), ...(args.questions !== undefined ? { questions: args.questions } : {}) });
         if (name === 'close') return verbs.close(args.id, args.answer);
         if (name === 'show') return verbs.show(Array.isArray(args.files) ? args.files : Array.isArray(args.paths) ? args.paths : args.path, args.note);
         if (name === 'read') return verbs.read({ all: args.all === true, ...(Number.isInteger(args.last) ? { last: args.last } : {}), ...(Number.isInteger(args.days) ? { days: args.days } : {}), ...(typeof args.before === 'string' ? { before: args.before } : {}) });
         if (name === 'status') return verbs.status(args.state, args.note);
-        if (name === 'doing') return verbs.doing(args.text, { to: args.to });
+        if (name === 'doing') return verbs.doing(args.text, { to: args.to, room: args.room });
         if (name === 'forget') return verbs.forget(args.name);
         throw new Error(`unknown tool: ${name}`);
     };

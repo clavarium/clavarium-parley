@@ -114,6 +114,15 @@ export function languageName(lang) {
    whose files the person can open. */
 /* Another speaker of the person's side: { id, name, place? }, each one short line (a voice box: its room, and where it is). */
 export const SPEAKERS_FILE = 'speakers.json';
+/* The rooms this agent is a member of (#215): [{ id, name, members: [{ id, name, kind }] }], set by the application. */
+export const ROOMS_FILE = 'rooms.json';
+const ROOMS_MAX = 20;
+export function roomOf(v) {
+    if (!v || typeof v !== 'object') return null;
+    const id = oneLine(v.id, 80); const name = oneLine(v.name, 60);
+    const members = Array.isArray(v.members) ? v.members.map(byOf).filter(Boolean).slice(0, 40) : [];
+    return id && name ? { id, name, members } : null;
+}
 export const SPEAKERS_MAX = 20;
 export function byOf(v) {
     if (!v || typeof v !== 'object') return null;
@@ -121,7 +130,9 @@ export function byOf(v) {
     /* Why it listened (a voice box: the wake word and its score, the button, a conversation going on...), and
        what it cut short: shown beside the message, never in its words (01-11). */
     const why = oneLine(v.why, 120);
-    return id && name ? { id, name, ...(place ? { place } : {}), ...(why ? { why } : {}) } : null;
+    /* Which sort of speaker (#215, the rooms): a person, an AI (a conversation), a voice box. */
+    const kind = ['person', 'ai', 'box'].includes(v.kind) ? v.kind : '';
+    return id && name ? { id, name, ...(kind ? { kind } : {}), ...(place ? { place } : {}), ...(why ? { why } : {}) } : null;
 }
 
 export function invitation({ lang = 'en', install, shared } = {}) {
@@ -354,7 +365,7 @@ function inputKept(x) {
 }
 
 export class Parley {
-    #dir; #on; #reach; #now; #reactions; #keep;
+    #dir; #on; #reach; #now; #reactions; #keep; #room;
 
     /* `on(event)`: told what happens (see the top of this file).
        `reach(path)`: how the person opens a file the agent showed -- a
@@ -364,7 +375,11 @@ export class Parley {
     /* `keep`: a folder of the application's, out of the agent's reach, where
        the thread is kept as it was read (see THE APPLICATION'S OWN COPY);
        one per bridge folder. Without it, the bridge folder is all there is. */
-    constructor(dir, { on, reach = (path) => path, now = () => new Date(), reactions = REACTIONS, keep } = {}) {
+    /* `room`: a room's thread (#215), written by the application alone: only there is an agent-side line
+       signed (by), and only by relay(). In an agent's own folder a signature it writes is never believed --
+       who wrote a line is where it came from, never what it says of itself (03-11). */
+    constructor(dir, { on, reach = (path) => path, now = () => new Date(), reactions = REACTIONS, keep, room = false } = {}) {
+        this.#room = room === true;
         this.#dir = dir; this.#on = on; this.#reach = reach; this.#now = now; this.#keep = typeof keep === 'string' && keep ? keep : null;
         this.#reactions = (Array.isArray(reactions) ? reactions : REACTIONS).filter((r) => r && REACTION_ID.test(r.id));
     }
@@ -390,6 +405,12 @@ export class Parley {
             const to = m.to.slice(0, SPEAKERS_MAX).map((x) => oneLine(x, 80)).filter(Boolean);
             if (to.length) { entry.to = to; entry.toNames = to.map((id) => names.get(id) ?? id); }
         }
+        /* In a room (#215): which AI wrote it (the application signs what it relays), and the message it answers. */
+        if (this.#room && byOf(m.by)) entry.by = byOf(m.by);
+        if (typeof m.re === 'string' && oneLine(m.re, 80)) entry.re = oneLine(m.re, 80);
+        /* Where it is to go (an agent answering in a room): a request the application checks, never a signature. */
+        if (!this.#room && (kind === 'say' || kind === 'ask' || kind === 'doing') && typeof m.room === 'string' && oneLine(m.room, 80)) entry.room = oneLine(m.room, 80);
+        if (entry.room && typeof m.forward === 'string' && oneLine(m.forward, 80)) entry.forward = oneLine(m.forward, 80);
         /* Several questions at once, one card: each well formed, ids unique; fewer than two, none (the text says them). */
         if (kind === 'ask' && Array.isArray(m.questions)) {
             const ids = new Set();
@@ -513,7 +534,7 @@ export class Parley {
             const seen = i < toRaw.length - unread;
             const e = { from: 'person', id: String(m.id ?? ''), at: String(m.at ?? ''), kind: 'say', text: clean(m.text), choices: [], seen, ...(seen && seenAt(i) ? { seenAt: seenAt(i) } : {}),
                 ...(m.answers ? { answers: String(m.answers), question: oneLine(m.question, 300) } : {}), ...(m.answers && Array.isArray(m.picked) ? { picked: m.picked.slice(0, 8).map((x) => oneLine(x, 200)).filter(Boolean) } : {}),
-                ...(m.answers && Array.isArray(m.replies) ? { replies: m.replies.slice(0, GROUP_MAX).filter((r) => r && typeof r === 'object' && typeof r.id === 'string').map((r) => ({ id: oneLine(r.id, 30), ...(oneLine(r.label, 40) ? { label: oneLine(r.label, 40) } : {}), ...(Array.isArray(r.picked) ? { picked: r.picked.slice(0, 8).map((x) => oneLine(x, 200)).filter(Boolean) } : { text: clean(r.text).slice(0, 2000) }) })) } : {}), ...(m.re ? { re: String(m.re), quote: oneLine(m.quote, 300) } : {}), ...(Array.isArray(m.files) && m.files.length ? { files: this.#files(m.files) } : {}), ...(m.via === 'voice' ? { via: 'voice' } : {}), ...(aboutOf(m.about) ? { about: aboutOf(m.about) } : {}), ...(byOf(m.by) ? { by: byOf(m.by) } : {}) };
+                ...(m.answers && Array.isArray(m.replies) ? { replies: m.replies.slice(0, GROUP_MAX).filter((r) => r && typeof r === 'object' && typeof r.id === 'string').map((r) => ({ id: oneLine(r.id, 30), ...(oneLine(r.label, 40) ? { label: oneLine(r.label, 40) } : {}), ...(Array.isArray(r.picked) ? { picked: r.picked.slice(0, 8).map((x) => oneLine(x, 200)).filter(Boolean) } : { text: clean(r.text).slice(0, 2000) }) })) } : {}), ...(m.re ? { re: String(m.re), quote: oneLine(m.quote, 300) } : {}), ...(Array.isArray(m.files) && m.files.length ? { files: this.#files(m.files) } : {}), ...(m.via === 'voice' ? { via: 'voice' } : {}), ...(aboutOf(m.about) ? { about: aboutOf(m.about) } : {}), ...(byOf(m.by) ? { by: byOf(m.by) } : {}), ...(m.room && typeof m.room === 'object' && oneLine(m.room.id, 80) ? { room: { id: oneLine(m.room.id, 80), name: oneLine(m.room.name, 60), ...(oneLine(m.room.message, 80) ? { message: oneLine(m.room.message, 80) } : {}) } } : {}) };
             place.set(e, i);
             person.push(e);
         });
@@ -667,7 +688,36 @@ export class Parley {
         return clean2;
     }
 
-    say(text, answers, files = [], { via, picked, replies, about, by } = {}) {
+    /* THE ROOMS this agent is in (#215), set by the application, read by the agent's side to answer there. */
+    rooms() {
+        try { const v = JSON.parse(readFileSync(`${this.#dir}/${ROOMS_FILE}`, 'utf8')); return Array.isArray(v) ? v.map(roomOf).filter(Boolean).slice(0, ROOMS_MAX) : []; } catch { return []; }
+    }
+    setRooms(list) {
+        const clean2 = (Array.isArray(list) ? list : []).map(roomOf).filter(Boolean).slice(0, ROOMS_MAX);
+        if (JSON.stringify(clean2) === JSON.stringify(this.rooms())) return clean2;
+        mkdirSync(this.#dir, { recursive: true });
+        writeFileSync(`${this.#dir}/${ROOMS_FILE}`, `${JSON.stringify(clean2)}\n`);
+        return clean2;
+    }
+
+    /* A ROOM'S THREAD (#215): the application writes both sides. What an AI said is put on the agent's side, signed
+       by it (by: { id, name, kind: 'ai' }), for whom (to), and the message it answers (re). Never by an agent. */
+    relay({ text, by, to, re, kind = 'say' } = {}) {
+        if (!this.#room) throw new RangeError('Only a room\'s thread is written by relay.');
+        const who = byOf(by);
+        const said = clean(text).trim();
+        if (!who) throw new RangeError('Say who wrote it (by: id and name).');
+        if (!said) throw new RangeError('Write something.');
+        const entry = { id: randomUUID(), at: this.#now().toISOString(), kind: kind === 'doing' ? 'doing' : 'say', text: kind === 'doing' ? oneLine(said, 200) : said, by: who };
+        const ids = Array.isArray(to) ? to.map((x) => oneLine(x, 80)).filter(Boolean).slice(0, SPEAKERS_MAX) : [];
+        if (ids.length) entry.to = ids;
+        if (typeof re === 'string' && oneLine(re, 80)) entry.re = oneLine(re, 80);
+        mkdirSync(this.#dir, { recursive: true });
+        appendFileSync(`${this.#dir}/from-agent.jsonl`, `${JSON.stringify(entry)}\n`);
+        return entry.id;
+    }
+
+    say(text, answers, files = [], { via, picked, replies, about, by, room } = {}) {
         const given = Array.isArray(files) ? files : [];
         if (given.length > FILES_MAX) throw new RangeError(`${FILES_MAX} files at most in one message.`);
         const attached = given.map((f) => ({ path: oneLine(f?.path, 1000), name: oneLine(f?.name, 200), size: Number.isInteger(f?.size) && f.size >= 0 ? f.size : undefined, note: oneLine(f?.note, NOTE_MAX) }));
@@ -711,6 +761,8 @@ export class Parley {
         if (via === 'voice') entry.via = 'voice';
         /* Said by another speaker of the person's side (a voice box, #215): its name, its id. */
         if (byOf(by)) entry.by = byOf(by);
+        /* Said in a room (#215): which one, and its id there (what an answer in the room is linked to). */
+        if (room && typeof room === 'object' && oneLine(room.id, 80) && oneLine(room.name, 60)) entry.room = { id: oneLine(room.id, 80), name: oneLine(room.name, 60), ...(oneLine(room.message, 80) ? { message: oneLine(room.message, 80) } : {}) };
         const tapped = aboutOf(about);
         if (tapped) entry.about = tapped;
         if (attached.length) entry.files = attached.map((f) => ({ path: f.path, name: f.name || f.path.split('/').pop(), ...(f.size === undefined ? {} : { size: f.size }), ...(f.note ? { note: f.note } : {}) }));

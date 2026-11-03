@@ -59,7 +59,7 @@ export const HELP = `parley: talk with the person you work for. They read and an
   parley read --last 100               the end of the exchange, both sides, oldest first (or --days 2):
                                        to pick up the thread after a restart; it ends with how to read
                                        what came before: parley read --before ID (as far back as needed)
-  parley tell [--short "title"] [--to ID,ID] "text" tell them something; --to: voice boxes that say it aloud
+  parley tell [--short "title"] [--to ID,ID] [--room ID [--re MSG]] "text" tell them something; --to: voice boxes that say it aloud; --room: in a room you are in
   parley ask [--short "title"] [--pick-many] "question" [--choice "answer" ...]
                                        ask them something; give the answers they can pick when you can,
                                        each with --choice (the question first; "-" for the question
@@ -172,7 +172,7 @@ export function showing(words, cwd = process.cwd()) {
 
 /* The options of each verb ("=": it takes a value). */
 const OPTIONS = {
-    read: ['--last=', '--days=', '--before=', '--all'], tell: ['--short=', '--suggest=', '--to='], ask: ['--short=', '--pick-many', '--group', '--choice=', '--recommend=', '--suggest='],
+    read: ['--last=', '--days=', '--before=', '--all'], tell: ['--short=', '--suggest=', '--to=', '--room=', '--re='], ask: ['--short=', '--pick-many', '--group', '--choice=', '--recommend=', '--suggest=', '--room=', '--re='],
     show: [], close: [], doing: [], status: [], forget: [],
 };
 
@@ -276,7 +276,10 @@ export function run(argv, { env = process.env, cwd = process.cwd(), stdin = () =
             /* --to ID,ID: voice boxes that say it aloud (#215). */
             let to;
             if (rest.includes('--to')) { const i = rest.indexOf('--to'); to = rest[i + 1]; rest.splice(i, 2); if (!to) return { code: 64, out: '', err: '--to needs the ids, comma-separated.\n' }; }
-            if (verb === 'tell') said = verbs.tell(text(rest.join(' ')), { short, suggest, to });
+            /* --room ID [--re MSG]: answer in a room it is in (#215). */
+            const flag = (name) => { const i = rest.indexOf(name); if (i < 0) return undefined; const v = rest[i + 1]; rest.splice(i, 2); return v; };
+            const room = flag('--room'); const re = flag('--re');
+            if (verb === 'tell') said = verbs.tell(text(rest.join(' ')), { short, suggest, to, room, re });
             else {
                 /* Its answers: --choice "...", once each, anywhere; or, as before, the words after the question. */
                 const choices = [];
@@ -290,11 +293,11 @@ export function run(argv, { env = process.env, cwd = process.cwd(), stdin = () =
                 if (rest.slice(1).includes('-')) return { code: 64, out: '', err: 'The question comes first, then its answers: parley ask [--short "title"] "question" (or -) [--choice "answer" ...].\n' };
                 const question = rest[0] === undefined ? '' : text(rest[0]);
                 if (!String(question).trim()) return { code: 64, out: '', err: 'A question needs its text: parley ask "question" [--choice "answer" ...].\n' };
-                said = verbs.ask(question, [...rest.slice(1), ...choices], { short, many, ...(recommend.length ? { recommended: many ? recommend : recommend[0] } : {}), suggest, to });
+                said = verbs.ask(question, [...rest.slice(1), ...choices], { short, many, ...(recommend.length ? { recommended: many ? recommend : recommend[0] } : {}), suggest, to, room, re });
             }
         }
         else if (verb === 'close') said = verbs.close(rest[0], text(rest.slice(1).join(' ')));
-        else if (verb === 'doing') { let to; const i = rest.indexOf('--to'); if (i >= 0) { to = rest[i + 1]; rest.splice(i, 2); } said = verbs.doing(text(rest.join(' ')), { to }); }
+        else if (verb === 'doing') { let to; let room; const i = rest.indexOf('--to'); if (i >= 0) { to = rest[i + 1]; rest.splice(i, 2); } const j = rest.indexOf('--room'); if (j >= 0) { room = rest[j + 1]; rest.splice(j, 2); } said = verbs.doing(text(rest.join(' ')), { to, room }); }
         else if (verb === 'forget') said = verbs.forget(rest[0]);
         else if (verb === 'show') { const { files, note } = showing(rest, cwd); said = verbs.show(files.length === 1 && !files[0].title ? files[0].path : files, note, { from: cwd }); }
         else said = verbs.status(rest[0], rest.slice(1).join(' '));
