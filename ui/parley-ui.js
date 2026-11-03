@@ -242,7 +242,7 @@ export const KEYS = Object.freeze(['send', 'placeholder', 'empty', 'view', 'simp
     'copy', 'copied', 'see-details', 'see-more', 'see-less', 'note', 'tip', 'important', 'warning', 'caution', 'badge-ok', 'badge-todo', 'badge-blocked', 'badge-warn',
     'waits-you', 'waits-you-note', 'busy', 'pulse', 'state-sent', 'state-read', 'state-working', 'state-done', 'sent-at', 'read-at', 'done-at',
     'reply', 'to-card', 'other-answer', 'group-count', 'group-step', 'group-next', 'group-back', 'group-review', 'group-check', 'group-modify', 'group-send', 'group-several', 'group-own', 'group-missing',
-    'replying', 'not-a-reply', 'in-reply', 'closed', 'you', 'agent', 'drop', 'picture', 'diagram', 'not-shown', 'grouped', 'issue-machine', 'issue-fixed', 'issue-details',
+    'replying', 'not-a-reply', 'in-reply', 'closed', 'you', 'agent', 'drop', 'picture', 'diagram', 'not-shown', 'grouped', 'issue-machine', 'issue-fixed', 'issue-details', 'room-fold', 'room-a', 'room-open',
     'zoom-in', 'zoom-out', 'zoom-actual', 'zoom-fit', 'zoom-actual-short', 'zoom-fit-short', 'close', 'previous', 'next', 'search', 'found', 'newest', 'dictation', 'auto-send-off',
     'react', 'react-remove', 'react-agree', 'react-go', 'react-disagree', 'react-unclear', 'react-stop', 'react-redo', 'react-later', 'react-love',
     'react-agree-hint', 'react-go-hint', 'react-disagree-hint', 'react-unclear-hint', 'react-stop-hint', 'react-redo-hint', 'react-later-hint', 'react-love-hint',
@@ -672,6 +672,10 @@ export function view(data, { words = {}, view: as = 'simple', now = Date.now(), 
             /* Said by another speaker of the person's side (a voice box, #215), by its name of the moment. */
             by: m.by && typeof m.by.name === 'string' ? cut(m.by.place ? `${m.by.name} \u00b7 ${m.by.place}` : m.by.name, 80) : '',
             byWhy: person && m.by && typeof m.by.why === 'string' ? cut(m.by.why, 120) : '',
+            /* A voice box speaking (#215): a small speaker beside its name (03-11). */
+            byBox: Boolean(m.by && (m.by.kind === 'box' || (person && !m.by.kind))),
+            /* Said or answered in a room (#268): folded in this thread under one line, the room a link away (03-11). */
+            room: m.room && typeof m.room === 'object' && typeof m.room.id === 'string' ? { id: m.room.id, name: cut(m.room.name, 60) } : typeof m.room === 'string' ? { id: m.room, name: '' } : null,
             /* For some of them only: their names of the moment, on a small tab astride the message. */
             toNames: !person && Array.isArray(m.toNames) ? m.toNames.slice(0, 20).map((x) => cut(String(x), 40)).filter(Boolean) : [],
             tool: detailed && !person && agentTool ? String(agentTool) : '',
@@ -799,6 +803,23 @@ export function view(data, { words = {}, view: as = 'simple', now = Date.now(), 
     /* Simple: ONE LINE PER PROBLEM of the machine (03-11, "less is more"): its lines, however far apart in the
        thread, gathered where it began -- it changes ("×2", then fixed) instead of piling up; its details one tap
        away. Fixed and an hour old: gone from the simple view (the detailed one keeps every line). */
+    /* SIMPLE: what happened in a room, folded where it began under one line « In the room X · 3 » (03-11: the room
+       has the whole of it; here it stays one tap away, never mixed with this conversation's own talk). */
+    if (!detailed) {
+        const names = new Map(rows.filter((r) => r.room?.name).map((r) => [r.room.id, r.room.name]));
+        const folded = [];
+        for (const row of rows) {
+            if (row.room && row.from !== 'system') {
+                const prev = folded.at(-1);
+                if (prev?.type === 'roomfold' && prev.roomId === row.room.id) { prev.items.push(row); prev.end = row.at; continue; }
+                folded.push({ type: 'roomfold', key: `R:${row.id ?? row.key}`, roomId: row.room.id, roomName: row.room.name || names.get(row.room.id) || '', items: [row], at: row.at, end: row.at });
+                continue;
+            }
+            folded.push(row);
+        }
+        for (const r of folded) if (r.type === 'roomfold') { r.text = said(words, 'room-fold', { room: r.roomName || said(words, 'room-a'), count: r.items.length }); r.time = r.items.at(-1).time; r.when = r.items.at(-1).when; }
+        rows.splice(0, rows.length, ...folded);
+    }
     const gathered = [];
     if (!detailed) {
         let open = null;
@@ -2815,6 +2836,19 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
         if (row.type === 'waits') { const p = el('p', 'parley-waits', row.text); p.title = row.when; p.setAttribute('role', 'status'); return p; }
         /* Done: said once, quietly, at the end. */
         if (row.type === 'done') { const p = el('p', 'parley-done', row.text); p.title = row.when; p.setAttribute('role', 'status'); return p; }
+        if (row.type === 'roomfold') {
+            const holder = el('div', 'parley-roomfold');
+            const head = el('div', 'parley-roomfold-head');
+            const more = button('', 'parley-roomfold-line', () => {});
+            more.append(el('span', 'parley-roomfold-text', row.text), time(row.time, row.when));
+            head.append(more);
+            if (act) { const go = button(said(words, 'room-open'), 'parley-roomfold-open', () => { try { act(`salon:${row.roomId}`, {}); } catch { /* the application's business */ } }); head.append(go); }
+            const list = el('div', 'parley-roomfold-items');
+            for (const it of row.items) { const n = rowOf(it, v); if (n) list.append(n); }
+            holder.append(head, list);
+            folding({ key: row.key, open: false }, holder, more, list);
+            return holder;
+        }
         if (row.type === 'issue') {
             /* One problem of the machine: its name, its time, its one button; its lines folded under it. */
             const holder = el('div', 'parley-issue'); if (row.tone) holder.dataset.tone = row.tone; if (row.fixed) holder.dataset.fixed = 'true';
@@ -2867,7 +2901,7 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
         }
         if (item.from === 'agent') {
             const head = el('p', 'parley-who');
-            if (item.name) head.append(el('span', 'parley-name', item.name));
+            if (item.name) { const nm = el('span', 'parley-name', item.name); if (item.byBox) nm.dataset.box = 'true'; head.append(nm); }
             /* Which tool it is: small, in the detailed view only. */
             if (item.name && item.tool && item.tool !== item.name) head.append(el('span', 'parley-tool', item.tool));
             if (item.time) head.append(time(item.trail ? `${item.time} - ${item.trail.label}` : item.time, item.when));

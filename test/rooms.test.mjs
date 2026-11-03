@@ -96,3 +96,21 @@ test('#280: forward hands a room message on (room and to needed, no text); split
         assert.match(agent.read(), /hand a message on as it is, tell with room, to and forward/);
     } finally { rmSync(dir, { recursive: true, force: true }); }
 });
+
+test('in a conversation\'s own thread, what happened in a room is one line « In the room X · N », its messages inside; its own talk stays plain', () => {
+    const dir = folder();
+    try {
+        const own = new Parley(dir);
+        own.say('Bonjour toi.');
+        own.say('On a payé la facture ?', undefined, [], { by: { id: 'box-1', name: 'Cuisine', kind: 'box' }, room: { id: 'room-1', name: 'La maison', message: 'm1' } });
+        own.say('Et l’assurance ?', undefined, [], { room: { id: 'room-1', name: 'La maison', message: 'm2' } });
+        const v = view(own.read(), { words: { 'room-fold': 'In the room {room} · {count}' } });
+        const folds = v.rows.filter((r) => r.type === 'roomfold');
+        assert.equal(folds.length, 1);
+        assert.equal(folds[0].text, 'In the room La maison · 2');
+        assert.equal(folds[0].roomId, 'room-1');
+        assert.ok(v.rows.some((r) => r.from === 'person' && r.text === 'Bonjour toi.'), 'its own talk not folded');
+        const detailed = view(own.read(), { words: {}, view: 'detailed' });
+        assert.equal(detailed.rows.filter((r) => r.type === 'roomfold').length, 0, 'the detailed view keeps every message');
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+});

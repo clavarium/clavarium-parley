@@ -888,3 +888,16 @@ mark.parley-found[data-now="true"] { outline: 2px solid var(--parley-ask); }
 .parley-issue-lines .parley-system { align-items: flex-start; justify-content: flex-start; text-align: left; }
 .parley-issue-lines .parley-system-text { text-align: left; }
 .parley-issue-lines .parley-system:not(:last-child) .parley-system-actions { display: none; }   /* the buttons once, under the last line (03-11) */
+
+/* WHAT HAPPENED IN A ROOM, in a conversation's thread (03-11): one quiet line, its messages one tap away. */
+.parley-roomfold { display: flex; flex-direction: column; gap: .35em; align-self: stretch; }
+.parley-roomfold-head { display: flex; align-items: center; gap: .5em; flex-wrap: wrap; }
+.parley .parley-roomfold-line { border: 0; background: transparent; padding: 0 .2em; min-height: 2.2em; font-weight: 400; font-size: .9em; color: var(--parley-dim); display: inline-flex; gap: .5em; align-items: center; }
+.parley .parley-roomfold-line::before { content: "\25B8"; } .parley .parley-roomfold-line[aria-expanded="true"]::before { content: "\25BE"; }
+.parley .parley-roomfold-open { border: 0; background: transparent; padding: 0 .2em; min-height: 2.2em; font-size: .85em; font-weight: 600; color: var(--parley-action); text-decoration: underline; text-underline-offset: 3px; }
+.parley-roomfold-items { display: flex; flex-direction: column; gap: var(--parley-gap, .8em); margin-left: .3em; padding-left: .8em; border-left: 2px solid var(--parley-line); }
+.parley-roomfold-items[hidden] { display: none; }
+/* A voice box's name: a small speaker before it. */
+.parley-name[data-box="true"]::before { content: ""; display: inline-block; width: .9em; height: .9em; margin-right: .3em; vertical-align: -.1em; background: currentColor;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M11 5 6 9H3v6h3l5 4z'/%3E%3Cpath d='M15.5 8.5a5 5 0 0 1 0 7'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M11 5 6 9H3v6h3l5 4z'/%3E%3Cpath d='M15.5 8.5a5 5 0 0 1 0 7'/%3E%3C/svg%3E") center / contain no-repeat; }

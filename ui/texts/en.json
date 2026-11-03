@@ -191,5 +191,8 @@
   "said-to": "For {names}",
   "issue-machine": "Machine problem",
   "issue-fixed": "{what}: fixed",
-  "issue-details": "details"
+  "issue-details": "details",
+  "room-fold": "In the room {room} · {count}",
+  "room-a": "a room",
+  "room-open": "Open the room"
 }

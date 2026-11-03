@@ -191,5 +191,8 @@
   "said-to": "Pour {names}",
   "issue-machine": "Souci de la machine",
   "issue-fixed": "{what} : réglé",
-  "issue-details": "détails"
+  "issue-details": "détails",
+  "room-fold": "Dans le salon {room} · {count}",
+  "room-a": "un salon",
+  "room-open": "Ouvrir le salon"
 }
