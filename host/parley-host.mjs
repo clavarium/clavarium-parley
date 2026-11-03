@@ -385,7 +385,7 @@ export class Parley {
         if (kind === 'ask' && Array.isArray(m.recommended)) { const r = m.recommended.map((x) => oneLine(x, 200)).filter((x) => entry.choices.includes(x)); if (r.length) entry.recommended = r; }
         if ((kind === 'say' || kind === 'ask') && typeof m.suggest === 'string' && clean(m.suggest).trim()) entry.suggest = clean(m.suggest).slice(0, 1000).trim();
         /* Whom it is for (#215): the ids of those who speak here; shown by their names of the moment. */
-        if ((kind === 'say' || kind === 'ask') && Array.isArray(m.to)) {
+        if ((kind === 'say' || kind === 'ask' || kind === 'doing') && Array.isArray(m.to)) {
             const names = new Map(this.speakers().map((x) => [x.id, x.place ? `${x.name} \u00b7 ${x.place}` : x.name]));
             const to = m.to.slice(0, SPEAKERS_MAX).map((x) => oneLine(x, 80)).filter(Boolean);
             if (to.length) { entry.to = to; entry.toNames = to.map((id) => names.get(id) ?? id); }

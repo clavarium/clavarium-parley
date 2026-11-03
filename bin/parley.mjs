@@ -294,7 +294,7 @@ export function run(argv, { env = process.env, cwd = process.cwd(), stdin = () =
             }
         }
         else if (verb === 'close') said = verbs.close(rest[0], text(rest.slice(1).join(' ')));
-        else if (verb === 'doing') said = verbs.doing(text(rest.join(' ')));
+        else if (verb === 'doing') { let to; const i = rest.indexOf('--to'); if (i >= 0) { to = rest[i + 1]; rest.splice(i, 2); } said = verbs.doing(text(rest.join(' ')), { to }); }
         else if (verb === 'forget') said = verbs.forget(rest[0]);
         else if (verb === 'show') { const { files, note } = showing(rest, cwd); said = verbs.show(files.length === 1 && !files[0].title ? files[0].path : files, note, { from: cwd }); }
         else said = verbs.status(rest[0], rest.slice(1).join(' '));

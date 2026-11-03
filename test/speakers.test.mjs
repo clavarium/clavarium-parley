@@ -19,7 +19,7 @@ test('a voice box speaks in its own name; the agent answers it by its id, and th
 
     const agent = bridge(dir);
     const read = agent.read();
-    assert.match(read, /Message from Kitchen \(Lake house\), a voice box \(to answer it aloud, tell with to: \["box-1"\]\)/);
+    assert.match(read, /Message from Kitchen \(Lake house\), a voice box \(first, at once, say in a few words what you are about to do with doing to: \["box-1"\]; then answer it aloud with tell to: the same\)/);
     assert.match(read, /Voice boxes here .*Kitchen · Lake house \(box-1\), Garden \(box-2\)/);
 
     assert.throws(() => agent.tell('Ready.', { to: ['box-9'] }), /no one here has the id box-9; those who do: Kitchen \(box-1\), Garden \(box-2\)\. Nothing was sent/);
