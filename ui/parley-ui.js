@@ -714,7 +714,7 @@ export function view(data, { words = {}, view: as = 'simple', now = Date.now(), 
     for (const item of items) {
         /* A voice box is a speaker of its own (#215): named by itself, never "You". */
         const who = item.from === 'system' ? '' : item.by ? `by:${item.by}` : item.from;
-        item.name = who && who !== side ? (item.by ? item.by : who === 'person' ? said(words, 'you') : agentName2) : '';
+        item.name = who && who !== side ? (item.by ? item.by : who === 'person' ? '' : agentName2) : '';   /* the person here: no « You » (03-11), their side says it */
         side = who;
     }
     /* It waits, its last word a message that is not a question with choices: a
@@ -807,7 +807,9 @@ export function view(data, { words = {}, view: as = 'simple', now = Date.now(), 
         }
         packed.push(row);
     }
-    for (const row of packed) if (row.type === 'group') { row.text = row.lines.length === 1 ? row.lines[0].text : said(words, 'grouped', { topic: row.topic, count: row.lines.length, briefs: row.lines.map((l) => l.brief || l.text).join(', ') }); row.time = row.lines.at(-1).time; row.lines = row.lines.map(({ at, end, trail, ...l }) => l); }
+    for (const row of packed) if (row.type === 'group') { const briefs = [...row.lines.reduce((m, l) => { const t = l.brief || l.text; m.set(t, (m.get(t) ?? 0) + 1); return m; }, new Map())].map(([t, n]) => (n > 1 ? `${t} ×${n}` : t));
+        /* The same line twice is said once, with its count (03-11: « Tools updated… » twice in a row). */
+        row.text = row.lines.length === 1 ? row.lines[0].text : briefs.length === 1 ? briefs[0] : said(words, 'grouped', { topic: row.topic, count: row.lines.length, briefs: briefs.join(', ') }); row.time = row.lines.at(-1).time; row.lines = row.lines.map(({ at, end, trail, ...l }) => l); }
     /* The day when it changes, the time when long passed. */
     const shown = [];
     let previous = null;
@@ -3592,7 +3594,18 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
         const about = replyTo?.about ? { about: replyTo.about } : {};
         const answered = () => { if (replyTo && replyTo.id === answers) { dismissed.add(answers); replyTo = null; paintReply(); } };
         const via = dictatedNow ? 'voice' : undefined;
-        if (pending.length === 0) { clearBox(text); dictatedNow = false; if (await say(text, answers, undefined, via, about)) answered(); else dictatedNow = Boolean(via); return; }
+        /* At once (03-11): the words leave the box and stand at the end of the thread, faint, until the thread has
+           them; not sent, they go back to the box. */
+        if (pending.length === 0) {
+            clearBox(text); dictatedNow = false;
+            const row = el('div', 'parley-row parley-sending-row'); row.dataset.from = 'person';
+            const b = el('div', 'parley-said parley-sending'); b.dataset.from = 'person'; b.append(el('p', 'parley-text', text)); row.append(b);
+            thread.append?.(row); if (sticky) bottom();
+            const ok = await say(text, answers, undefined, via, about);   /* it read the thread again: the message is in it */
+            try { row.remove?.() ?? row.parentNode?.removeChild?.(row); } catch { /* already gone with a new paint */ }
+            if (ok) answered(); else { dictatedNow = Boolean(via); if (!box.value.trim()) { box.value = text; grow(); } }
+            return;
+        }
         /* The files go first, one after the other; the message only once they all went. */
         uploading = true; go.disabled = clip.disabled = true;
         problem.hidden = false; problem.dataset.kind = 'sending'; problem.textContent = said(words, 'sending-files');

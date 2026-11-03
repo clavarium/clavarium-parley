@@ -857,3 +857,7 @@ mark.parley-found[data-now="true"] { outline: 2px solid var(--parley-ask); }
 .parley .parley-react-choice, .parley .parley-react-reply { flex-direction: row; gap: .35em; min-height: 2em; width: auto; padding: 0 .7em; border-radius: 999px; border: 1px solid var(--parley-line); background: transparent; font-size: .85em; font-weight: 400; }
 .parley-react-choice .parley-sign, .parley-react-reply .parley-sign { width: 1.05em; height: 1.05em; }
 .parley-react-word { font-size: inherit; }
+
+/* 03-11: what is being sent, at once, faint; the mark of a dictated message only in the detailed view. */
+.parley-sending { opacity: .55; }
+.parley[data-view="simple"] .parley-dictated { display: none; }
