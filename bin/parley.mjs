@@ -275,7 +275,7 @@ export function run(argv, { env = process.env, cwd = process.cwd(), stdin = () =
             }
             /* --to ID,ID: voice boxes that say it aloud (#215). */
             let to;
-            if (verb === 'tell' && rest.includes('--to')) { const i = rest.indexOf('--to'); to = rest[i + 1]; rest.splice(i, 2); if (!to) return { code: 64, out: '', err: '--to needs the ids, comma-separated.\n' }; }
+            if (rest.includes('--to')) { const i = rest.indexOf('--to'); to = rest[i + 1]; rest.splice(i, 2); if (!to) return { code: 64, out: '', err: '--to needs the ids, comma-separated.\n' }; }
             if (verb === 'tell') said = verbs.tell(text(rest.join(' ')), { short, suggest, to });
             else {
                 /* Its answers: --choice "...", once each, anywhere; or, as before, the words after the question. */
@@ -290,7 +290,7 @@ export function run(argv, { env = process.env, cwd = process.cwd(), stdin = () =
                 if (rest.slice(1).includes('-')) return { code: 64, out: '', err: 'The question comes first, then its answers: parley ask [--short "title"] "question" (or -) [--choice "answer" ...].\n' };
                 const question = rest[0] === undefined ? '' : text(rest[0]);
                 if (!String(question).trim()) return { code: 64, out: '', err: 'A question needs its text: parley ask "question" [--choice "answer" ...].\n' };
-                said = verbs.ask(question, [...rest.slice(1), ...choices], { short, many, ...(recommend.length ? { recommended: many ? recommend : recommend[0] } : {}), suggest });
+                said = verbs.ask(question, [...rest.slice(1), ...choices], { short, many, ...(recommend.length ? { recommended: many ? recommend : recommend[0] } : {}), suggest, to });
             }
         }
         else if (verb === 'close') said = verbs.close(rest[0], text(rest.slice(1).join(' ')));
