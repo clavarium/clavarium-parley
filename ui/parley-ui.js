@@ -242,7 +242,7 @@ export const KEYS = Object.freeze(['send', 'placeholder', 'empty', 'view', 'simp
     'copy', 'copied', 'see-details', 'see-more', 'see-less', 'note', 'tip', 'important', 'warning', 'caution', 'badge-ok', 'badge-todo', 'badge-blocked', 'badge-warn',
     'waits-you', 'waits-you-note', 'busy', 'pulse', 'state-sent', 'state-read', 'state-working', 'state-done', 'sent-at', 'read-at', 'done-at',
     'reply', 'to-card', 'other-answer', 'group-count', 'group-step', 'group-next', 'group-back', 'group-review', 'group-check', 'group-modify', 'group-send', 'group-several', 'group-own', 'group-missing',
-    'replying', 'not-a-reply', 'in-reply', 'closed', 'you', 'agent', 'drop', 'picture', 'diagram', 'not-shown', 'grouped', 'issue-machine', 'issue-fixed', 'issue-details', 'sent-after-retry', 'room-fold', 'room-a', 'room-open',
+    'replying', 'not-a-reply', 'in-reply', 'closed', 'you', 'agent', 'drop', 'picture', 'diagram', 'not-shown', 'grouped', 'issue-machine', 'issue-fixed', 'issue-details', 'sent-after-retry', 'auto-wait', 'room-fold', 'room-a', 'room-open',
     'zoom-in', 'zoom-out', 'zoom-actual', 'zoom-fit', 'zoom-actual-short', 'zoom-fit-short', 'close', 'previous', 'next', 'search', 'found', 'newest', 'dictation', 'auto-send-off',
     'react', 'react-remove', 'react-agree', 'react-go', 'react-disagree', 'react-unclear', 'react-stop', 'react-redo', 'react-later', 'react-love',
     'react-agree-hint', 'react-go-hint', 'react-disagree-hint', 'react-unclear-hint', 'react-stop-hint', 'react-redo-hint', 'react-later-hint', 'react-love-hint',
@@ -284,6 +284,8 @@ export const PRESS_MS = 450;
 /* After a dictated phrase, this long a silence before it goes (04-11: 1.2 s cut a long sentence into several
    messages): shown filling around the send arrow; speaking again stops it. */
 export const AUTO_SEND_MS = 2000;
+/* The silences the person may choose instead (the small menu, under "send when I stop"). */
+export const AUTO_SEND_CHOICES = [1000, 2000, 3000, 5000];
 /* Send pressed while a phrase is still being written: sent once it is, or after this long with what is there. */
 export const WRITE_WAIT_MS = 15_000;
 /* Questions asked together: so many at most. */
@@ -2076,7 +2078,7 @@ function card(file, words, open, size, title) {
 }
 
 export function mount(root, { load, send, words = {}, open, terminal, remind, view: first = 'simple', onView, every = 3000, locale,
-    voice: speaking, autoSend = false, onAutoSend, replies: ready = [], enter = 'auto', touch, attach, act,
+    voice: speaking, autoSend = false, onAutoSend, autoSendMs = AUTO_SEND_MS, onAutoSendMs, replies: ready = [], enter = 'auto', touch, attach, act,
     markdown: rich = false, picture, diagram, highlight, agentName, agentTool, react, reactions: offered = REACTIONS,
     secrets: liveSecrets = {}, forget,
     receivedAfter = RECEIVED_MS, noAnswerAfter = NO_ANSWER_MS, back = true, draft: draftKey = '', math: mathGiven, refs: zoneRefs,
@@ -2152,8 +2154,14 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
     const autoWord = el('span', 'parley-auto-word', said(words, 'auto-send'));
     const autoOff = el('span', 'parley-auto-off', said(words, 'auto-send-off'));
     autoButton.append(autoWord, autoOff);
+    /* How long a silence before it goes: a choice of the device, shown while the switch is on. */
+    let waitMs = AUTO_SEND_CHOICES.includes(Number(autoSendMs)) ? Number(autoSendMs) : AUTO_SEND_MS;
+    const waitRow = el('div', 'parley-auto-wait'); waitRow.setAttribute('role', 'group'); waitRow.setAttribute('aria-label', said(words, 'auto-wait'));
+    const waitButtons = AUTO_SEND_CHOICES.map((ms) => { const b = button(`${ms / 1000} s`, '', () => { waitMs = ms; try { onAutoSendMs?.(ms); } catch { /* the application's business */ } paintWait(); }); b.dataset.ms = String(ms); return b; });
+    const paintWait = () => { for (const b of waitButtons) b.setAttribute('aria-pressed', String(Number(b.dataset.ms) === waitMs)); };
+    waitRow.append(el('span', 'parley-auto-wait-word', said(words, 'auto-wait')), ...waitButtons); paintWait();
     /* Under a heading of its own: it is about dictation. */
-    const dictation = el('div', 'parley-dictation'); dictation.append(el('p', 'parley-menu-head', said(words, 'dictation')), autoButton);
+    const dictation = el('div', 'parley-dictation'); dictation.append(el('p', 'parley-menu-head', said(words, 'dictation')), autoButton, waitRow);
     const searchButton = el('button', 'parley-search-open'); searchButton.type = 'button'; searchButton.append(sign('search'), el('span', '', said(words, 'search')));
     /* Every picture and file of the thread, as a gallery. */
     const mediaButton = el('button', 'parley-media-open'); mediaButton.type = 'button'; mediaButton.append(icon('images', 'parley-sign'), el('span', '', said(words, 'media')));
@@ -3785,7 +3793,7 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
     let autoTimer;
     /* The countdown before an automatic send, drawn around the arrow (CSS: data-countdown). */
     const disarm = () => { clearTimeout(autoTimer); autoTimer = undefined; delete go.dataset.countdown; };
-    const arm = () => { disarm(); go.style?.setProperty?.('--parley-countdown', `${AUTO_SEND_MS}ms`); void go.offsetWidth; go.dataset.countdown = 'on'; autoTimer = setTimeout(() => { delete go.dataset.countdown; void sendBox(); }, AUTO_SEND_MS); };
+    const arm = () => { disarm(); go.style?.setProperty?.('--parley-countdown', `${waitMs}ms`); void go.offsetWidth; go.dataset.countdown = 'on'; autoTimer = setTimeout(() => { delete go.dataset.countdown; void sendBox(); }, waitMs); };
     let writing = null;
     let hush;
     let gone = false;
@@ -3796,6 +3804,7 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
         mic.hidden = !voice;
         dictation.hidden = !voice;
         autoOff.hidden = auto;
+        waitRow.hidden = !auto;
         mic.setAttribute('aria-pressed', String(on));
         mic.dataset.state = on ? hearing || 'listening' : '';
         mic.dataset.auto = String(auto);

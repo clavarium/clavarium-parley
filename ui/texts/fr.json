@@ -203,5 +203,6 @@
   "list-show": "Afficher",
   "list-all": "Tout",
   "list-rooms-only": "Salons seuls",
-  "sent-after-retry": "{text}, après un nouvel essai."
+  "sent-after-retry": "{text}, après un nouvel essai.",
+  "auto-wait": "Après un silence de"
 }

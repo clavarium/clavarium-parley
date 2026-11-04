@@ -921,3 +921,8 @@ mark.parley-found[data-now="true"] { outline: 2px solid var(--parley-ask); }
 .parley-inreply-choices span { padding: 0 .5em; border-radius: 999px; border: 1px solid var(--parley-line); color: var(--parley-dim); }
 .parley-inreply-choices .parley-choice-taken { color: var(--parley-text); border-color: var(--parley-action); font-weight: 600; }
 .parley-said.parley-flash { outline: 2px solid var(--parley-action); outline-offset: 4px; border-radius: 10px; transition: outline-color .4s; }
+
+/* The silence before an automatic send: four small choices, under the switch. */
+.parley .parley-auto-wait { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; padding: 2px 12px 8px; font-size: .75rem; color: var(--parley-dim); }
+.parley .parley-auto-wait button { min-height: 28px; padding: 2px 9px; border-radius: 999px; font-size: .75rem; }
+.parley .parley-auto-wait button[aria-pressed="true"] { color: var(--parley-action); border-color: var(--parley-action); }

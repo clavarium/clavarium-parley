@@ -33,16 +33,16 @@ function chat(t, options = {}) {
     const root = document.createElement('div');
     document.body.append(root);
     const sent = [];
-    const kept = [];
+    const kept = []; const waits = [];
     let on;
     let closed = 0;
     let refuse = false;
     const voice = { listen: async (handlers) => { if (refuse) throw new Error('denied'); on = handlers; return () => { closed += 1; }; } };
     const handle = mount(root, { load: async () => ({ messages: [] }), send: async (text) => { sent.push(text); }, words: texts('en'), every: 0, touch: false,
-        voice, onAutoSend: (v) => kept.push(v), ...options });
+        voice, onAutoSend: (v) => kept.push(v), onAutoSendMs: (ms) => waits.push(ms), ...options });
     t.after(() => { handle.destroy(); leave(); });
     const $ = (s) => root.querySelector(s);
-    return { root, handle, sent, kept, $, on: () => on, closed: () => closed, refuse: (v) => { refuse = v; } };
+    return { root, handle, sent, kept, waits, $, on: () => on, closed: () => closed, refuse: (v) => { refuse = v; } };
 }
 
 test('dictating grows nothing: what the microphone does is said inside the box, and nothing below it takes room', async (t) => {
@@ -111,7 +111,7 @@ test('dictating grows nothing: what the microphone does is said inside the box, 
 
 test('"send when I stop" is a choice of the device, beside the view; the microphone wears a dot while it is on', async (t) => {
     t.mock.timers.enable({ apis: ['setTimeout'] });
-    const { root, handle, sent, kept, $, on } = chat(t);
+    const { root, handle, sent, kept, waits, $, on } = chat(t);
     const words = texts('en');
     await settle();
     const prefs = $('.parley-prefs');
@@ -153,6 +153,12 @@ test('"send when I stop" is a choice of the device, beside the view; the microph
     t.mock.timers.tick(AUTO_SEND_MS);
     await settle();
     assert.deepEqual(sent, ['first part and the rest']);
+    /* A longer silence, chosen under the switch: pressed, and told to the application, which keeps it. */
+    open.click();
+    const five = root.querySelector('.parley-auto-wait').children.find((b) => b.dataset?.ms === '5000');
+    five.click(); assert.equal(five.getAttribute('aria-pressed'), 'true');
+    assert.deepEqual(waits, [5000]);
+    $('.parley-thread').dispatchEvent({ type: 'pointerdown', bubbles: true, preventDefault() {} });
     /* Off, from the menu, while it listens: nothing goes by itself. */
     open.click(); auto.click();
     assert.deepEqual(kept, [true, false]);

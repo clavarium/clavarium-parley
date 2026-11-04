@@ -203,5 +203,6 @@
   "list-show": "Show",
   "list-all": "All",
   "list-rooms-only": "Rooms only",
-  "sent-after-retry": "{text}, after another try."
+  "sent-after-retry": "{text}, after another try.",
+  "auto-wait": "After a silence of"
 }
