@@ -281,7 +281,9 @@ export const PULSE_MS = 20 * 60 * 1000;
 /* A press this long on a touch screen shows a message's time. */
 export const PRESS_MS = 450;
 /* Dictating with "send when I stop": sent this long after the last phrase was written, unless the person speaks again. */
-export const AUTO_SEND_MS = 1200;
+/* After a dictated phrase, this long a silence before it goes (04-11: 1.2 s cut a long sentence into several
+   messages): shown filling around the send arrow; speaking again stops it. */
+export const AUTO_SEND_MS = 2000;
 /* Send pressed while a phrase is still being written: sent once it is, or after this long with what is there. */
 export const WRITE_WAIT_MS = 15_000;
 /* Questions asked together: so many at most. */
@@ -3781,6 +3783,9 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
     let hearing = '';
     let auto = autoSend === true;
     let autoTimer;
+    /* The countdown before an automatic send, drawn around the arrow (CSS: data-countdown). */
+    const disarm = () => { clearTimeout(autoTimer); autoTimer = undefined; delete go.dataset.countdown; };
+    const arm = () => { disarm(); go.style?.setProperty?.('--parley-countdown', `${AUTO_SEND_MS}ms`); void go.offsetWidth; go.dataset.countdown = 'on'; autoTimer = setTimeout(() => { delete go.dataset.countdown; void sendBox(); }, AUTO_SEND_MS); };
     let writing = null;
     let hush;
     let gone = false;
@@ -3807,7 +3812,7 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
     const quiet = () => {
         const was = stopping; stopping = null;
         try { was?.(); } catch { /* the application's business */ }
-        clearTimeout(autoTimer);
+        disarm();
         if (writing) sendWritten();
         hearing = ''; paintVoice();
     };
@@ -3818,7 +3823,7 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
             dictatedNow = true;
             box.scrollTop = box.scrollHeight;
             if (writing) { sendWritten(); return; }
-            if (auto) { clearTimeout(autoTimer); autoTimer = setTimeout(() => void sendBox(), AUTO_SEND_MS); }
+            if (auto) arm();
         },
         state: (word) => {
             if (!stopping) return;
@@ -3827,7 +3832,7 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
             if (writing && hearing === 'listening') { sendWritten(); return; }
             paintVoice();
         },
-        speech: () => clearTimeout(autoTimer),
+        speech: () => disarm(),
         error: (message) => { if (stopping) tell('error', String(message ?? '')); },
     };
     mic.addEventListener('click', async () => {
@@ -3854,13 +3859,13 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
     });
     autoButton.addEventListener('click', () => {
         auto = !auto;
-        if (!auto) clearTimeout(autoTimer);
+        if (!auto) disarm();
         try { onAutoSend?.(auto); } catch { /* the application's business */ }
         paintVoice(); stayIn();
     });
     form.addEventListener('submit', (event) => {
         event.preventDefault();
-        clearTimeout(autoTimer);
+        disarm();
         /* Send pressed while a phrase is still being heard or written: it goes with it. */
         if (stopping && (hearing === 'hearing' || hearing === 'transcribing')) {
             if (!writing) writing = setTimeout(sendWritten, WRITE_WAIT_MS);

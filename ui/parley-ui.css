@@ -104,6 +104,15 @@
 .parley-form .parley-sign { width: 22px; height: 22px; }
 .parley .parley-send { background: transparent; color: var(--parley-action); }
 .parley .parley-send .parley-sign { stroke-width: 2.4; }
+/* The automatic send's countdown: a ring that fills around the arrow (AUTO_SEND_MS). */
+@property --parley-turn { syntax: '<percentage>'; inherits: false; initial-value: 0%; }
+.parley .parley-send { position: relative; }
+.parley .parley-send[data-countdown]::before { content: ""; position: absolute; inset: 2px; border-radius: 50%; pointer-events: none;
+  background: conic-gradient(var(--parley-action) var(--parley-turn), transparent 0);
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2px)); mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2px));
+  animation: parley-countdown var(--parley-countdown, 2s) linear forwards; }
+@keyframes parley-countdown { to { --parley-turn: 100%; } }
+@media (prefers-reduced-motion: reduce) { .parley .parley-send[data-countdown]::before { animation: none; --parley-turn: 100%; opacity: .6; } }
 .parley .parley-send:disabled { opacity: 1; background: var(--parley-agent); color: color-mix(in srgb, var(--parley-dim) 70%, transparent); }
 @media (pointer: coarse) { .parley .parley-attach, .parley .parley-mic, .parley .parley-send { width: 44px; height: 44px; } .parley-form .parley-sign { width: 24px; height: 24px; } .parley-form { border-radius: 26px; } .parley-box, .parley-box-mirror { --parley-btn: 44px; } }
 /* Where the browser cannot size the box by its content: a hidden copy of it, with its text and width, measured instead of the box. */
