@@ -901,3 +901,11 @@ mark.parley-found[data-now="true"] { outline: 2px solid var(--parley-ask); }
 .parley-name[data-box="true"]::before { content: ""; display: inline-block; width: .9em; height: .9em; margin-right: .3em; vertical-align: -.1em; background: currentColor;
   -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M11 5 6 9H3v6h3l5 4z'/%3E%3Cpath d='M15.5 8.5a5 5 0 0 1 0 7'/%3E%3C/svg%3E") center / contain no-repeat;
   mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M11 5 6 9H3v6h3l5 4z'/%3E%3Cpath d='M15.5 8.5a5 5 0 0 1 0 7'/%3E%3C/svg%3E") center / contain no-repeat; }
+
+/* The question an answer replies to (03-11): its quote taps back to it; its choices beside, the one taken marked. */
+.parley .parley-inreply { display: block; border: 0; background: transparent; padding: 0; min-height: 0; text-align: left; font: inherit; font-size: .8em; color: var(--parley-dim); cursor: pointer; text-decoration: underline dotted; text-underline-offset: 3px; }
+.parley .parley-inreply:hover { color: var(--parley-text); }
+.parley-inreply-choices { display: flex; flex-wrap: wrap; gap: .3em; margin: .2em 0 .3em; font-size: .75em; }
+.parley-inreply-choices span { padding: 0 .5em; border-radius: 999px; border: 1px solid var(--parley-line); color: var(--parley-dim); }
+.parley-inreply-choices .parley-choice-taken { color: var(--parley-text); border-color: var(--parley-action); font-weight: 600; }
+.parley-said.parley-flash { outline: 2px solid var(--parley-action); outline-offset: 4px; border-radius: 10px; transition: outline-color .4s; }

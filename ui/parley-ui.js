@@ -696,6 +696,10 @@ export function view(data, { words = {}, view: as = 'simple', now = Date.now(), 
             open,
             closed: m.kind === 'ask' && m.closed && !answered.has(m.id) ? said(words, 'closed', { answer: cut(m.closed.text, 300) }) : '',
             reply: person && (m.answers || m.re) ? said(words, 'in-reply', { question: cut(m.question || m.quote, 90) }) : '',
+            /* The message it answers (03-11): a tap on the quote brings it back into view; for a question, its
+               choices, the one taken marked. */
+            replyTo: person ? String(m.answers || m.re || '') : '',
+            replyChoices: person && m.answers ? (() => { const q = all.find((x) => x.from === 'agent' && x.id === m.answers); const taken = new Set([...(Array.isArray(m.picked) ? m.picked : []), String(m.text ?? '').trim()]); return q && Array.isArray(q.choices) && q.choices.length > 1 ? q.choices.slice(0, 8).map((c) => ({ text: cut(String(c), 60), taken: taken.has(String(c)) })) : []; })() : [],
             mark: '',
         };
         if (item.questions.length < 2 && !item.questions.some((q) => q.input)) item.questions = [];
@@ -2917,7 +2921,18 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
         /* Why a voice box listened, and what it cut short: small, beside the words (01-11). */
         if (item.byWhy) bubble.append(el('p', 'parley-by-why', item.byWhy));
         if (item.label) bubble.append(el('p', 'parley-label', item.label));
-        if (item.reply) bubble.append(el('p', 'parley-inreply', item.reply));
+        if (item.reply) {
+            const q = el('button', 'parley-inreply', item.reply); q.type = 'button';
+            q.addEventListener('click', () => {
+                const sel = (typeof CSS !== 'undefined' && CSS.escape) ? CSS.escape(item.replyTo) : item.replyTo;
+                const target = item.replyTo ? thread.querySelector(`.parley-said[data-id="${sel}"]`) : null;
+                if (!target) return;
+                target.scrollIntoView?.({ block: 'center', behavior: 'smooth' });
+                target.classList.add('parley-flash'); setTimeout(() => target.classList.remove('parley-flash'), 1600);
+            });
+            bubble.append(q);
+            if (item.replyChoices.length) { const c = el('p', 'parley-inreply-choices'); for (const x of item.replyChoices) { const sp = el('span', x.taken ? 'parley-choice-taken' : 'parley-choice-other', x.text); c.append(sp); } bubble.append(c); }
+        }
         if (item.closed) bubble.append(el('p', 'parley-closed', item.closed));
         if (item.from === 'agent') bubble.append(...body(item, v));
         else if (item.text) { const p = el('p', 'parley-text'); textWithSecrets(item.text, p, words, liveSecrets, forget); bubble.append(p); }

@@ -3,6 +3,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync } from 'node:fs';
+import * as require_fs from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Parley } from '../host/parley-host.mjs';
@@ -112,5 +113,18 @@ test('in a conversation\'s own thread, what happened in a room is one line « In
         assert.ok(v.rows.some((r) => r.from === 'person' && r.text === 'Bonjour toi.'), 'its own talk not folded');
         const detailed = view(own.read(), { words: {}, view: 'detailed' });
         assert.equal(detailed.rows.filter((r) => r.type === 'roomfold').length, 0, 'the detailed view keeps every message');
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('an answer to a question says which message it answers (to bring it back) and the choices there were, the one taken marked', () => {
+    const dir = folder();
+    try {
+        const own = new Parley(dir);
+        const { appendFileSync } = require_fs;
+        appendFileSync(join(dir, 'from-agent.jsonl'), `${JSON.stringify({ id: 'q1', at: new Date().toISOString(), kind: 'ask', text: 'On part sur quoi ?', choices: ['Le ballon', 'KSM', 'Les deux'] })}\n`);
+        own.say('Le ballon', 'q1');
+        const row = view(own.read(), { words: {} }).items.find((r) => r.from === 'person');
+        assert.equal(row.replyTo, 'q1');
+        assert.deepEqual(row.replyChoices, [{ text: 'Le ballon', taken: true }, { text: 'KSM', taken: false }, { text: 'Les deux', taken: false }]);
     } finally { rmSync(dir, { recursive: true, force: true }); }
 });
