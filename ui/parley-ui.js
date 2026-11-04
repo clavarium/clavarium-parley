@@ -3837,6 +3837,8 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
         state: (word) => {
             if (!stopping) return;
             hearing = ['calibrating', 'listening', 'hearing', 'transcribing'].includes(word) ? word : 'listening';
+            /* A new phrase being heard or written: no countdown meanwhile (it starts again once it is written). */
+            if (hearing === 'hearing' || hearing === 'transcribing') disarm();
             /* Nothing more to write: what is there goes. */
             if (writing && hearing === 'listening') { sendWritten(); return; }
             paintVoice();
