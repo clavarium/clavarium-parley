@@ -242,7 +242,7 @@ export const KEYS = Object.freeze(['send', 'placeholder', 'empty', 'view', 'simp
     'copy', 'copied', 'see-details', 'see-more', 'see-less', 'note', 'tip', 'important', 'warning', 'caution', 'badge-ok', 'badge-todo', 'badge-blocked', 'badge-warn',
     'waits-you', 'waits-you-note', 'busy', 'pulse', 'state-sent', 'state-read', 'state-working', 'state-done', 'sent-at', 'read-at', 'done-at',
     'reply', 'to-card', 'other-answer', 'group-count', 'group-step', 'group-next', 'group-back', 'group-review', 'group-check', 'group-modify', 'group-send', 'group-several', 'group-own', 'group-missing',
-    'replying', 'not-a-reply', 'in-reply', 'closed', 'you', 'agent', 'drop', 'picture', 'diagram', 'not-shown', 'grouped', 'issue-machine', 'issue-fixed', 'issue-details', 'sent-after-retry', 'auto-wait', 'room-fold', 'room-a', 'room-open',
+    'replying', 'not-a-reply', 'in-reply', 'closed', 'you', 'agent', 'drop', 'picture', 'diagram', 'not-shown', 'grouped', 'issue-machine', 'issue-fixed', 'issue-details', 'sent-after-retry', 'auto-wait', 'dictation-joining', 'room-fold', 'room-a', 'room-open',
     'zoom-in', 'zoom-out', 'zoom-actual', 'zoom-fit', 'zoom-actual-short', 'zoom-fit-short', 'close', 'previous', 'next', 'search', 'found', 'newest', 'dictation', 'auto-send-off',
     'react', 'react-remove', 'react-agree', 'react-go', 'react-disagree', 'react-unclear', 'react-stop', 'react-redo', 'react-later', 'react-love',
     'react-agree-hint', 'react-go-hint', 'react-disagree-hint', 'react-unclear-hint', 'react-stop-hint', 'react-redo-hint', 'react-later-hint', 'react-love-hint',
@@ -287,14 +287,27 @@ export const AUTO_SEND_MS = 3000;
 /* The silences the person may choose instead (the small menu, under "send when I stop"). 04-11, a speech
    specialist's advice: composing a message, thinking pauses last 2 to 4 s; 1 s is a conversation's. */
 export const AUTO_SEND_CHOICES = [2000, 3000, 5000, 8000];
-/* A phrase that is plainly not over -- no final mark, a comma, or a joining word last -- waits this much more;
-   after a question, a little less (never under 2 s). The last word counts most: engines put stray full stops. */
-const UNFINISHED = /(?:,|;|:|\b(?:et|mais|donc|ou|or|car|parce que|que|qui|puisque|alors|comme|si|quand|and|but|so|or|because|that|which|if|when))\s*[.…]?\s*$/iu;
-export function waitFor(text, base = AUTO_SEND_MS) {
+/* A phrase that is plainly not over waits 2 s more; after a question, a little less (never under 2 s).
+   UNIVERSAL first: no final mark, or a comma, semicolon or colon last, in any language and script.
+   Then each language's own joining words ("dictation-joining" in its texts: words like "and", "but",
+   "because"), the last word counting most -- engines put stray full stops. */
+const FINAL = /[.!?…。！？؟।»"')\]]$/u;
+const OPEN_END = /[,;:、，；：]\s*$/u;
+const QUESTION = /[?？؟]\s*$/u;
+const joiningOf = (words) => {
+    const list = String(words?.['dictation-joining'] ?? '').split('|').map((w) => w.trim().toLowerCase()).filter(Boolean);
+    return list.length ? list : null;
+};
+export function waitFor(text, base = AUTO_SEND_MS, words) {
     const t = String(text ?? '').trim();
     if (t === '') return base;
-    if (UNFINISHED.test(t) || !/[.!?…»"')\]]$/u.test(t)) return base + 2000;
-    if (/\?\s*$/u.test(t)) return Math.max(2000, base - 500);
+    if (OPEN_END.test(t) || !FINAL.test(t)) return base + 2000;
+    const joining = joiningOf(words);
+    if (joining) {
+        const tail = t.replace(/[.…。]+\s*$/u, '').toLowerCase();
+        if (joining.some((w) => tail === w || tail.endsWith(` ${w}`))) return base + 2000;
+    }
+    if (QUESTION.test(t)) return Math.max(2000, base - 500);
     return base;
 }
 /* Send pressed while a phrase is still being written: sent once it is, or after this long with what is there. */
@@ -3804,7 +3817,7 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
     let autoTimer;
     /* The countdown before an automatic send, drawn around the arrow (CSS: data-countdown). */
     const disarm = () => { clearTimeout(autoTimer); autoTimer = undefined; delete go.dataset.countdown; };
-    const arm = () => { disarm(); const ms = waitFor(box.value, waitMs); go.style?.setProperty?.('--parley-countdown', `${ms}ms`); void go.offsetWidth; go.dataset.countdown = 'on'; autoTimer = setTimeout(() => { delete go.dataset.countdown; void sendBox(); }, ms); };
+    const arm = () => { disarm(); const ms = waitFor(box.value, waitMs, words); go.style?.setProperty?.('--parley-countdown', `${ms}ms`); void go.offsetWidth; go.dataset.countdown = 'on'; autoTimer = setTimeout(() => { delete go.dataset.countdown; void sendBox(); }, ms); };
     let writing = null;
     let hush;
     let gone = false;

@@ -204,5 +204,6 @@
   "list-all": "Tout",
   "list-rooms-only": "Salons seuls",
   "sent-after-retry": "{text}, après un nouvel essai.",
-  "auto-wait": "Après un silence de"
+  "auto-wait": "Après un silence de",
+  "dictation-joining": "et|mais|donc|ou|or|car|parce que|que|qui|puisque|alors|comme|si|quand|puis"
 }

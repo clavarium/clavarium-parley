@@ -244,11 +244,15 @@ test('a voice box says why it listened, beside its words: kept short, shown to t
     assert.deepEqual(byOf({ id: 'b1', name: 'Salon', why: '' }), { id: 'b1', name: 'Salon' });
 });
 
-test('the wait before an automatic send: longer after a phrase plainly not over, a little shorter after a question', () => {
-    assert.equal(waitFor('Je pense que.', 3000), 5000, 'a joining word last, a stray full stop after it');
-    assert.equal(waitFor('et puis', 3000), 5000, 'no final mark');
-    assert.equal(waitFor('Il fait beau, mais', 3000), 5000);
-    assert.equal(waitFor('Il fait beau.', 3000), 3000);
-    assert.equal(waitFor('Tu viens ?', 3000), 2500);
-    assert.equal(waitFor('Tu viens ?', 2000), 2000, 'never under 2 s');
+test('the wait before an automatic send: longer after a phrase plainly not over, in any language; a little shorter after a question', () => {
+    const fr = texts('fr'); const en = texts('en');
+    assert.equal(waitFor('Je pense que.', 3000, fr), 5000, 'a joining word of its language last, a stray full stop after it');
+    assert.equal(waitFor('I think that.', 3000, en), 5000);
+    assert.equal(waitFor('et puis', 3000, fr), 5000, 'no final mark');
+    assert.equal(waitFor('Il fait beau, mais', 3000), 5000, 'no final mark: any language, no list needed');
+    assert.equal(waitFor('今日は晴れ、', 3000), 5000, 'another script: a comma last');
+    assert.equal(waitFor('今日は晴れです。', 3000), 3000);
+    assert.equal(waitFor('Il fait beau.', 3000, fr), 3000);
+    assert.equal(waitFor('Tu viens ?', 3000, fr), 2500);
+    assert.equal(waitFor('¿Vienes?', 2000), 2000, 'never under 2 s');
 });

@@ -204,5 +204,6 @@
   "list-all": "All",
   "list-rooms-only": "Rooms only",
   "sent-after-retry": "{text}, after another try.",
-  "auto-wait": "After a silence of"
+  "auto-wait": "After a silence of",
+  "dictation-joining": "and|but|so|or|because|that|which|if|when|then|while"
 }
