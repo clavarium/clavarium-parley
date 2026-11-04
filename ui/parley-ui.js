@@ -283,9 +283,20 @@ export const PRESS_MS = 450;
 /* Dictating with "send when I stop": sent this long after the last phrase was written, unless the person speaks again. */
 /* After a dictated phrase, this long a silence before it goes (04-11: 1.2 s cut a long sentence into several
    messages): shown filling around the send arrow; speaking again stops it. */
-export const AUTO_SEND_MS = 2000;
-/* The silences the person may choose instead (the small menu, under "send when I stop"). */
-export const AUTO_SEND_CHOICES = [1000, 2000, 3000, 5000];
+export const AUTO_SEND_MS = 3000;
+/* The silences the person may choose instead (the small menu, under "send when I stop"). 04-11, a speech
+   specialist's advice: composing a message, thinking pauses last 2 to 4 s; 1 s is a conversation's. */
+export const AUTO_SEND_CHOICES = [2000, 3000, 5000, 8000];
+/* A phrase that is plainly not over -- no final mark, a comma, or a joining word last -- waits this much more;
+   after a question, a little less (never under 2 s). The last word counts most: engines put stray full stops. */
+const UNFINISHED = /(?:,|;|:|\b(?:et|mais|donc|ou|or|car|parce que|que|qui|puisque|alors|comme|si|quand|and|but|so|or|because|that|which|if|when))\s*[.…]?\s*$/iu;
+export function waitFor(text, base = AUTO_SEND_MS) {
+    const t = String(text ?? '').trim();
+    if (t === '') return base;
+    if (UNFINISHED.test(t) || !/[.!?…»"')\]]$/u.test(t)) return base + 2000;
+    if (/\?\s*$/u.test(t)) return Math.max(2000, base - 500);
+    return base;
+}
 /* Send pressed while a phrase is still being written: sent once it is, or after this long with what is there. */
 export const WRITE_WAIT_MS = 15_000;
 /* Questions asked together: so many at most. */
@@ -3793,7 +3804,7 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
     let autoTimer;
     /* The countdown before an automatic send, drawn around the arrow (CSS: data-countdown). */
     const disarm = () => { clearTimeout(autoTimer); autoTimer = undefined; delete go.dataset.countdown; };
-    const arm = () => { disarm(); go.style?.setProperty?.('--parley-countdown', `${waitMs}ms`); void go.offsetWidth; go.dataset.countdown = 'on'; autoTimer = setTimeout(() => { delete go.dataset.countdown; void sendBox(); }, waitMs); };
+    const arm = () => { disarm(); const ms = waitFor(box.value, waitMs); go.style?.setProperty?.('--parley-countdown', `${ms}ms`); void go.offsetWidth; go.dataset.countdown = 'on'; autoTimer = setTimeout(() => { delete go.dataset.countdown; void sendBox(); }, ms); };
     let writing = null;
     let hush;
     let gone = false;

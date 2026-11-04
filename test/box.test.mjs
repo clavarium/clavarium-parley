@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { fakePage } from './fake-dom.mjs';
-import { mount, KEYS, AUTO_SEND_MS } from '../ui/parley-ui.js';
+import { mount, KEYS, AUTO_SEND_MS, waitFor } from '../ui/parley-ui.js';
 import { texts } from '../host/parley-host.mjs';
 
 const CSS = readFileSync(fileURLToPath(new URL('../ui/parley-ui.css', import.meta.url)), 'utf8');
@@ -149,10 +149,10 @@ test('"send when I stop" is a choice of the device, beside the view; the microph
     on().speech();
     t.mock.timers.tick(500);
     assert.deepEqual(sent, [], 'speaking again holds it');
-    on().phrase('and the rest');
+    on().phrase('and the rest.');
     t.mock.timers.tick(AUTO_SEND_MS);
     await settle();
-    assert.deepEqual(sent, ['first part and the rest']);
+    assert.deepEqual(sent, ['first part and the rest.']);
     /* A longer silence, chosen under the switch: pressed, and told to the application, which keeps it. */
     open.click();
     const five = root.querySelector('.parley-auto-wait').children.find((b) => b.dataset?.ms === '5000');
@@ -166,7 +166,7 @@ test('"send when I stop" is a choice of the device, beside the view; the microph
     on().phrase('kept in the box');
     t.mock.timers.tick(AUTO_SEND_MS * 3);
     await settle();
-    assert.deepEqual(sent, ['first part and the rest']);
+    assert.deepEqual(sent, ['first part and the rest.']);
     assert.equal($('.parley-box').value, 'kept in the box');
     /* Without a voice, no such choice: the menu keeps the view and the search. */
     handle.voice = null;
@@ -242,4 +242,13 @@ test('a voice box says why it listened, beside its words: kept short, shown to t
     const { byOf } = await import('../host/parley-host.mjs');
     assert.deepEqual(byOf({ id: 'b1', name: 'Salon', why: 'mot d\'éveil (93 %) ; a coupé sa propre phrase' }), { id: 'b1', name: 'Salon', why: 'mot d\'éveil (93 %) ; a coupé sa propre phrase' });
     assert.deepEqual(byOf({ id: 'b1', name: 'Salon', why: '' }), { id: 'b1', name: 'Salon' });
+});
+
+test('the wait before an automatic send: longer after a phrase plainly not over, a little shorter after a question', () => {
+    assert.equal(waitFor('Je pense que.', 3000), 5000, 'a joining word last, a stray full stop after it');
+    assert.equal(waitFor('et puis', 3000), 5000, 'no final mark');
+    assert.equal(waitFor('Il fait beau, mais', 3000), 5000);
+    assert.equal(waitFor('Il fait beau.', 3000), 3000);
+    assert.equal(waitFor('Tu viens ?', 3000), 2500);
+    assert.equal(waitFor('Tu viens ?', 2000), 2000, 'never under 2 s');
 });
