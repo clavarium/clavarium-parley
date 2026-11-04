@@ -39,3 +39,18 @@ test('fixed: said so, no button; an hour after, gone from the simple view; the d
     assert.equal(issues(detailed).length, 0);
     assert.equal(detailed.rows.filter((r) => r.from === 'system').length, 5, 'every line in the detailed view');
 });
+
+test('a refusal to send, resolved by a later send of the same branch, is gone from the simple view; the send says it took another try', () => {
+    const git = { messages: [
+        { from: 'system', id: 'g1', at: at(17), text: 'Not sent to next of clavarium: the agent changed next since you looked.', topic: 'Not sent', brief: 'next', tone: 'warn', level: 'needs-you' },
+        { from: 'system', id: 'g2', at: at(18), text: 'Not sent to main of clavarium: hooks refused.', topic: 'Not sent', brief: 'main', tone: 'bad', level: 'needs-you' },
+        { from: 'system', id: 'g3', at: at(24), text: 'Sent: clavarium → next, 2 commits.', topic: 'Sent', brief: 'next', level: 'news' },
+    ] };
+    const v = view(git, { words: { 'sent-after-retry': '{text}, after another try.' }, now: Date.parse(at(25)) });
+    const texts = v.rows.filter((r) => r.from === 'system' || r.type === 'group').map((r) => r.text);
+    assert.ok(!texts.some((t) => t.startsWith('Not sent to next')), 'the resolved refusal is gone');
+    assert.ok(texts.some((t) => t.startsWith('Not sent to main')), 'another branch\'s refusal stays');
+    assert.ok(texts.includes('Sent: clavarium → next, 2 commits, after another try.'));
+    const detailed = view(git, { words: {}, view: 'detailed', now: Date.parse(at(25)) });
+    assert.equal(detailed.rows.filter((r) => r.from === 'system').length, 3, 'all kept in the detailed view');
+});

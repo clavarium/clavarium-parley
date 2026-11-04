@@ -242,7 +242,7 @@ export const KEYS = Object.freeze(['send', 'placeholder', 'empty', 'view', 'simp
     'copy', 'copied', 'see-details', 'see-more', 'see-less', 'note', 'tip', 'important', 'warning', 'caution', 'badge-ok', 'badge-todo', 'badge-blocked', 'badge-warn',
     'waits-you', 'waits-you-note', 'busy', 'pulse', 'state-sent', 'state-read', 'state-working', 'state-done', 'sent-at', 'read-at', 'done-at',
     'reply', 'to-card', 'other-answer', 'group-count', 'group-step', 'group-next', 'group-back', 'group-review', 'group-check', 'group-modify', 'group-send', 'group-several', 'group-own', 'group-missing',
-    'replying', 'not-a-reply', 'in-reply', 'closed', 'you', 'agent', 'drop', 'picture', 'diagram', 'not-shown', 'grouped', 'issue-machine', 'issue-fixed', 'issue-details', 'room-fold', 'room-a', 'room-open',
+    'replying', 'not-a-reply', 'in-reply', 'closed', 'you', 'agent', 'drop', 'picture', 'diagram', 'not-shown', 'grouped', 'issue-machine', 'issue-fixed', 'issue-details', 'sent-after-retry', 'room-fold', 'room-a', 'room-open',
     'zoom-in', 'zoom-out', 'zoom-actual', 'zoom-fit', 'zoom-actual-short', 'zoom-fit-short', 'close', 'previous', 'next', 'search', 'found', 'newest', 'dictation', 'auto-send-off',
     'react', 'react-remove', 'react-agree', 'react-go', 'react-disagree', 'react-unclear', 'react-stop', 'react-redo', 'react-later', 'react-love',
     'react-agree-hint', 'react-go-hint', 'react-disagree-hint', 'react-unclear-hint', 'react-stop-hint', 'react-redo-hint', 'react-later-hint', 'react-love-hint',
@@ -838,6 +838,21 @@ export function view(data, { words = {}, view: as = 'simple', now = Date.now(), 
             r.time = r.items.at(-1).time; r.when = r.items.at(-1).when;
         }
         rows.splice(0, rows.length, ...folded);
+    }
+    /* A REFUSAL RESOLVED LATER (04-11): "Not sent to next…" then, later, "Sent: … → next": in the simple view the
+       refusal goes, and what was sent says it took another try. The detailed view keeps both. */
+    if (!detailed) {
+        const kept = [];
+        for (let i = 0; i < rows.length; i++) {
+            const row = rows[i];
+            if (row.from === 'system' && row.topic === 'Not sent' && row.brief) {
+                const later = rows.slice(i + 1).find((x) => x.from === 'system' && x.topic === 'Sent' && x.brief === row.brief);
+                if (later) { later.retried = (later.retried ?? 0) + 1; continue; }
+            }
+            kept.push(row);
+        }
+        for (const row of kept) if (row.retried && typeof words?.['sent-after-retry'] === 'string') row.text = said(words, 'sent-after-retry', { text: row.text.replace(/\.$/, '') });
+        rows.splice(0, rows.length, ...kept);
     }
     const gathered = [];
     if (!detailed) {

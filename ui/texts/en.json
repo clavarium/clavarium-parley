@@ -202,5 +202,6 @@
   "room-thinking-many": "{names} are thinking…",
   "list-show": "Show",
   "list-all": "All",
-  "list-rooms-only": "Rooms only"
+  "list-rooms-only": "Rooms only",
+  "sent-after-retry": "{text}, after another try."
 }
