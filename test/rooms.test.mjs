@@ -7,7 +7,7 @@ import * as require_fs from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Parley } from '../host/parley-host.mjs';
-import { view } from '../ui/parley-ui.js';
+import { view, roomTopic } from '../ui/parley-ui.js';
 
 const folder = () => mkdtempSync(join(tmpdir(), 'parley-room-'));
 
@@ -127,4 +127,28 @@ test('an answer to a question says which message it answers (to bring it back) a
         assert.equal(row.replyTo, 'q1');
         assert.deepEqual(row.replyChoices, [{ text: 'Le ballon', taken: true }, { text: 'KSM', taken: false }, { text: 'Les deux', taken: false }]);
     } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('a room fold says its topic: the first words of the room message that began it (40 characters at most, an ellipsis)', () => {
+    const dir = folder();
+    try {
+        const own = new Parley(dir);
+        own.say('Bonjour, qui est là ?', undefined, [], { by: { id: 'box-1', name: 'Cuisine', kind: 'box' }, room: { id: 'room-1', name: 'Maison', message: 'm1' } });
+        own.say('Et la facture ?', undefined, [], { room: { id: 'room-1', name: 'Maison', message: 'm2' } });
+        const words = { 'room-fold': 'In the room {room} · {count}', 'room-fold-topic': 'In the room {room} · {count} — « {topic} »' };
+        const fold = view(own.read(), { words }).rows.find((r) => r.type === 'roomfold');
+        assert.equal(fold.topic, 'Bonjour, qui est là ?');
+        assert.equal(fold.text, 'In the room Maison · 2 — « Bonjour, qui est là ? »');
+        const older = view(own.read(), { words: { 'room-fold': 'In the room {room} · {count}' } }).rows.find((r) => r.type === 'roomfold');
+        assert.equal(older.text, 'In the room Maison · 2', 'words without the topic: the line as before');
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('a room topic: short as it is, long cut at a word with an ellipsis, a member id never shown', () => {
+    assert.equal(roomTopic('  Bonjour,\n qui est là ?  '), 'Bonjour, qui est là ?');
+    const long = roomTopic('On part à Lisbonne le douze, avec les enfants et le chien, ou pas ?');
+    assert.ok(long.length <= 40, long); assert.ok(long.endsWith('\u2026')); assert.equal(long, 'On part à Lisbonne le douze, avec les\u2026');
+    assert.equal(roomTopic('x'.repeat(60)), `${'x'.repeat(39)}\u2026`, 'one long word: cut where it must');
+    assert.equal(roomTopic('@{0f8e2c1a-1234-4abc-9def-0123456789ab} tu regardes ?'), 'tu regardes ?');
+    assert.equal(roomTopic(undefined), '');
 });

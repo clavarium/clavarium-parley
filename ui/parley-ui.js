@@ -309,6 +309,14 @@ const SOUND = /\.(wav|mp3|ogg|oga|opus|m4a)$/i;
 export const titleOf = (name) => { const t = String(name ?? '').split('/').pop().replace(/\.[a-z0-9]{1,8}$/i, '').replace(/[-_.]+/g, ' ').replace(/\s+/g, ' ').trim(); return t ? t[0].toUpperCase() + t.slice(1) : String(name ?? ''); };
 
 const fill = (word, values = {}) => String(word ?? '').replace(/\{([a-z]+)\}/g, (all, key) => (Object.hasOwn(values, key) ? String(values[key]) : all));
+/* A room's topic, in a fold's line: the first words of a message, 40 characters at most (cut at a word, an ellipsis). */
+export const ROOM_TOPIC_MAX = 40;
+export function roomTopic(text) {
+    const t = String(text ?? '').replace(/@\{[0-9a-f-]{36}\}/g, '').replace(/\s+/g, ' ').trim();
+    if (t.length <= ROOM_TOPIC_MAX) return t;
+    const cut = t.slice(0, ROOM_TOPIC_MAX - 1); const at = cut.lastIndexOf(' ');
+    return `${(at >= ROOM_TOPIC_MAX / 2 ? cut.slice(0, at) : cut).replace(/[\s,;:.!?-]+$/, '')}\u2026`;
+}
 const said = (words, key, values) => fill(typeof words?.[key] === 'string' ? words[key] : key, values);
 const nameOf = (path) => String(path ?? '').split('/').pop();
 /* A size, as a person reads it. */
@@ -821,7 +829,14 @@ export function view(data, { words = {}, view: as = 'simple', now = Date.now(), 
             }
             folded.push(row);
         }
-        for (const r of folded) if (r.type === 'roomfold') { r.text = said(words, 'room-fold', { room: r.roomName || said(words, 'room-a'), count: r.items.length }); r.time = r.items.at(-1).time; r.when = r.items.at(-1).when; }
+        /* Its topic: the first words of the room's message that began it (the one given to this conversation). */
+        for (const r of folded) if (r.type === 'roomfold') {
+            const first = r.items.find((x) => x.from !== 'agent') ?? r.items[0];
+            r.topic = roomTopic(first?.text);
+            const values = { room: r.roomName || said(words, 'room-a'), count: r.items.length, topic: r.topic };
+            r.text = r.topic && typeof words?.['room-fold-topic'] === 'string' ? said(words, 'room-fold-topic', values) : said(words, 'room-fold', values);
+            r.time = r.items.at(-1).time; r.when = r.items.at(-1).when;
+        }
         rows.splice(0, rows.length, ...folded);
     }
     const gathered = [];
@@ -2844,7 +2859,7 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
             const holder = el('div', 'parley-roomfold');
             const head = el('div', 'parley-roomfold-head');
             const more = button('', 'parley-roomfold-line', () => {});
-            more.append(el('span', 'parley-roomfold-text', row.text), time(row.time, row.when));
+            more.append(el('span', 'parley-roomfold-text', row.text), time(row.time, row.when)); more.title = row.text;
             head.append(more);
             if (act) { const go = button(said(words, 'room-open'), 'parley-roomfold-open', () => { try { act(`salon:${row.roomId}`, {}); } catch { /* the application's business */ } }); head.append(go); }
             const list = el('div', 'parley-roomfold-items');

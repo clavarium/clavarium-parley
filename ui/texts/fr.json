@@ -194,5 +194,13 @@
   "issue-details": "détails",
   "room-fold": "Dans le salon {room} · {count}",
   "room-a": "un salon",
-  "room-open": "Ouvrir le salon"
+  "room-open": "Ouvrir le salon",
+  "room-fold-topic": "Dans le salon {room} · {count} — « {topic} »",
+  "room-speaking": "{name} parle…",
+  "room-speaking-many": "{names} parlent…",
+  "room-thinking": "{name} réfléchit…",
+  "room-thinking-many": "{names} réfléchissent…",
+  "list-show": "Afficher",
+  "list-all": "Tout",
+  "list-rooms-only": "Salons seuls"
 }

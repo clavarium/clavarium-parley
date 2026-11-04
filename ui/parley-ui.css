@@ -894,6 +894,9 @@ mark.parley-found[data-now="true"] { outline: 2px solid var(--parley-ask); }
 .parley-roomfold-head { display: flex; align-items: center; gap: .5em; flex-wrap: wrap; }
 .parley .parley-roomfold-line { border: 0; background: transparent; padding: 0 .2em; min-height: 2.2em; font-weight: 400; font-size: .9em; color: var(--parley-dim); display: inline-flex; gap: .5em; align-items: center; }
 .parley .parley-roomfold-line::before { content: "\25B8"; } .parley .parley-roomfold-line[aria-expanded="true"]::before { content: "\25BE"; }
+/* Its topic makes the line longer: on a narrow screen it ends in an ellipsis, never wider than the thread. */
+.parley .parley-roomfold-line { max-width: 100%; min-width: 0; text-align: left; }
+.parley .parley-roomfold-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .parley .parley-roomfold-open { border: 0; background: transparent; padding: 0 .2em; min-height: 2.2em; font-size: .85em; font-weight: 600; color: var(--parley-action); text-decoration: underline; text-underline-offset: 3px; }
 .parley-roomfold-items { display: flex; flex-direction: column; gap: var(--parley-gap, .8em); margin-left: .3em; padding-left: .8em; border-left: 2px solid var(--parley-line); }
 .parley-roomfold-items[hidden] { display: none; }

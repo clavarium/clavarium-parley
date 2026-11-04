@@ -194,5 +194,13 @@
   "issue-details": "details",
   "room-fold": "In the room {room} · {count}",
   "room-a": "a room",
-  "room-open": "Open the room"
+  "room-open": "Open the room",
+  "room-fold-topic": "In the room {room} · {count} — « {topic} »",
+  "room-speaking": "{name} is speaking…",
+  "room-speaking-many": "{names} are speaking…",
+  "room-thinking": "{name} is thinking…",
+  "room-thinking-many": "{names} are thinking…",
+  "list-show": "Show",
+  "list-all": "All",
+  "list-rooms-only": "Rooms only"
 }
