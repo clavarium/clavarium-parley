@@ -16,6 +16,8 @@ class FakeNode {
         }
         return !event.defaultPrevented;
     }
+    get isConnected() { for (let at = this; at; at = at.parentNode) if (at === globalThis.document?.body || at === globalThis.document) return true; return false; }
+    remove() { this.parentNode?.removeChild(this); }
     contains(other) { for (let at = other; at; at = at.parentNode) if (at === this) return true; return false; }
     append(...nodes) {
         for (const n of nodes) {

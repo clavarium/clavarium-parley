@@ -274,6 +274,41 @@ calls `act(id, line)`; the rest stays text. A line of
 the application takes no step and does not hide that the person's last
 message is not read yet.
 
+### A request, as a card
+
+A line may carry `request`: an act of the application's that waits for the
+person (a mail to send, an appointment to move, a file to delete), said as
+what will happen rather than as a technical line. Plain data, never markup:
+
+    request: {kind: "mail"|"calendar"|"contacts"|"files"|"terminal"|"browser"|"screen"|"device"|"git"|"other",
+              title, sub?, risk?: [text], facts?: [[label, text | [{text, ext?}]]],
+              before?: [text], after?: [text], quote?, code?, why?, detail?,
+              irreversible?, yes?: {id, label}, no?: {id, label}, more?: {id, label}, others?: [{id, label}],
+              hold?: seconds, state?: {decision: "yes"|"no"|"ended", at?, text?}}
+
+- Folded: its icon, `title` (one sentence: the act and its object), `sub`
+  (one or two key facts), each `risk` in an amber band, then See all,
+  `no` and `yes` (whose label says the act: "Send", "Move"). The whole head
+  unfolds it in place: `facts` (chips marked `ext` are said "outside"),
+  `before` → `after`, `code`, the first six lines of `quote`, `why`.
+- See all: everything (the whole `quote`, `detail`) in a sheet over the
+  page, with the same buttons; closed by Back, Escape or Close. With `more`,
+  See all is that button of the application's instead (`act(more.id)`).
+  `others` (two at most): other ways to accept ("Always allow ..."), behind
+  a "⋯" button, never in sight at first; held as `yes` is.
+- `irreversible`: an amber edge; the newest one still waiting comes
+  unfolded. `hold`: seconds (10 at most) the accept waits, with Undo, before
+  `act(yes.id)` is called; without it, at once. Refuse goes at once.
+- `state`: decided; the card folds to one line ("✓ Accepted · title",
+  "× Refused · title", or `state.text`), with the time of `at`.
+- Requests still waiting, within a minute of each other, are one block, a line each ("See"
+  unfolds one there): Refuse all, and Accept all -- or "Accept the N
+  others" when some are irreversible: those are decided one by one.
+
+A line's `actions` and `text` stay its fallback for an older screen. The same
+card is exported for the application's own pages: `requestCard(request,
+{act, words, open, steps, host})`, and `requestBlock(list, ...)`.
+
 ## The application's own copy
 
 The bridge folder is the agent's: it can rewrite or delete any line of both

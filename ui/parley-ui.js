@@ -229,6 +229,9 @@
  * compact line in the simple one where a run of lines of one `topic` is one
  * line ("Sent (3): dev, preprod, dev", each `brief`); 'trace' in the
  * detailed view only. ('warn' and 'bad' read as needs-you, 'info' as news.)
+ * A line may carry `request`: an act waiting for the person, drawn as a card
+ * (requestCard, below; docs/protocol.md says its fields), the same card the
+ * application may use in its own pages.
  *
  * EVERYTHING AN AGENT WROTE, AND EVERY WORD OF THE DICTIONARY, IS PUT ON THE
  * PAGE AS TEXT, never as markup: the first is chosen by a program, the
@@ -251,7 +254,9 @@ export const KEYS = Object.freeze(['send', 'placeholder', 'empty', 'view', 'simp
     'react', 'react-remove', 'react-agree', 'react-go', 'react-disagree', 'react-unclear', 'react-stop', 'react-redo', 'react-later', 'react-love',
     'react-agree-hint', 'react-go-hint', 'react-disagree-hint', 'react-unclear-hint', 'react-stop-hint', 'react-redo-hint', 'react-later-hint', 'react-love-hint',
     'decide', 'media', 'media-pictures', 'media-files', 'media-none', 'see-in-thread', 'done-end', 'done-end-note', 'dictated', 'said-to', 'side-now', 'side-machine', 'side-nothing', 'history-changed',
-    'chart', 'chart-table', 'chart-show', 'chart-other', 'chart-total', 'earlier', 'media-earlier', 'panel', 'panel-show', 'panel-hide', 'panel-empty', 'panel-done', 'panel-not-saved']);
+    'chart', 'chart-table', 'chart-show', 'chart-other', 'chart-total', 'earlier', 'media-earlier', 'panel', 'panel-show', 'panel-hide', 'panel-empty', 'panel-done', 'panel-not-saved',
+    'request-preview', 'request-fold', 'request-see-all', 'request-see', 'request-outside', 'request-before', 'request-after', 'request-why', 'request-hold', 'request-undo',
+    'request-accepted', 'request-refused', 'request-ended', 'request-irreversible', 'request-many', 'request-refuse-all', 'request-accept-all', 'request-accept-others', 'request-accept-n', 'request-others']);
 /* THE REACTIONS offered by default, each with its Lucide icon; their words
    are "react-<id>" (shown under the icon) and "react-<id>-hint" (on hover).
    The same ids as REACTIONS of parley-host.mjs, which says which wake. */
@@ -705,7 +710,9 @@ export function view(data, { words = {}, view: as = 'simple', now = Date.now(), 
                 topic: cut(m.topic, 40), brief: cut(m.brief, 60),
                 text: String(m.text ?? ''), time: clock(t, locale), when: whole(t, locale), at: t, label: '', file: null, files: [], outside: '', choices: [], open: false, mark: '',
                 actions: (Array.isArray(m.actions) ? m.actions : []).filter((a) => a && typeof a.id === 'string' && typeof a.label === 'string' && a.label.trim()).slice(0, ACTIONS_MAX).map((a) => ({ id: a.id, label: a.label.trim().slice(0, LABEL_MAX) })),
-                links: (Array.isArray(m.links) ? m.links : []).filter((a) => a && typeof a.id === 'string' && typeof a.text === 'string' && a.text && a.text.length <= 80).slice(0, LINKS_MAX).map((a) => ({ id: a.id, text: a.text })) };
+                links: (Array.isArray(m.links) ? m.links : []).filter((a) => a && typeof a.id === 'string' && typeof a.text === 'string' && a.text && a.text.length <= 80).slice(0, LINKS_MAX).map((a) => ({ id: a.id, text: a.text })),
+                /* A request the person decides (an act of the application's, shown as a card): null when there is none. */
+                request: requestOf(m.request) };
         }
         const show = m.kind === 'show';
         const open = openQuestion(m, answered);
@@ -942,7 +949,7 @@ export function view(data, { words = {}, view: as = 'simple', now = Date.now(), 
     const packed = [];
     for (const row of keptRows) {
         const prev = packed.at(-1);
-        if (!detailed && row.from === 'system' && row.level === 'news' && row.topic) {
+        if (!detailed && row.from === 'system' && row.level === 'news' && row.topic && !row.request) {
             if (prev?.type === 'group' && prev.topic === row.topic) { prev.lines.push(row); prev.end = row.at; continue; }
             /* Alone, it is folded the same (02-11, "less is more"): one quiet line, its buttons a click away. */
             packed.push({ type: 'group', key: `G:${row.id}`, topic: row.topic, lines: [row], at: row.at, end: row.at }); continue;
@@ -952,10 +959,27 @@ export function view(data, { words = {}, view: as = 'simple', now = Date.now(), 
     for (const row of packed) if (row.type === 'group') { const briefs = [...row.lines.reduce((m, l) => { const t = l.brief || l.text; m.set(t, (m.get(t) ?? 0) + 1); return m; }, new Map())].map(([t, n]) => (n > 1 ? `${t} ×${n}` : t));
         /* The same line twice is said once, with its count (03-11: « Tools updated… » twice in a row). */
         row.text = row.lines.length === 1 ? row.lines[0].text : briefs.length === 1 ? briefs[0] : said(words, 'grouped', { topic: row.topic, count: row.lines.length, briefs: briefs.join(', ') }); row.time = row.lines.at(-1).time; row.lines = row.lines.map(({ at, end, trail, ...l }) => l); }
+    /* REQUESTS: those still waiting that came within a minute of each other are one block, one line each (two at least).
+       The newest irreversible one still waiting, alone, comes unfolded: the rest folded. */
+    const batched = [];
+    for (const row of packed) {
+        const prev = batched.at(-1);
+        const last = prev?.type === 'requests' ? prev.lines.at(-1) : prev;
+        /* Only those still waiting: a decided one is its own line, where it came. */
+        if (row.request && !row.request.state && last?.request && !last.request.state && row.at !== null && last.at !== null && row.at - last.at <= REQUEST_BATCH_MS) {
+            if (prev.type === 'requests') { prev.lines.push(row); prev.end = row.at; continue; }
+            batched.splice(-1, 1, { type: 'requests', key: `Q:${prev.id}`, lines: [prev, row], at: prev.at, end: row.at });
+            continue;
+        }
+        batched.push(row);
+    }
+    for (const row of batched) if (row.type === 'requests') { row.time = row.lines[0].time; row.when = row.lines[0].when; row.lines = row.lines.map(({ at, end, trail, ...l }) => l); }
+    const newestRisky = batched.flatMap((r) => (r.type === 'requests' ? r.lines : [r])).reverse().find((r) => r.request && r.request.irreversible && !r.request.state);
+    for (const row of batched) if (row.request) row.open = row === newestRisky;
     /* The day when it changes, the time when long passed. */
     const shown = [];
     let previous = null;
-    for (const row of packed) {
+    for (const row of batched) {
         if (row.at !== null && row.at !== undefined) {
             if (previous === null || dayKey(row.at) !== dayKey(previous)) shown.push({ type: 'day', key: `d:${dayKey(row.at)}`, text: dayText(row.at, now, words, locale) });
             else if (row.at - previous > GAP_MS) shown.push({ type: 'gap', key: `g:${row.key}`, text: clock(row.at, locale) });
@@ -2574,6 +2598,292 @@ function card(file, words, open, size, title) {
     return c;
 }
 
+/* ---- A REQUEST, AS A CARD (0.17.68) ----
+   An act of the application's that waits for the person -- a mail to send, an appointment to
+   move, a file to delete -- said as what will happen, not as a technical line. Plain data
+   (requestOf), drawn by ONE component (requestCard) wherever the application shows it: in the
+   thread, a line's `request`; anywhere else in its own page, the same function. Folded: one
+   sentence, a short line of key facts, what to look at twice, the buttons. Its whole head
+   unfolds it in place (the facts, before -> after, the first lines of the text); "See all"
+   opens everything in a sheet over the page. An irreversible one has an amber edge. The act's
+   button says the act; given `hold`, it waits that many seconds with Undo before it goes.
+   Decided (`state`), it folds to one line. Several within a minute are one block (requestBlock). */
+export const REQUEST_KINDS = Object.freeze(['mail', 'calendar', 'contacts', 'files', 'terminal', 'browser', 'screen', 'device', 'git', 'other']);
+const REQUEST_ICON = Object.freeze({ mail: 'mail', calendar: 'calendar', contacts: 'user', files: 'file', terminal: 'square-terminal', browser: 'globe', screen: 'monitor', device: 'smartphone', git: 'git-branch', other: 'message-square' });
+/* Requests further apart than this are not one block. */
+export const REQUEST_BATCH_MS = 60 * 1000;
+/* The longest wait with Undo an application may ask for, in seconds. */
+export const REQUEST_HOLD_MAX = 10;
+/* Unfolded, so many lines of the text; the rest in "See all". */
+export const REQUEST_QUOTE_LINES = 6;
+const REQUEST_QUOTE_MAX = 4000;
+/* A button pressed: its buttons stay off this long while the application answers (then given back if nothing came). */
+const REQUEST_GONE_MS = 15 * 1000;
+const actOf = (a) => (a && typeof a === 'object' && typeof a.id === 'string' && a.id && a.id.length <= 200 && typeof a.label === 'string' && a.label.trim() ? { id: a.id, label: a.label.trim().slice(0, LABEL_MAX) } : null);
+/* A request as given, made safe: only what is known, each bounded; null when it is not one. */
+export function requestOf(r) {
+    if (!r || typeof r !== 'object' || Array.isArray(r)) return null;
+    const title = cut(r.title, 160);
+    if (!title) return null;
+    const text = (v, n) => (typeof v === 'string' ? cut(v, n) : '');
+    const strings = (v, most, n) => (Array.isArray(v) ? v.filter((x) => typeof x === 'string' && x.trim()).slice(0, most).map((x) => cut(x, n)) : []);
+    const chip = (c) => (typeof c === 'string' && c.trim() ? { text: cut(c, 120), ext: false } : c && typeof c.text === 'string' && c.text.trim() ? { text: cut(c.text, 120), ext: c.ext === true } : null);
+    /* A fact: [label, text] or [label, [chips]] -- or as requestOf gives it back, { label, text } or { label, chips }. */
+    const fact = (f) => {
+        const [label, v] = Array.isArray(f) ? f : f && typeof f === 'object' ? [f.label, f.chips ?? f.text] : [];
+        if (typeof label !== 'string') return null;
+        if (Array.isArray(v)) { const chips = v.map(chip).filter(Boolean).slice(0, 30); return chips.length ? { label: cut(label, 30), chips } : null; }
+        return typeof v === 'string' && v.trim() ? { label: cut(label, 30), text: cut(v, 400) } : null;
+    };
+    const s = r.state && typeof r.state === 'object' ? r.state : null;
+    return {
+        kind: REQUEST_KINDS.includes(r.kind) ? r.kind : 'other',
+        title, sub: text(r.sub, 160),
+        risk: strings(r.risk, 4, 160),
+        facts: (Array.isArray(r.facts) ? r.facts : []).map(fact).filter(Boolean).slice(0, 12),
+        before: strings(r.before, 6, 120), after: strings(r.after, 6, 120),
+        quote: typeof r.quote === 'string' ? r.quote.replace(/\r\n?/g, '\n').trim().slice(0, REQUEST_QUOTE_MAX) : '',
+        code: typeof r.code === 'string' ? r.code.trim().slice(0, 2000) : '',
+        why: text(r.why, 300), detail: text(r.detail, 300),
+        irreversible: r.irreversible === true,
+        yes: actOf(r.yes), no: actOf(r.no), more: actOf(r.more),
+        others: (Array.isArray(r.others) ? r.others : []).map(actOf).filter(Boolean).slice(0, 2),
+        hold: Number.isFinite(r.hold) ? Math.max(0, Math.min(REQUEST_HOLD_MAX, r.hold)) : 0,
+        state: s ? { decision: s.decision === 'yes' || s.decision === 'no' ? s.decision : 'ended', at: typeof s.at === 'string' ? s.at : '', text: text(s.text, 160) } : null,
+    };
+}
+/* What the person did that the application has not answered yet, by request: kept while the page is
+   drawn again, and shared by every place that shows the same request (its buttons' ids). */
+const requestHolds = new Map();
+const requestGone = new Map();
+const requestOpen = new Map();
+const requestLive = new Map();
+const requestKey = (r) => r.yes?.id ?? r.no?.id ?? `t:${r.title}`;
+let requestSteps = null;
+const requestAct = (ctx, id) => { try { ctx.act?.(id); } catch { /* the application's business */ } };
+/* Its button pressed: gone (the application answers with a state), its buttons off meanwhile. */
+function requestDone(key, ctx, id, decision) {
+    requestGone.set(key, decision);
+    setTimeout(() => { if (requestGone.get(key) === decision) { requestGone.delete(key); requestLive.get(key)?.(); } }, REQUEST_GONE_MS);
+    requestAct(ctx, id);
+    requestLive.get(key)?.();
+}
+/* Accepted: at once, or after its hold, Undo meanwhile. `batch`: the block it was accepted with. */
+function requestYes(r, ctx, batch = '', choice = r.yes) {
+    const key = requestKey(r);
+    if (!choice || requestHolds.has(key) || requestGone.has(key)) return;
+    if (!r.hold) { requestDone(key, ctx, choice.id, 'yes'); return; }
+    const ms = r.hold * 1000;
+    const timer = setTimeout(() => { requestHolds.delete(key); requestDone(key, ctx, choice.id, 'yes'); if (batch) requestLive.get(batch)?.(); }, ms);
+    requestHolds.set(key, { until: Date.now() + ms, ms, timer, batch, label: choice.label });
+    requestLive.get(key)?.();
+    if (batch) requestLive.get(batch)?.();
+}
+function requestUndo(key) {
+    const h = requestHolds.get(key);
+    if (!h) return;
+    clearTimeout(h.timer); requestHolds.delete(key);
+    requestLive.get(key)?.();
+}
+function requestNo(r, ctx) {
+    const key = requestKey(r);
+    if (!r.no || requestHolds.has(key) || requestGone.has(key)) return;
+    requestDone(key, ctx, r.no.id, 'no');
+}
+const requestIcon = (kind) => { const s = el('span', 'parley-request-icon'); s.dataset.kind = kind; s.append(icon(REQUEST_ICON[kind] ?? REQUEST_ICON.other, 'parley-sign')); return s; };
+/* The words that wait while it goes: "Send in a moment", its time running out, Undo. */
+function holdBar(h, label, words, undo) {
+    const bar = el('div', 'parley-request-hold'); bar.setAttribute('role', 'status');
+    const fill = el('span', 'parley-request-hold-fill'); fill.style.animationDuration = `${Math.max(0, h.until - Date.now())}ms`;
+    bar.append(fill, el('span', 'parley-request-hold-text', said(words, 'request-hold', { act: label })), button(said(words, 'request-undo'), 'parley-request-undo', undo));
+    return bar;
+}
+/* Its facts, before -> after, its command, its text (`whole`: all of it), why. */
+function requestBody(r, words, whole) {
+    const body = el('div', 'parley-request-body');
+    if (r.facts.length) {
+        const dl = el('dl', 'parley-request-facts');
+        for (const f of r.facts) {
+            const dd = el('dd');
+            if (f.chips) for (const c of f.chips) { const chip = el('span', 'parley-request-chip', c.ext ? `${c.text} · ${said(words, 'request-outside')}` : c.text); if (c.ext) chip.dataset.ext = 'true'; dd.append(chip); }
+            else dd.textContent = f.text;
+            dl.append(el('dt', '', f.label), dd);
+        }
+        body.append(dl);
+    }
+    if (r.before.length || r.after.length) {
+        const ba = el('div', 'parley-request-change');
+        const side = (lines, key, cls) => { const d = el('div', cls); d.append(el('small', '', said(words, key))); for (const l of lines) d.append(el('span', '', l)); return d; };
+        if (r.before.length) ba.append(side(r.before, 'request-before', 'parley-request-was'));
+        if (r.before.length && r.after.length) { const arrow = el('span', 'parley-request-arrow', '→'); arrow.setAttribute('aria-hidden', 'true'); ba.append(arrow); }
+        if (r.after.length) ba.append(side(r.after, 'request-after', 'parley-request-will'));
+        body.append(ba);
+    }
+    if (r.code) body.append(el('pre', 'parley-request-code', r.code));
+    if (r.quote) {
+        const lines = r.quote.split('\n');
+        const q = el('div', 'parley-request-quote', whole ? r.quote : lines.slice(0, REQUEST_QUOTE_LINES).join('\n'));
+        if (!whole && lines.length > REQUEST_QUOTE_LINES) q.dataset.clip = 'true';
+        body.append(q);
+    }
+    if (r.why) body.append(el('p', 'parley-request-why', said(words, 'request-why', { why: r.why })));
+    if (whole && r.detail) body.append(el('p', 'parley-request-detail', r.detail));
+    return body;
+}
+/* Decided: one line. */
+function requestDecided(r, words, locale) {
+    const line = el('div', 'parley-request-done'); line.dataset.decision = r.state.decision;
+    const t = stamp(r.state.at);
+    line.append(el('span', 'parley-request-mark', r.state.decision === 'yes' ? '✓' : r.state.decision === 'no' ? '×' : '–'),
+        el('span', 'parley-request-done-text', r.state.text || said(words, r.state.decision === 'yes' ? 'request-accepted' : r.state.decision === 'no' ? 'request-refused' : 'request-ended', { title: r.title })));
+    if (t !== null) { const time = el('time', 'parley-request-time', clock(t, locale)); time.title = whole(t, locale); line.append(time); }
+    line.title = r.title;
+    return line;
+}
+/* EVERYTHING, in a sheet over the page: the same buttons. Back, Escape, Close or a tap beside it close it. */
+function requestSheet(r, ctx) {
+    const words = ctx.words ?? {};
+    const steps = ctx.steps ?? (requestSteps ??= stepper(true));
+    const host = ctx.host ?? document.body;
+    for (const old of host.children ? [...host.children] : []) if (old.classList?.contains('parley-request-shade')) old.remove();
+    const shade = el('div', 'parley-request-shade');
+    const sheet = el('div', 'parley-request-sheet'); sheet.setAttribute('role', 'dialog'); sheet.setAttribute('aria-modal', 'true'); sheet.setAttribute('aria-label', r.title); sheet.tabIndex = -1;
+    sheet.dataset.kind = r.kind; if (r.irreversible) sheet.dataset.irreversible = 'true';
+    let gone = false;
+    const close = () => { if (gone) return; gone = true; shade.remove(); steps.closed('request'); };
+    const head = el('div', 'parley-request-sheet-head');
+    const hw = el('div', 'parley-request-hw'); hw.append(el('b', 'parley-request-title', r.title)); if (r.sub) hw.append(el('span', 'parley-request-sub', r.sub));
+    head.append(requestIcon(r.kind), hw);
+    sheet.append(el('span', 'parley-request-grip'), head);
+    for (const x of r.risk) { const b = el('div', 'parley-request-risk'); b.append(icon('triangle-alert', 'parley-sign'), el('span', '', x)); sheet.append(b); }
+    sheet.append(requestBody(r, words, true));
+    const acts = el('div', 'parley-request-acts');
+    acts.append(button(said(words, 'close'), 'parley-request-close', close));
+    const key = requestKey(r);
+    if (!r.state && ctx.act && !requestHolds.has(key) && !requestGone.has(key)) {
+        acts.append(el('span', 'parley-request-grow'));
+        if (r.no) acts.append(button(r.no.label, 'parley-request-no', () => { close(); requestNo(r, ctx); }));
+        if (r.yes) acts.append(button(r.yes.label, 'parley-request-yes', () => { close(); requestYes(r, ctx); }));
+    }
+    sheet.append(acts);
+    shade.append(sheet);
+    shade.addEventListener('click', (e) => { if (e.target === shade) close(); });
+    shade.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.preventDefault(); close(); } });
+    host.append(shade);
+    steps.opened('request', close);
+    try { sheet.focus({ preventScroll: true }); } catch { /* an old page */ }
+    return sheet;
+}
+/* ONE REQUEST, AS A CARD: `given` as requestOf takes it. `act(id)` is called with the id of the button
+   pressed (none: no buttons); `words`, the dictionary; `open`, unfolded at first (the person's own
+   choice wins once made); `onFold(open)`, told when the person folds or unfolds it; `steps`, the
+   page's steps for Back (stepper); `host`, where the sheet goes (the page's body by default). */
+export function requestCard(given, ctx = {}) {
+    const r = requestOf(given);
+    const card = el('article', 'parley-request');
+    if (!r) return card;
+    const words = ctx.words ?? {};
+    const key = requestKey(r);
+    card.dataset.kind = r.kind; card.dataset.key = key;
+    if (r.irreversible) card.dataset.irreversible = 'true';
+    const paint = () => {
+        if (r.state) { card.dataset.state = r.state.decision; card.replaceChildren(requestDecided(r, words, ctx.locale)); return; }
+        const open = requestOpen.has(key) ? requestOpen.get(key) : ctx.open === true;
+        card.dataset.open = String(open);
+        const head = button('', 'parley-request-head', () => { requestOpen.set(key, !open); paint(); ctx.onFold?.(!open); });
+        head.setAttribute('aria-expanded', String(open));
+        const hw = el('span', 'parley-request-hw'); hw.append(el('span', 'parley-request-title', r.title)); if (r.sub) hw.append(el('span', 'parley-request-sub', r.sub));
+        head.append(requestIcon(r.kind), hw, el('span', 'parley-request-chev', said(words, open ? 'request-fold' : 'request-preview')));
+        if (ctx.when) head.title = ctx.when;
+        const parts = [head];
+        for (const x of r.risk) { const b = el('div', 'parley-request-risk'); b.append(icon('triangle-alert', 'parley-sign'), el('span', '', x)); parts.push(b); }
+        if (open) parts.push(requestBody(r, words, false));
+        const h = requestHolds.get(key);
+        const gone = requestGone.get(key);
+        if (h) parts.push(holdBar(h, h.label ?? '', words, () => requestUndo(key)));
+        else {
+            const acts = el('div', 'parley-request-acts');
+            const all = button(said(words, 'request-see-all'), 'parley-request-all', () => { if (r.more) requestAct(ctx, r.more.id); else requestSheet(r, ctx); });
+            if (r.more) all.textContent = r.more.label;
+            acts.append(all, el('span', 'parley-request-grow'));
+            if (ctx.act) {
+                /* Its other ways to accept ("Always allow ..."), behind "⋯": never in sight at first. */
+                let more = null;
+                if (r.others.length) {
+                    more = el('div', 'parley-request-others'); more.hidden = !requestOpen.get(`o:${key}`);
+                    for (const o of r.others) { const b = button(o.label, 'parley-request-other', () => requestYes(r, ctx, '', o)); b.dataset.act = o.id; b.disabled = Boolean(gone); more.append(b); }
+                    const dots = button('⋯', 'parley-request-dots', () => { more.hidden = !more.hidden; requestOpen.set(`o:${key}`, !more.hidden); dots.setAttribute('aria-expanded', String(!more.hidden)); });
+                    dots.setAttribute('aria-label', said(words, 'request-others')); dots.setAttribute('aria-expanded', String(!more.hidden));
+                    acts.append(dots);
+                }
+                if (r.no) { const b = button(r.no.label, 'parley-request-no', () => requestNo(r, ctx)); b.dataset.act = r.no.id; b.disabled = Boolean(gone); acts.append(b); }
+                if (r.yes) { const b = button(r.yes.label, 'parley-request-yes', () => requestYes(r, ctx)); b.dataset.act = r.yes.id; b.disabled = Boolean(gone); acts.append(b); }
+                if (more) acts.append(more);
+            }
+            if (gone) card.dataset.gone = gone; else delete card.dataset.gone;
+            parts.push(acts);
+        }
+        card.replaceChildren(...parts);
+    };
+    requestLive.set(key, () => { if (card.isConnected) paint(); });
+    paint();
+    return card;
+}
+/* SEVERAL AT ONCE: one block, a line each ("See" unfolds that one in the block). "Refuse all";
+   "Accept all" only when none is irreversible, else "Accept the N others": an irreversible one is
+   decided alone. `list`: the requests (requestOf), `ctx` as for requestCard, `key` names the block. */
+export function requestBlock(list, ctx = {}) {
+    const words = ctx.words ?? {};
+    const rs = (Array.isArray(list) ? list : []).map(requestOf).filter(Boolean);
+    const block = el('article', 'parley-requests');
+    const bkey = `B:${ctx.key ?? rs.map(requestKey).join('|')}`;
+    const paint = () => {
+        const pending = rs.filter((r) => !r.state && !requestGone.has(requestKey(r)));
+        const head = el('div', 'parley-requests-head');
+        head.append(el('b', '', said(words, 'request-many', { count: rs.length })));
+        if (ctx.time) { const t = el('time', 'parley-request-time', ctx.time); if (ctx.when) t.title = ctx.when; head.append(t); }
+        const parts = [head];
+        for (const r of rs) {
+            const key = requestKey(r);
+            if (requestOpen.get(key) === true && !r.state) {
+                const card = requestCard(r, { ...ctx, open: true, onFold: () => paint() });
+                card.dataset.inBlock = 'true';
+                parts.push(card);
+                continue;
+            }
+            if (r.state) { const c = el('div', 'parley-requests-line'); c.append(requestDecided(r, words, ctx.locale)); parts.push(c); continue; }
+            const line = el('div', 'parley-requests-line'); line.dataset.kind = r.kind; if (r.irreversible) line.dataset.irreversible = 'true';
+            line.append(requestIcon(r.kind), el('span', 'parley-requests-title', r.title));
+            if (r.irreversible) line.append(el('span', 'parley-requests-tag', said(words, 'request-irreversible')));
+            if (requestHolds.has(key)) line.append(el('span', 'parley-requests-tag', said(words, 'request-hold', { act: r.yes?.label ?? '' })));
+            const see = button(said(words, 'request-see'), 'parley-requests-see', () => { requestOpen.set(key, true); paint(); });
+            see.setAttribute('aria-expanded', 'false'); see.title = r.title;
+            line.append(see);
+            parts.push(line);
+        }
+        const held = rs.filter((r) => requestHolds.get(requestKey(r))?.batch === bkey);
+        if (held.length) {
+            const h = requestHolds.get(requestKey(held[0]));
+            parts.push(holdBar(h, said(words, 'request-accept-n', { count: held.length }), words, () => { for (const r of held) requestUndo(requestKey(r)); paint(); }));
+        } else if (pending.length && ctx.act) {
+            const acts = el('div', 'parley-request-acts');
+            const loose = pending.filter((r) => !r.irreversible && r.yes && !requestHolds.has(requestKey(r)));
+            const refusable = pending.filter((r) => r.no && !requestHolds.has(requestKey(r)));
+            acts.append(el('span', 'parley-request-grow'));
+            if (refusable.length) acts.append(button(said(words, 'request-refuse-all'), 'parley-request-no', () => { for (const r of refusable) requestNo(r, ctx); paint(); }));
+            if (loose.length) {
+                const label = loose.length === pending.length ? said(words, 'request-accept-all') : said(words, 'request-accept-others', { count: loose.length });
+                acts.append(button(label, 'parley-request-yes', () => { for (const r of loose) requestYes(r, ctx, bkey); paint(); }));
+            }
+            parts.push(acts);
+        }
+        block.replaceChildren(...parts);
+    };
+    requestLive.set(bkey, () => { if (block.isConnected) paint(); });
+    paint();
+    return block;
+}
+
 export function mount(root, { load, send, words = {}, open, terminal, remind, view: first = 'simple', onView, every = 3000, locale,
     voice: speaking, autoSend = false, onAutoSend, autoSendMs = AUTO_SEND_MS, onAutoSendMs, replies: ready = [], enter = 'auto', touch, attach, act,
     markdown: rich = false, picture, diagram, highlight, agentName, agentTool, react, reactions: offered = REACTIONS,
@@ -3345,6 +3655,7 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
         return card(f, words, open, size);
     }
     const item0 = (row) => (row.type === 'message' ? row : {});
+    const requestCtx = (row) => ({ act: act ? (id) => act(id, { id: row.id, text: row.text ?? '' }) : null, words, steps, host: root, locale, key: row.key, time: row.time, when: row.when });
     function systemLine(row) {
         const line = el('div', 'parley-system'); line.dataset.from = 'system'; line.dataset.level = row.level; if (row.tone) line.dataset.tone = row.tone; line.dataset.id = row.id;
         if (row.when) line.title = row.when;
@@ -3419,6 +3730,9 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
             folding({ key: row.key, open: false }, holder, line, list);
             return holder;
         }
+        /* A request: the card the application's other pages use too; several at once, one block. */
+        if (row.type === 'requests') return requestBlock(row.lines.map((l) => l.request), requestCtx(row));
+        if (item0(row).from === 'system' && row.request) return requestCard(row.request, { ...requestCtx(row), open: row.open });
         if (item0(row).from === 'system') return systemLine(row);
         if (row.type === 'now') {
             const holder = el('div', 'parley-now'); holder.dataset.live = String(row.live); if (row.busy) holder.dataset.busy = 'true';

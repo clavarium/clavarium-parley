@@ -1,7 +1,7 @@
 /* How the exchange looks. Every colour is a variable: a page sets them, or keeps these. */
 .parley {
   --parley-bg: #ffffff; --parley-text: #16181d; --parley-dim: #5a5f69; --parley-line: #d3d7de;
-  --parley-agent: #f3f4f6; --parley-person: #e3edfd; --parley-ask: #8a5d00; --parley-wait: #2a74c4; --parley-ok: #1f7a5a; --parley-action: #0b53c0; --parley-on-action: #ffffff; --parley-live: #c62828;
+  --parley-agent: #f3f4f6; --parley-person: #e3edfd; --parley-ask: #8a5d00; --parley-wait: #2a74c4; --parley-ok: #1f7a5a; --parley-action: #0b53c0; --parley-on-action: #ffffff; --parley-live: #c62828; --parley-risk: #a3581a;
   --parley-font: 1rem; --parley-gap: .7rem; --parley-column: 72rem; --parley-measure: 80ch;
   /* Reactions: meaning, never decoration; stop is red, readable in both themes. */
   --parley-react-stop: #c62828; --parley-react-go: #1d7a3a; --parley-react-love: #c2185b; --parley-arrive: color-mix(in srgb, var(--parley-action) 14%, transparent);
@@ -12,12 +12,12 @@
   display: flex; flex-direction: column; gap: var(--parley-gap); color: var(--parley-text); background: var(--parley-bg); font-size: var(--parley-font); line-height: 1.45; min-height: 0;
 }
 @media (prefers-color-scheme: dark) {
-  .parley:not([data-theme="light"]) { --parley-bg: #0f1115; --parley-text: #e6e8ec; --parley-dim: #a3a9b4; --parley-line: #38404c; --parley-agent: #1a1e25; --parley-person: #172742; --parley-ask: #e0b45a; --parley-wait: #5aa9f0; --parley-ok: #5fc39d; --parley-action: #8ab4ff; --parley-on-action: #0f1115; --parley-live: #ff7a7a;
+  .parley:not([data-theme="light"]) { --parley-bg: #0f1115; --parley-text: #e6e8ec; --parley-dim: #a3a9b4; --parley-line: #38404c; --parley-agent: #1a1e25; --parley-person: #172742; --parley-ask: #e0b45a; --parley-wait: #5aa9f0; --parley-ok: #5fc39d; --parley-action: #8ab4ff; --parley-on-action: #0f1115; --parley-live: #ff7a7a; --parley-risk: #e39a5c;
   --parley-note: #79b8ff; --parley-tip: #6fdc8c; --parley-important: #c5a3ff; --parley-warning: #e0b45a; --parley-caution: #ff8a80; --parley-mark: #5c4b00; --parley-code-bg: #161a20;
   --parley-tok-comment: #8b949e; --parley-tok-keyword: #ff7ac6; --parley-tok-string: #a5e3a1; --parley-tok-number: #ffb86b; --parley-tok-function: #d2a8ff; --parley-tok-tag: #79b8ff; --parley-tok-attr: #ffb86b; --parley-tok-deleted: #ff8a80; --parley-tok-inserted: #a5e3a1;
   --parley-react-stop: #ff6b6b; --parley-react-go: #6fdc8c; --parley-react-love: #ff7aa8; }
 }
-.parley[data-theme="dark"] { --parley-bg: #0f1115; --parley-text: #e6e8ec; --parley-dim: #a3a9b4; --parley-line: #38404c; --parley-agent: #1a1e25; --parley-person: #172742; --parley-ask: #e0b45a; --parley-wait: #5aa9f0; --parley-ok: #5fc39d; --parley-action: #8ab4ff; --parley-on-action: #0f1115; --parley-live: #ff7a7a;
+.parley[data-theme="dark"] { --parley-bg: #0f1115; --parley-text: #e6e8ec; --parley-dim: #a3a9b4; --parley-line: #38404c; --parley-agent: #1a1e25; --parley-person: #172742; --parley-ask: #e0b45a; --parley-wait: #5aa9f0; --parley-ok: #5fc39d; --parley-action: #8ab4ff; --parley-on-action: #0f1115; --parley-live: #ff7a7a; --parley-risk: #e39a5c;
   --parley-note: #79b8ff; --parley-tip: #6fdc8c; --parley-important: #c5a3ff; --parley-warning: #e0b45a; --parley-caution: #ff8a80; --parley-mark: #5c4b00; --parley-code-bg: #161a20;
   --parley-tok-comment: #8b949e; --parley-tok-keyword: #ff7ac6; --parley-tok-string: #a5e3a1; --parley-tok-number: #ffb86b; --parley-tok-function: #d2a8ff; --parley-tok-tag: #79b8ff; --parley-tok-attr: #ffb86b; --parley-tok-deleted: #ff8a80; --parley-tok-inserted: #a5e3a1;
   --parley-react-stop: #ff6b6b; --parley-react-go: #6fdc8c; --parley-react-love: #ff7aa8; }
@@ -1036,3 +1036,90 @@ mark.parley-found[data-now="true"] { outline: 2px solid var(--parley-ask); }
 .parley-result-note { font-size: .8em; color: var(--parley-dim); line-height: 1.3; opacity: .9; }
 @container parley (max-width: 26rem) { .parley-cards-grid { grid-template-columns: 1fr 1fr; } .parley-result-value { font-size: 1.25em; } }
 .parley .parley-md .parley-chart-legend li, .parley .parley-md .parley-chart-legend li > *, .parley .parley-md .parley-result, .parley .parley-md .parley-result > * { margin-top: 0; }
+
+/* A REQUEST, AS A CARD (requestCard): the same in the thread and in the application's own pages.
+   Each colour falls back to the thread's own, so the card stands alone too (`--parley-risk`: what cannot be undone). Pending: an amber edge;
+   irreversible: an orange one, and what to look at twice in a band of that colour. */
+.parley-request, .parley-requests { align-self: stretch; box-sizing: border-box; min-width: 0; max-width: 44em; margin: .15em 0; background: var(--parley-bg, #fff); color: var(--parley-text, #16181d);
+  border: 1px solid var(--parley-line, #d3d7de); border-left: 3px solid var(--parley-ask, #8a5d00); border-radius: 10px; text-align: left; }
+.parley-request[data-irreversible="true"], .parley-requests:has([data-irreversible="true"]) { border-left-color: var(--parley-risk, #a3581a); }
+.parley-request[data-in-block="true"] { margin: 0; border-width: 1px 0 0; border-radius: 0; }
+.parley-request[data-state] { border-left-color: var(--parley-line, #d3d7de); }
+.parley-request button, .parley-requests button, .parley-request-sheet button { font: inherit; font-size: .9em; font-weight: 600; min-height: 40px; padding: 0 1em; border-radius: 8px; border: 1px solid var(--parley-line, #d3d7de);
+  background: transparent; color: var(--parley-dim, #5a5f69); cursor: pointer; }
+.parley-request button:disabled, .parley-requests button:disabled { opacity: .5; cursor: default; }
+.parley-request button:focus-visible, .parley-requests button:focus-visible, .parley-request-sheet button:focus-visible { outline: 2px solid var(--parley-action, #0b53c0); outline-offset: 2px; }
+.parley-request .parley-request-yes, .parley-requests .parley-request-yes, .parley-request-sheet .parley-request-yes { border-color: var(--parley-ask, #8a5d00); color: var(--parley-ask, #8a5d00); }
+.parley-request[data-irreversible="true"] .parley-request-yes, .parley-request-sheet[data-irreversible="true"] .parley-request-yes { border-color: var(--parley-risk, #a3581a); color: var(--parley-risk, #a3581a); }
+/* Its head is one button: the whole of it unfolds the card. */
+.parley-request .parley-request-head { display: flex; align-items: flex-start; gap: .65em; width: 100%; min-height: 0; padding: .65em .8em 0; border: 0; border-radius: 10px 10px 0 0; background: transparent; color: inherit; font-weight: 400; font-size: 1em; text-align: left; }
+.parley-request-icon { flex: none; width: 1.9em; height: 1.9em; border-radius: 8px; display: grid; place-items: center; background: var(--parley-agent, #f3f4f6); color: var(--parley-dim, #5a5f69); }
+.parley-request-icon .parley-sign { width: 1.05em; height: 1.05em; }
+.parley-request-hw { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.parley-request-title { font-weight: 600; line-height: 1.3; overflow-wrap: anywhere; }
+.parley-request-sub { font-size: .85em; color: var(--parley-dim, #5a5f69); overflow-wrap: anywhere; }
+.parley-request-chev { flex: none; font-size: .8em; color: var(--parley-dim, #5a5f69); padding-top: .2em; white-space: nowrap; }
+.parley-request-risk { display: flex; gap: .4em; align-items: center; margin: .5em .8em 0; padding: .25em .55em; border-radius: 6px; font-size: .85em; color: var(--parley-risk, #a3581a);
+  background: color-mix(in srgb, var(--parley-risk, #a3581a) 10%, transparent); }
+.parley-request-risk .parley-sign { flex: none; width: 1em; height: 1em; }
+.parley-request-body { padding: .55em .8em 0; display: flex; flex-direction: column; gap: .45em; min-width: 0; }
+.parley-request-facts { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: .2em .7em; margin: 0; font-size: .87em; }
+.parley-request-facts dt { color: var(--parley-dim, #5a5f69); }
+.parley-request-facts dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+.parley-request-chip { display: inline-block; max-width: 100%; box-sizing: border-box; overflow-wrap: anywhere; font-size: .92em; padding: 0 .55em; margin: 0 .3em .2em 0; border-radius: 999px; border: 1px solid var(--parley-line, #d3d7de); color: var(--parley-dim, #5a5f69); }
+.parley-request-chip[data-ext="true"] { border-color: var(--parley-risk, #a3581a); color: var(--parley-risk, #a3581a); }
+.parley-request-change { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); gap: .5em; align-items: center; font-size: .87em; }
+.parley-request-change > div { display: flex; flex-direction: column; min-width: 0; padding: .35em .55em; border: 1px solid var(--parley-line, #d3d7de); border-radius: 8px; overflow-wrap: anywhere; }
+.parley-request-change small { font-size: .78em; text-transform: uppercase; letter-spacing: .04em; color: var(--parley-dim, #5a5f69); }
+.parley-request-was span { color: var(--parley-dim, #5a5f69); text-decoration: line-through; }
+.parley-request-will { border-color: var(--parley-ask, #8a5d00) !important; font-weight: 600; }
+.parley-request-arrow { color: var(--parley-dim, #5a5f69); }
+.parley-request-change > div:only-child { grid-column: 1 / -1; }
+.parley-request-code { margin: 0; padding: .45em .6em; border-radius: 6px; background: var(--parley-code-bg, #f5f6f8); font: .85em/1.45 ui-monospace, Menlo, Consolas, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
+.parley-request-quote { position: relative; font-size: .9em; white-space: pre-wrap; overflow-wrap: anywhere; border-left: 2px solid var(--parley-line, #d3d7de); padding: .1em 0 .1em .7em; }
+.parley-request-quote[data-clip="true"] { max-height: 9em; overflow: hidden; -webkit-mask-image: linear-gradient(to bottom, #000 70%, transparent); mask-image: linear-gradient(to bottom, #000 70%, transparent); }
+.parley-request-why, .parley-request-detail { margin: 0; font-size: .82em; color: var(--parley-dim, #5a5f69); overflow-wrap: anywhere; }
+.parley-request-detail { font-family: ui-monospace, Menlo, Consolas, monospace; }
+/* Its buttons: See all on the left, Refuse and the act on the right; wide under the thumb on a phone. */
+.parley-request-acts { display: flex; flex-wrap: wrap; align-items: center; gap: .5em; padding: .65em .8em .75em; }
+.parley-request-grow { flex: 1; }
+.parley-request .parley-request-all, .parley-request-sheet .parley-request-close { border: 0; padding: 0 .2em; color: var(--parley-text, #16181d); font-weight: 500; text-decoration: underline; text-underline-offset: 3px; }
+.parley-request-sheet .parley-request-close { border: 1px solid var(--parley-line, #d3d7de); text-decoration: none; }
+@container (max-width: 30em) { .parley-request-acts .parley-request-no, .parley-request-acts .parley-request-yes { flex: 1 1 auto; } .parley-request-acts .parley-request-grow { flex: 0 0 .25em; } }
+@media (max-width: 30em) { .parley-request-acts .parley-request-no, .parley-request-acts .parley-request-yes { flex: 1 1 auto; } .parley-request-acts .parley-request-grow { flex: 0 0 .25em; } }
+.parley-request-acts button { white-space: nowrap; }
+/* While it waits to go: its time running out, and Undo. */
+.parley-request-hold { position: relative; display: flex; align-items: center; gap: .6em; margin: .65em .8em .75em; padding: 0 0 0 .7em; border-radius: 8px; overflow: hidden; border: 1px solid var(--parley-line, #d3d7de); font-size: .9em; }
+.parley-request-hold-fill { position: absolute; inset: 0; transform-origin: left; background: color-mix(in srgb, var(--parley-ask, #8a5d00) 14%, transparent); animation: parley-request-hold linear forwards; pointer-events: none; }
+@keyframes parley-request-hold { from { transform: scaleX(1); } to { transform: scaleX(0); } }
+@media (prefers-reduced-motion: reduce) { .parley-request-hold-fill { animation: none; } }
+.parley-request-hold-text { position: relative; flex: 1; min-width: 0; }
+.parley-request .parley-request-undo, .parley-requests .parley-request-undo { position: relative; border: 0; border-left: 1px solid var(--parley-line, #d3d7de); border-radius: 0; color: var(--parley-text, #16181d); }
+.parley-request[data-gone] .parley-request-acts { opacity: .7; }
+/* Decided: one line. */
+.parley-request-done { display: flex; align-items: center; gap: .5em; padding: .5em .8em; font-size: .88em; color: var(--parley-dim, #5a5f69); min-width: 0; }
+.parley-request-mark { flex: none; font-weight: 700; }
+.parley-request-done[data-decision="yes"] .parley-request-mark { color: var(--parley-ok, #1f7a5a); }
+.parley-request-done-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.parley-request-time { flex: none; font-size: .9em; color: var(--parley-dim, #5a5f69); font-weight: 400; }
+/* Several at once: one block, a line each. */
+.parley-requests-head { display: flex; align-items: baseline; gap: .6em; padding: .6em .8em; }
+.parley-requests-line { display: flex; align-items: center; gap: .6em; min-width: 0; padding: .35em .8em; border-top: 1px solid var(--parley-line, #d3d7de); font-size: .93em; }
+.parley-requests-line .parley-request-done { padding: .15em 0; flex: 1; }
+.parley-requests-line .parley-request-icon { width: 1.6em; height: 1.6em; }
+.parley-requests-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.parley-requests-tag { flex: none; font-size: .78em; color: var(--parley-risk, #a3581a); }
+.parley-requests .parley-requests-see { min-height: 2.2em; border: 0; padding: 0 .3em; color: var(--parley-text, #16181d); font-weight: 500; text-decoration: underline; text-underline-offset: 3px; }
+.parley-requests > .parley-request-acts { border-top: 1px solid var(--parley-line, #d3d7de); }
+/* "See all": a sheet that rises from the bottom, over the page; the page keeps its place. */
+.parley-request-shade { position: fixed; inset: 0; z-index: 50; display: flex; align-items: flex-end; justify-content: center; background: rgba(0, 0, 0, .35); }
+.parley-request-sheet { box-sizing: border-box; width: 100%; max-width: 40em; max-height: 85vh; max-height: 85dvh; overflow: auto; display: flex; flex-direction: column; gap: .4em;
+  padding: .4em 0 calc(.2em + env(safe-area-inset-bottom)); background: var(--parley-bg, #fff); color: var(--parley-text, #16181d); border: 1px solid var(--parley-line, #d3d7de); border-bottom: 0;
+  border-radius: 16px 16px 0 0; box-shadow: 0 -10px 30px rgba(0, 0, 0, .25); animation: parley-sheet-up .2s cubic-bezier(.2, .8, .2, 1); outline: none; text-align: left; }
+@media (prefers-reduced-motion: reduce) { .parley-request-sheet { animation: none; } }
+.parley-request-grip { align-self: center; width: 2.4em; height: 4px; border-radius: 2px; background: var(--parley-line, #d3d7de); }
+.parley-request-sheet-head { display: flex; align-items: flex-start; gap: .65em; padding: .3em .8em 0; }
+.parley-request-sheet .parley-request-quote { max-height: none; }
+.parley-request-others { flex-basis: 100%; display: flex; justify-content: flex-end; gap: .5em; }
+.parley-request-others[hidden] { display: none; }
+.parley-request .parley-request-dots { padding: 0 .75em; }
