@@ -1,7 +1,7 @@
 /* How the exchange looks. Every colour is a variable: a page sets them, or keeps these. */
 .parley {
   --parley-bg: #ffffff; --parley-text: #16181d; --parley-dim: #5a5f69; --parley-line: #d3d7de;
-  --parley-agent: #f3f4f6; --parley-person: #e3edfd; --parley-ask: #8a5d00; --parley-action: #0b53c0; --parley-on-action: #ffffff; --parley-live: #c62828;
+  --parley-agent: #f3f4f6; --parley-person: #e3edfd; --parley-ask: #8a5d00; --parley-wait: #2a74c4; --parley-ok: #1f7a5a; --parley-action: #0b53c0; --parley-on-action: #ffffff; --parley-live: #c62828;
   --parley-font: 1rem; --parley-gap: .7rem; --parley-column: 72rem; --parley-measure: 80ch;
   /* Reactions: meaning, never decoration; stop is red, readable in both themes. */
   --parley-react-stop: #c62828; --parley-react-go: #1d7a3a; --parley-react-love: #c2185b; --parley-arrive: color-mix(in srgb, var(--parley-action) 14%, transparent);
@@ -12,12 +12,12 @@
   display: flex; flex-direction: column; gap: var(--parley-gap); color: var(--parley-text); background: var(--parley-bg); font-size: var(--parley-font); line-height: 1.45; min-height: 0;
 }
 @media (prefers-color-scheme: dark) {
-  .parley:not([data-theme="light"]) { --parley-bg: #0f1115; --parley-text: #e6e8ec; --parley-dim: #a3a9b4; --parley-line: #38404c; --parley-agent: #1a1e25; --parley-person: #172742; --parley-ask: #e0b45a; --parley-action: #8ab4ff; --parley-on-action: #0f1115; --parley-live: #ff7a7a;
+  .parley:not([data-theme="light"]) { --parley-bg: #0f1115; --parley-text: #e6e8ec; --parley-dim: #a3a9b4; --parley-line: #38404c; --parley-agent: #1a1e25; --parley-person: #172742; --parley-ask: #e0b45a; --parley-wait: #5aa9f0; --parley-ok: #5fc39d; --parley-action: #8ab4ff; --parley-on-action: #0f1115; --parley-live: #ff7a7a;
   --parley-note: #79b8ff; --parley-tip: #6fdc8c; --parley-important: #c5a3ff; --parley-warning: #e0b45a; --parley-caution: #ff8a80; --parley-mark: #5c4b00; --parley-code-bg: #161a20;
   --parley-tok-comment: #8b949e; --parley-tok-keyword: #ff7ac6; --parley-tok-string: #a5e3a1; --parley-tok-number: #ffb86b; --parley-tok-function: #d2a8ff; --parley-tok-tag: #79b8ff; --parley-tok-attr: #ffb86b; --parley-tok-deleted: #ff8a80; --parley-tok-inserted: #a5e3a1;
   --parley-react-stop: #ff6b6b; --parley-react-go: #6fdc8c; --parley-react-love: #ff7aa8; }
 }
-.parley[data-theme="dark"] { --parley-bg: #0f1115; --parley-text: #e6e8ec; --parley-dim: #a3a9b4; --parley-line: #38404c; --parley-agent: #1a1e25; --parley-person: #172742; --parley-ask: #e0b45a; --parley-action: #8ab4ff; --parley-on-action: #0f1115; --parley-live: #ff7a7a;
+.parley[data-theme="dark"] { --parley-bg: #0f1115; --parley-text: #e6e8ec; --parley-dim: #a3a9b4; --parley-line: #38404c; --parley-agent: #1a1e25; --parley-person: #172742; --parley-ask: #e0b45a; --parley-wait: #5aa9f0; --parley-ok: #5fc39d; --parley-action: #8ab4ff; --parley-on-action: #0f1115; --parley-live: #ff7a7a;
   --parley-note: #79b8ff; --parley-tip: #6fdc8c; --parley-important: #c5a3ff; --parley-warning: #e0b45a; --parley-caution: #ff8a80; --parley-mark: #5c4b00; --parley-code-bg: #161a20;
   --parley-tok-comment: #8b949e; --parley-tok-keyword: #ff7ac6; --parley-tok-string: #a5e3a1; --parley-tok-number: #ffb86b; --parley-tok-function: #d2a8ff; --parley-tok-tag: #79b8ff; --parley-tok-attr: #ffb86b; --parley-tok-deleted: #ff8a80; --parley-tok-inserted: #a5e3a1;
   --parley-react-stop: #ff6b6b; --parley-react-go: #6fdc8c; --parley-react-love: #ff7aa8; }
@@ -29,11 +29,11 @@
 .parley[data-view="simple"] > .parley-top > * { pointer-events: auto; }
 .parley-status { flex: 1; font-weight: 600; color: var(--parley-dim); min-width: 0; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow-wrap: anywhere; }
 .parley-status[hidden] { display: none; }
-.parley-status[data-state="waiting"] { color: var(--parley-ask); }
+.parley-status[data-state="waiting"] { color: var(--parley-wait); }
 .parley-status::before { content: ""; display: inline-block; width: .6em; height: .6em; border-radius: 50%; margin-right: .45em; background: var(--parley-dim); vertical-align: .05em; }
 .parley-status[data-state="working"]::before { background: var(--parley-action); }
-.parley-status[data-state="waiting"]::before { background: var(--parley-ask); }
-.parley-status[data-state="done"]::before { background: #2f8f4e; }
+.parley-status[data-state="waiting"]::before { background: var(--parley-wait); }
+.parley-status[data-state="done"]::before { background: var(--parley-ok); }
 .parley-views { display: flex; border: 1px solid var(--parley-line); border-radius: 999px; padding: 2px; margin-bottom: .35em; }
 .parley .parley-views button { flex: 1; }
 .parley .parley-views button { border: 0; border-radius: 999px; min-height: 2.1em; padding: 0 .9em; background: transparent; color: var(--parley-dim); }
@@ -55,7 +55,7 @@
 .parley-who-person { font-size: .8em; color: var(--parley-dim); font-weight: 400; text-align: right; margin-bottom: .1em; }
 .parley-row[data-from="person"] { align-items: flex-end; }
 /* An open question: outlined, whether the steps that led to it are folded or not. */
-.parley-said[data-asking="true"] { box-shadow: inset 2px 0 0 var(--parley-ask); }   /* 02-11: a thin brass line at its left, not a frame */
+.parley-said[data-asking="true"] { box-shadow: inset 2px 0 0 var(--parley-wait); }   /* 02-11: a thin line at its left, the colour of waiting (03-11, the charter), not a frame */
 .parley-text { white-space: pre-wrap; overflow-wrap: anywhere; }
 .parley-label { font-size: .85em; font-weight: 600; color: var(--parley-ask); }
 .parley-file { display: flex; align-items: center; gap: .6em; flex-wrap: wrap; margin-top: .35em; }
@@ -103,7 +103,7 @@
 .parley .parley-attach:hover:not(:disabled), .parley .parley-mic:hover:not([aria-pressed="true"]) { background: var(--parley-agent); color: var(--parley-text); }
 .parley-form .parley-sign { width: 22px; height: 22px; }
 .parley .parley-send { background: transparent; color: var(--parley-action); }
-.parley .parley-send .parley-sign { stroke-width: 2.4; }
+.parley .parley-send .parley-sign { stroke-width: 2; }
 /* The automatic send's countdown: a ring that fills around the arrow (AUTO_SEND_MS). */
 @property --parley-turn { syntax: '<percentage>'; inherits: false; initial-value: 0%; }
 .parley .parley-send { position: relative; }
@@ -148,8 +148,8 @@
 .parley-trail li { display: flex; gap: .6em; align-items: baseline; color: var(--parley-dim); }
 .parley-trail li .parley-step { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .parley-trail li[data-kind="status"] .parley-step { font-weight: 600; }
-.parley-trail li[data-state="waiting"] .parley-step { color: var(--parley-ask); }
-.parley-trail li[data-kind="status"][data-state="done"] .parley-step::before { content: "\2713  "; color: #2f8f4e; }
+.parley-trail li[data-state="waiting"] .parley-step { color: var(--parley-wait); }
+.parley-trail li[data-kind="status"][data-state="done"] .parley-step::before { content: "\2713  "; color: var(--parley-ok); }
 .parley .parley-doing { display: flex; align-items: baseline; gap: .55em; width: 100%; min-height: 0; padding: .3em .1em; border: 0; border-radius: 8px; background: transparent; color: var(--parley-dim); font-style: italic; text-align: left; cursor: default; }
 .parley button.parley-doing { cursor: pointer; }
 .parley .parley-doing .parley-step { flex: 1; min-width: 0; overflow-wrap: anywhere; }
@@ -194,7 +194,7 @@
 .parley-field .parley-box { width: 100%; }
 .parley-voice { position: absolute; left: 14px; bottom: calc(100% - .55em); z-index: 1; max-width: calc(100% - 1.2em); box-sizing: border-box; padding: .1em .6em; border: 1px solid var(--parley-line); border-radius: .8em; background: var(--parley-bg); color: var(--parley-dim); font-size: .78em; line-height: 1.3; pointer-events: none; overflow-wrap: anywhere; }
 .parley-voice[hidden] { display: none; }
-.parley-voice-text::before { content: ""; display: inline-block; width: .6em; height: .6em; border-radius: 50%; margin-right: .45em; background: #2f8f4e; vertical-align: .02em; }
+.parley-voice-text::before { content: ""; display: inline-block; width: .6em; height: .6em; border-radius: 50%; margin-right: .45em; background: var(--parley-ok); vertical-align: .02em; }
 .parley-voice[data-state="hearing"] .parley-voice-text::before { background: var(--parley-live); }
 .parley-voice[data-state="transcribing"] .parley-voice-text::before, .parley-voice[data-state="calibrating"] .parley-voice-text::before { background: var(--parley-ask); }
 .parley-voice[data-state="error"] { color: var(--parley-ask); border-color: var(--parley-ask); }
@@ -272,7 +272,12 @@
 .parley-said[data-from="agent"] .parley-short + .parley-md { margin-top: .5em; }
 /* Folded after about twelve lines: what is below fades. */
 .parley-md[data-clip="true"] { max-height: calc(1.45em * 12); overflow: hidden; -webkit-mask-image: linear-gradient(to bottom, #000 70%, transparent); mask-image: linear-gradient(to bottom, #000 70%, transparent); }
-.parley .parley-unfold { min-height: 2.6em; margin-top: .45em; padding: 0 1.1em; border-radius: 999px; font-size: .95em; font-weight: 600; color: var(--parley-text); border-color: var(--parley-line); background: var(--parley-agent); }
+/* "See more" / "Fold" (03-11, the charter): a quiet word under the text, no frame -- it is not an action of the
+   conversation; still a fingertip high. */
+.parley .parley-unfold { align-self: flex-start; min-height: 2.6em; margin-top: .1em; padding: 0 .15em; border: 0; border-radius: 4px; background: transparent; font-size: .85em; font-weight: 600; color: var(--parley-dim); }
+.parley .parley-unfold::after { content: " \25BE"; }
+.parley .parley-unfold[aria-expanded="true"]::after { content: " \25B4"; }
+.parley .parley-unfold:hover { color: var(--parley-text); text-decoration: underline; text-underline-offset: 3px; }
 .parley-md + .parley-md { margin-top: .5em; }
 /* Badges: a word with its meaning, in its colour, readable in both themes. */
 .parley-badge { display: inline-block; padding: 0 .5em; border-radius: 999px; font-size: .8em; font-weight: 600; line-height: 1.5; vertical-align: .05em; border: 1px solid currentColor; white-space: nowrap; }
@@ -282,7 +287,7 @@
 .parley-badge[data-kind="warn"] { color: var(--parley-warning); }
 /* A secret lifted out of a message: stars, never the value (secret-scan.mjs host-side). */
 .parley-secret { display: inline-flex; align-items: center; gap: .4em; vertical-align: .05em; padding: 0 .45em 0 .55em; border: 1px solid var(--parley-line); border-radius: 7px; white-space: nowrap; }
-.parley-secret-dots { color: var(--parley-action); font-weight: 700; letter-spacing: .14em; }
+.parley-secret-dots { color: var(--parley-action); font-weight: 600; letter-spacing: .14em; }
 .parley-secret-label { font-size: .78em; color: var(--parley-dim); }
 .parley-secret-forget { all: unset; cursor: pointer; display: inline-grid; place-items: center; width: 1.35em; height: 1.35em; border-radius: 5px; color: var(--parley-dim); line-height: 1; }
 .parley-secret-forget:hover, .parley-secret-forget:focus-visible { background: color-mix(in srgb, var(--parley-caution) 22%, transparent); color: var(--parley-caution); outline: none; }
@@ -308,7 +313,7 @@
 .parley-callout[data-kind="important"] { --parley-c: var(--parley-important); }
 .parley-callout[data-kind="warning"] { --parley-c: var(--parley-warning); }
 .parley-callout[data-kind="caution"] { --parley-c: var(--parley-caution); }
-.parley-callout-head { display: flex; align-items: center; gap: .4em; font-weight: 700; color: var(--parley-c); }
+.parley-callout-head { display: flex; align-items: center; gap: .4em; font-weight: 600; color: var(--parley-c); }
 .parley-callout-head .parley-sign { width: 1.15em; height: 1.15em; }
 /* Tables: a wide one scrolls within its message. */
 .parley-table { overflow-x: auto; max-width: 100%; border: 1px solid var(--parley-line); border-radius: 8px; }
@@ -355,9 +360,9 @@
 .parley .parley-card[data-opens]:hover { border-color: var(--parley-action); }
 .parley .parley-card[data-opens]:focus-visible { outline: 2px solid var(--parley-action); outline-offset: 2px; }
 .parley-card-icon { position: relative; flex: none; width: 2.2em; height: 2.2em; display: inline-flex; align-items: center; justify-content: center; color: var(--parley-dim); }
-.parley-card-icon .parley-sign { width: 1.9em; height: 1.9em; stroke-width: 1.6; }
+.parley-card-icon .parley-sign { width: 1.9em; height: 1.9em; stroke-width: 2; }
 .parley-card-about { display: flex; flex-direction: column; min-width: 0; line-height: 1.25; }
-.parley-card-about .parley-name { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.parley-card-about .parley-name { font-weight: 400; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .parley-card .parley-open { flex: none; margin-left: .3em; }
 /* ---- a question, a reply, a closed question ---- */
 .parley .parley-reply-to { min-height: 2.6em; margin-top: .5em; padding: 0 1.1em; border-radius: 999px; font-size: .95em; font-weight: 600; color: var(--parley-text); background: var(--parley-agent); }
@@ -384,7 +389,7 @@
 /* Received and nothing yet from the agent: quiet, it claims nothing. */
 .parley-received { align-self: flex-start; padding: .3em .8em; font-size: .92em; font-style: italic; opacity: .75; }
 .parley-received[data-long="true"] { font-style: normal; }
-.parley-waits { align-self: flex-start; padding: .3em .8em; border-radius: 999px; font-weight: 600; font-size: .92em; color: var(--parley-ask); border: 1px solid color-mix(in srgb, var(--parley-ask) 45%, transparent); }
+.parley-waits { align-self: flex-start; padding: .3em .8em; border-radius: 999px; font-weight: 600; font-size: .92em; color: var(--parley-wait); border: 1px solid color-mix(in srgb, var(--parley-wait) 45%, transparent); }
 .parley-now[data-busy="true"] .parley-doing { color: var(--parley-ask); }
 /* ---- lines of the application, by level ---- */
 .parley-system[data-level="news"], .parley-group { border: 0; padding: .15em .5em; font-size: .85em; }
@@ -396,7 +401,7 @@
 /* ---- back to the newest ---- */
 .parley .parley-jump { position: absolute; right: 1em; bottom: .8em; z-index: 2; width: 2.6em; height: 2.6em; min-height: 0; padding: 0; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; background: var(--parley-bg); color: var(--parley-text); box-shadow: 0 2px 10px rgba(0, 0, 0, .2); }
 .parley .parley-jump[hidden] { display: none; }
-.parley-jump-count { position: absolute; top: -.35em; right: -.35em; min-width: 1.4em; height: 1.4em; padding: 0 .3em; box-sizing: border-box; border-radius: 999px; background: var(--parley-action); color: var(--parley-on-action); font-size: .72em; font-weight: 700; line-height: 1.4em; text-align: center; }
+.parley-jump-count { position: absolute; top: -.35em; right: -.35em; min-width: 1.4em; height: 1.4em; padding: 0 .3em; box-sizing: border-box; border-radius: 999px; background: var(--parley-action); color: var(--parley-on-action); font-size: .72em; font-weight: 600; line-height: 1.4em; text-align: center; }
 .parley-jump-count[hidden] { display: none; }
 /* ---- the part before what is shown ---- */
 .parley-row[data-type="earlier"] { display: flex; justify-content: center; padding: .4em 0 .2em; }
@@ -422,7 +427,7 @@ mark.parley-found[data-now="true"] { outline: 2px solid var(--parley-ask); }
 .parley-pending .parley-card-icon { width: 1.8em; height: 1.8em; }
 .parley-pending .parley-card-icon .parley-sign { width: 1.8em; height: 1.8em; }
 .parley-pending .parley-card-about { font-size: .95em; }
-.parley-drop { position: absolute; inset: .4em; z-index: 5; display: flex; align-items: center; justify-content: center; border: 3px dashed var(--parley-action); border-radius: 16px; background: color-mix(in srgb, var(--parley-bg) 88%, transparent); color: var(--parley-action); font-weight: 700; font-size: 1.1em; pointer-events: none; }
+.parley-drop { position: absolute; inset: .4em; z-index: 5; display: flex; align-items: center; justify-content: center; border: 3px dashed var(--parley-action); border-radius: 16px; background: color-mix(in srgb, var(--parley-bg) 88%, transparent); color: var(--parley-action); font-weight: 600; font-size: 1.1em; pointer-events: none; }
 .parley-drop[hidden] { display: none; }
 .parley { position: relative; }
 /* ---- a picture, large ---- */
@@ -497,7 +502,7 @@ mark.parley-found[data-now="true"] { outline: 2px solid var(--parley-ask); }
 @container parley (min-width: 60rem) { .parley[data-view="detailed"] .parley-aside { width: 20rem; } }
 /* ---- done: said once, quietly, at the end ---- */
 .parley-done { align-self: flex-start; padding: .2em .8em; border-radius: 12px; font-size: .88em; color: var(--parley-dim); border: 1px solid var(--parley-line); }
-.parley-done::before { content: "\2713  "; color: #2f8f4e; font-weight: 700; }
+.parley-done::before { content: "\2713  "; color: var(--parley-ok); font-weight: 600; }
 /* ---- several files shown at once: a gallery, each its title under it ---- */
 .parley-gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 9rem), 1fr)); gap: .6em; margin-top: .45em; }
 .parley-gallery[data-count="1"] { grid-template-columns: minmax(0, 28rem); }
@@ -617,11 +622,11 @@ mark.parley-found[data-now="true"] { outline: 2px solid var(--parley-ask); }
 .parley .parley-ref { font: inherit; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 0.95em; color: var(--parley-action); background: none; border: 0; padding: 0 0.1em; margin: 0; text-decoration: underline; text-underline-offset: 2px; cursor: pointer; min-height: 0; }
 .parley .parley-ref:focus-visible { outline: 2px solid var(--parley-action); outline-offset: 1px; border-radius: 3px; }
 /* ---- under choices: their own words instead, quietly; choices to tick ---- */
-.parley .parley-reply-to.parley-other { align-self: flex-start; min-height: 2.75em; margin: .1em 0 0 -.35em; padding: 0 .35em; border: 0; border-radius: 6px; background: transparent; color: var(--parley-dim); font-weight: 500; text-decoration: underline; text-underline-offset: .22em; text-decoration-thickness: 1px; }
+.parley .parley-reply-to.parley-other { align-self: flex-start; min-height: 2.75em; margin: .1em 0 0 -.35em; padding: 0 .35em; border: 0; border-radius: 6px; background: transparent; color: var(--parley-dim); font-weight: 400; text-decoration: underline; text-underline-offset: .22em; text-decoration-thickness: 1px; }
 .parley .parley-reply-to.parley-other:hover { color: var(--parley-action); }
 .parley-picks { flex-direction: column; align-items: stretch; flex-wrap: nowrap; gap: .4em; max-width: 34em; }
-.parley .parley-picks .parley-pick { display: flex; align-items: center; gap: .7em; min-height: 2.75em; border-radius: 10px; padding: .45em .9em; text-align: left; border: 1px solid var(--parley-line); background: var(--parley-bg); color: var(--parley-text); font-weight: 500; }
-.parley .parley-picks .parley-pick[aria-checked="true"] { border-color: var(--parley-action); background: color-mix(in srgb, var(--parley-action) 13%, var(--parley-bg)); font-weight: 600; }
+.parley .parley-picks .parley-pick { display: flex; align-items: center; gap: .7em; min-height: 2.75em; border-radius: 10px; padding: .45em .9em; text-align: left; border: 1px solid var(--parley-line); background: var(--parley-bg); color: var(--parley-text); font-weight: 400; }
+.parley .parley-picks .parley-pick[aria-checked="true"] { border-color: var(--parley-action); background: color-mix(in srgb, var(--parley-action) 14%, var(--parley-bg)); font-weight: 600; }
 .parley-pick-box { flex: none; width: 1.45em; height: 1.45em; box-sizing: border-box; border: 2px solid var(--parley-dim); border-radius: 5px; display: inline-flex; align-items: center; justify-content: center; color: transparent; }
 .parley-pick[aria-checked="true"] .parley-pick-box { border-color: var(--parley-action); background: var(--parley-action); color: var(--parley-on-action); }
 .parley-pick-box .parley-sign { width: 1em; height: 1em; stroke-width: 3.2; }
@@ -632,8 +637,8 @@ mark.parley-found[data-now="true"] { outline: 2px solid var(--parley-ask); }
 .parley-questions-tabs { display: flex; flex-wrap: wrap; gap: .35em; margin-bottom: .35em; }
 .parley .parley-questions-tab { display: inline-flex; align-items: center; gap: .45em; min-height: 2.6em; padding: 0 .85em; border-radius: 999px; font-size: .9em; color: var(--parley-dim); background: transparent; }
 .parley .parley-questions-tab[data-done="true"] { color: var(--parley-text); }
-.parley .parley-questions-tab[aria-selected="true"] { border-color: var(--parley-ask); box-shadow: inset 0 0 0 1px var(--parley-ask); color: var(--parley-text); font-weight: 600; }
-.parley-questions-n { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 1.55em; height: 1.55em; box-sizing: border-box; border: 1.5px solid currentColor; border-radius: 50%; font-size: .85em; font-weight: 700; }
+.parley .parley-questions-tab[aria-selected="true"] { border-color: var(--parley-wait); box-shadow: inset 0 0 0 1px var(--parley-wait); color: var(--parley-text); font-weight: 600; }
+.parley-questions-n { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 1.55em; height: 1.55em; box-sizing: border-box; border: 1.5px solid currentColor; border-radius: 50%; font-size: .85em; font-weight: 600; }
 .parley-questions-tab[data-done="true"] .parley-questions-n { border-color: var(--parley-action); background: var(--parley-action); color: var(--parley-on-action); }
 .parley-questions-n .parley-sign { width: .95em; height: .95em; stroke-width: 3; }
 .parley-questions-step { font-size: .8em; font-weight: 600; color: var(--parley-dim); }
@@ -650,7 +655,7 @@ mark.parley-found[data-now="true"] { outline: 2px solid var(--parley-ask); }
 .parley-questions-summary { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: .15em .8em; align-items: baseline; max-width: 42em; margin: .2em 0 0; }
 .parley-questions-asked { grid-column: 1 / -1; margin-top: .45em; font-size: .9em; color: var(--parley-dim); overflow-wrap: anywhere; }
 .parley-questions-answer { margin: 0; font-weight: 600; white-space: pre-wrap; overflow-wrap: anywhere; }
-.parley-questions-answer[data-missing="true"] { font-weight: 500; font-style: italic; color: var(--parley-ask); }
+.parley-questions-answer[data-missing="true"] { font-weight: 400; font-style: italic; color: var(--parley-ask); }
 .parley .parley-questions-modify { min-height: 2.4em; padding: 0 .35em; border: 0; background: transparent; color: var(--parley-dim); text-decoration: underline; text-underline-offset: .22em; text-decoration-thickness: 1px; }
 .parley .parley-questions-modify:hover { color: var(--parley-action); }
 /* Narrow: the tabs say their number, the one shown its label too. */
@@ -709,14 +714,14 @@ mark.parley-found[data-now="true"] { outline: 2px solid var(--parley-ask); }
 .parley .parley-zone:hover, .parley .parley-zone[data-picked="true"] { border-color: #ffffff; border-width: 3px; box-shadow: 0 0 0 2px rgba(0, 0, 0, .5); }
 .parley .parley-zone[data-unknown="true"] { border: 3px dashed var(--parley-ask); box-shadow: 0 0 0 2px rgba(0, 0, 0, .3); }
 .parley-zone-ask { position: absolute; top: -.85em; right: -.85em; width: 1.7em; height: 1.7em; border-radius: 50%; display: grid; place-items: center;
-  background: var(--parley-ask); color: var(--parley-bg); font-weight: 800; box-shadow: 0 1px 4px rgba(0, 0, 0, .4); }
+  background: var(--parley-ask); color: var(--parley-bg); font-weight: 600; box-shadow: 0 1px 4px rgba(0, 0, 0, .4); }
 
 /* The card of a person or a zone: under it, one at a time. */
 .parley-zone-card { position: absolute; z-index: 3; transform: translateX(-50%); margin-top: 6px; width: max-content; max-width: min(21rem, 80vw); box-sizing: border-box;
   padding: .6em .75em .65em; border-radius: 12px; background: var(--parley-bg); color: var(--parley-text); border: 1px solid var(--parley-line); box-shadow: 0 8px 24px rgba(0, 0, 0, .3); text-align: left; }
 .parley-zone-card[data-side="end"] { transform: translateX(-80%); }
 .parley-zone-card[data-side="start"] { transform: translateX(-20%); }
-.parley-zone-card-name { font-weight: 700; font-size: 1.05em; }
+.parley-zone-card-name { font-weight: 600; font-size: 1.05em; }
 .parley-family .parley-zone-card-name { font-family: var(--parley-serif); }
 .parley .parley-zone-card-line { color: var(--parley-dim); margin-top: .1em; font-size: .95em; }
 .parley-zone-card-acts { display: flex; gap: .45em; margin-top: .55em; flex-wrap: wrap; }
@@ -737,14 +742,14 @@ mark.parley-found[data-now="true"] { outline: 2px solid var(--parley-ask); }
 .parley .parley-panel-open { margin-left: auto; }
 .parley .parley-panel-open:not([hidden]) + .parley-prefs { margin-left: 0; }
 .parley .parley-panel-open[aria-expanded="true"] { color: var(--parley-text); background: var(--parley-agent); }
-.parley-panel-count { font-size: .8em; font-weight: 700; color: var(--parley-text); }
+.parley-panel-count { font-size: .8em; font-weight: 600; color: var(--parley-text); }
 .parley-panel-count[hidden] { display: none; }
 .parley-panel { display: flex; flex-direction: column; gap: .5em; min-height: 0; overflow: auto; box-sizing: border-box; padding: .6em .7em; border: 1px solid var(--parley-line); border-radius: 12px; background: var(--parley-bg); }
 .parley-panel[hidden] { display: none; }
 .parley-panel[data-sheet="true"] { position: absolute; left: 0; right: 0; bottom: 0; z-index: 6; max-height: 78%; padding: .6em .9em calc(.9em + env(safe-area-inset-bottom)); border-width: 1px 0 0; border-radius: 16px 16px 0 0; box-shadow: 0 -10px 30px rgba(0, 0, 0, .25); animation: parley-sheet-up .2s cubic-bezier(.2, .8, .2, 1); }
 @media (prefers-reduced-motion: reduce) { .parley-panel[data-sheet="true"] { animation: none; } }
 .parley-panel-head { display: flex; align-items: center; justify-content: space-between; gap: .5em; }
-.parley-panel-name { margin: 0; font-size: .95em; font-weight: 700; overflow-wrap: anywhere; }
+.parley-panel-name { margin: 0; font-size: .95em; font-weight: 600; overflow-wrap: anywhere; }
 .parley .parley-panel-fold { min-height: 2em; min-width: 2em; padding: 0; border-color: transparent; background: transparent; color: var(--parley-dim); display: inline-flex; align-items: center; justify-content: center; }
 .parley-panel-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: .15em; }
 .parley-panel-item { display: flex; align-items: flex-start; gap: .55em; padding: .3em .25em; border-radius: 8px; }
@@ -755,7 +760,7 @@ mark.parley-found[data-now="true"] { outline: 2px solid var(--parley-ask); }
 .parley-panel-tick .parley-sign, .parley-panel-mark .parley-sign { width: .95em; height: .95em; }
 .parley-panel-mark { flex: none; width: 1.35em; height: 1.35em; margin-top: .1em; display: inline-flex; align-items: center; justify-content: center; color: var(--parley-dim); }
 .parley-panel-what { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: .05em; }
-.parley .parley-panel-title { min-height: 0; padding: 0; border: 0; border-radius: 4px; background: transparent; color: var(--parley-text); text-align: left; font-weight: 550; line-height: 1.35; overflow-wrap: anywhere; }
+.parley .parley-panel-title { min-height: 0; padding: 0; border: 0; border-radius: 4px; background: transparent; color: var(--parley-text); text-align: left; font-weight: 600; line-height: 1.35; overflow-wrap: anywhere; }
 .parley button.parley-panel-title:hover { text-decoration: underline; text-underline-offset: 2px; }
 .parley-panel-text { font-size: .85em; color: var(--parley-dim); overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; }
 .parley-panel-meta { font-size: .8em; color: var(--parley-dim); overflow-wrap: anywhere; }
@@ -771,7 +776,7 @@ mark.parley-found[data-now="true"] { outline: 2px solid var(--parley-ask); }
 /* QUESTIONS ON ONE CARD, AND THEIR SELECTORS (#195), after the designer's pass: one chip style
    for every kind of question, the theme's colour on every control, a quiet Send until ready. */
 .parley .parley-choices button[aria-pressed="true"], .parley .parley-pickrow button[aria-pressed="true"], .parley .parley-input-scale button[aria-pressed="true"],
-.parley .parley-picks .parley-pick[aria-checked="true"] { border-color: var(--parley-action); background: color-mix(in srgb, var(--parley-action) 18%, var(--parley-bg)); color: var(--parley-text); font-weight: 700; outline: none; box-shadow: none; }
+.parley .parley-picks .parley-pick[aria-checked="true"] { border-color: var(--parley-action); background: color-mix(in srgb, var(--parley-action) 14%, var(--parley-bg)); color: var(--parley-text); font-weight: 600; outline: none; box-shadow: none; }
 .parley-series { display: flex; flex-direction: column; gap: .8em; container-type: inline-size; container-name: parleyseries; }
 .parley-said:has(.parley-series) > .parley-text { font-weight: 400; }
 .parley-series-q { display: flex; flex-direction: column; gap: .4em; padding-top: .8em; border-top: 1px dashed var(--parley-line); }
@@ -786,7 +791,7 @@ mark.parley-found[data-now="true"] { outline: 2px solid var(--parley-ask); }
 .parley-input { display: flex; flex-direction: column; align-items: stretch; gap: .3em; max-width: 30em; }
 .parley-input-number, .parley-input-stars, .parley-input-scale, .parley-pickrow { align-self: flex-start; }
 .parley-input-ends { display: flex; justify-content: space-between; gap: .6em; font-size: .82em; color: var(--parley-dim); }
-.parley-input-value { font-weight: 700; font-variant-numeric: tabular-nums; color: var(--parley-action); }
+.parley-input-value { font-weight: 600; font-variant-numeric: tabular-nums; color: var(--parley-action); }
 /* Sliders in the theme's colour, the part chosen filled (--fill, set by the script). */
 .parley-input input[type=range] { -webkit-appearance: none; appearance: none; width: 100%; height: 1.6em; margin: 0; background: transparent; --fill: 50%; }
 .parley-input input[type=range]::-webkit-slider-runnable-track { height: 6px; border-radius: 999px; background: linear-gradient(var(--parley-action) 0 0) 0 / var(--fill) 100% no-repeat, var(--parley-line); }
@@ -838,14 +843,14 @@ mark.parley-found[data-now="true"] { outline: 2px solid var(--parley-ask); }
 .parley-input > .parley-recommended { align-self: flex-start; margin: 0 0 .35em; }
 .parley .parley-suggest { display: flex; align-items: center; gap: .55em; width: 100%; max-width: var(--parley-column); margin-inline: auto; box-sizing: border-box; min-height: 0; padding: .45em .8em; border: 1px dashed color-mix(in srgb, var(--parley-action) 45%, var(--parley-line)); border-radius: 14px; background: color-mix(in srgb, var(--parley-action) 5%, var(--parley-bg)); color: var(--parley-text); text-align: left; cursor: pointer; }
 .parley .parley-suggest[hidden] { display: none; }
-.parley .parley-suggest:hover { background: color-mix(in srgb, var(--parley-action) 10%, var(--parley-bg)); }
+.parley .parley-suggest:hover { background: color-mix(in srgb, var(--parley-action) 12%, var(--parley-bg)); }
 .parley-suggest-label { flex: none; font-size: .78em; font-weight: 600; color: var(--parley-action); }
 .parley-suggest-text { flex: 1; min-width: 0; color: var(--parley-dim); font-style: italic; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; white-space: pre-line; }
 .parley-suggest-key { flex: none; font: 600 .72em/1 ui-monospace, monospace; padding: .2em .4em; border: 1px solid var(--parley-line); border-radius: 5px; color: var(--parley-dim); }
 @media (pointer: coarse) { .parley-suggest-key { display: none; } }
 /* Whose words, and for whom (#215): a small tab astride the top edge of the message. */
 .parley-tabbed { position: relative; margin-top: 12px; }
-.parley-tab { position: absolute; top: 0; transform: translateY(-55%); left: 12px; max-width: calc(100% - 24px); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .72rem; line-height: 1.5; padding: 0 8px; border-radius: 999px; background: var(--parley-bg); border: 1px solid var(--parley-line); color: var(--parley-dim); }
+.parley-tab { position: absolute; top: 0; transform: translateY(-55%); left: 12px; max-width: calc(100% - 24px); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .75rem; line-height: 1.5; padding: 0 8px; border-radius: 999px; background: var(--parley-bg); border: 1px solid var(--parley-line); color: var(--parley-dim); }
 .parley-to { left: auto; right: 12px; }
 
 /* A sound in the thread: its card, the browser's player under it, as wide as the bubble allows. */

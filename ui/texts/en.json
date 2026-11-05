@@ -205,5 +205,22 @@
   "list-rooms-only": "Rooms only",
   "sent-after-retry": "{text}, after another try.",
   "auto-wait": "After a silence of",
-  "dictation-joining": "and|but|so|or|because|that|which|if|when|then|while"
+  "dictation-joining": "and|but|so|or|because|that|which|if|when|then|while",
+  "box-wake": "Wake word",
+  "box-wake-erase": "Erase all…",
+  "box-wake-erase-ask": "Erase the {n} clips?",
+  "box-wake-erase-yes": "Yes, erase",
+  "box-wake-improve": "Improve now",
+  "box-wake-kept": "{kept} kept · {real} real · {false} false · {near} near",
+  "box-wake-learn": "Learns from home",
+  "box-wake-missed": "Missed calls: {n} a day · threshold {cutoff}",
+  "box-wake-normal": "Normal",
+  "box-wake-private": "Only the wake word’s 1.6 s, on this server: nothing is sent elsewhere.",
+  "box-wake-rate": "False wakes: {n} a day",
+  "box-wake-rate-model": "False wakes: {before} a day → {after} a day since the model of {date}",
+  "box-wake-tune-few": "Tuning: not enough clips yet",
+  "box-wake-tune-kept": "Tuned {date}: threshold {from} kept",
+  "box-wake-tune-refused": "Threshold {to} refused by the box",
+  "box-wake-tune-sent": "Threshold {from} → {to}: waiting for the box",
+  "box-wake-tuned": "Tuned {date}: {from} → {to}"
 }

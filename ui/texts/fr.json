@@ -205,5 +205,22 @@
   "list-rooms-only": "Salons seuls",
   "sent-after-retry": "{text}, après un nouvel essai.",
   "auto-wait": "Après un silence de",
-  "dictation-joining": "et|mais|donc|ou|or|car|parce que|que|qui|puisque|alors|comme|si|quand|puis"
+  "dictation-joining": "et|mais|donc|ou|or|car|parce que|que|qui|puisque|alors|comme|si|quand|puis",
+  "box-wake": "Mot d'éveil",
+  "box-wake-erase": "Tout effacer…",
+  "box-wake-erase-ask": "Effacer les {n} extraits ?",
+  "box-wake-erase-yes": "Oui, effacer",
+  "box-wake-improve": "Améliorer maintenant",
+  "box-wake-kept": "{kept} gardés · {real} vrais · {false} faux · {near} presque",
+  "box-wake-learn": "Apprend de la maison",
+  "box-wake-missed": "Appels manqués : {n} par jour · seuil {cutoff}",
+  "box-wake-normal": "Normal",
+  "box-wake-private": "Seulement les 1,6 s du mot d'éveil, sur ce serveur : rien n'est envoyé ailleurs.",
+  "box-wake-rate": "Faux réveils : {n} par jour",
+  "box-wake-rate-model": "Faux réveils : {before} par jour → {after} par jour depuis le modèle du {date}",
+  "box-wake-tune-few": "Réglage : pas encore assez d'extraits",
+  "box-wake-tune-kept": "Réglé le {date} : seuil {from} gardé",
+  "box-wake-tune-refused": "Seuil {to} refusé par le boîtier",
+  "box-wake-tune-sent": "Seuil {from} → {to} : en attente du boîtier",
+  "box-wake-tuned": "Réglé le {date} : {from} → {to}"
 }
