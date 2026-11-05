@@ -199,6 +199,16 @@
 .parley-voice[data-state="transcribing"] .parley-voice-text::before, .parley-voice[data-state="calibrating"] .parley-voice-text::before { background: var(--parley-ask); }
 .parley-voice[data-state="error"] { color: var(--parley-ask); border-color: var(--parley-ask); }
 .parley-voice[data-state="error"] .parley-voice-text::before { background: var(--parley-ask); }
+/* How loud the microphone is: five thin bars in place of the dot, once the application tells it. */
+.parley-voice-level { display: none; align-items: center; gap: 2px; height: .95em; margin-right: .45em; vertical-align: -.15em; color: var(--parley-ok); }
+.parley-voice[data-level] .parley-voice-level { display: inline-flex; }
+.parley-voice[data-level] .parley-voice-text::before { display: none; }
+.parley-voice[data-state="error"] .parley-voice-level { display: none; }
+.parley-voice[data-state="error"] .parley-voice-text::before { display: inline-block; }
+.parley-voice[data-state="hearing"] .parley-voice-level { color: var(--parley-live); }
+.parley-voice[data-state="transcribing"] .parley-voice-level, .parley-voice[data-state="calibrating"] .parley-voice-level { color: var(--parley-ask); }
+.parley-voice-level i { display: block; width: 3px; height: 100%; border-radius: 2px; background: currentColor; transform: scaleY(.2); transition: transform 90ms linear; }
+@media (prefers-reduced-motion: reduce) { .parley-voice-level i { transform: scaleY(.2) !important; transition: none; } }
 .parley-voice-said { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 /* The choices of this device, beside the view: a menu over the page. */
 .parley-prefs { position: relative; flex: none; margin-left: auto; }

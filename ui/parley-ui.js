@@ -151,7 +151,11 @@
  *                          closes it; it calls on.phrase(text) for each
  *                          phrase understood, on.state(word) with
  *                          calibrating, listening, hearing or transcribing,
- *                          on.speech() when speech begins, on.error(message).
+ *                          on.speech() when speech begins, on.error(message),
+ *                          and, if it can, on.level(n) with how loud the
+ *                          microphone is now (0 to 1, a few dozen times a
+ *                          second): five small bars beside the label follow
+ *                          it (decorative; the state stays said in words).
  *                          A button beside Send; what is said goes into the
  *                          box. Changed later with `handle.voice = ...`.
  *                          Dictating moves nothing on the screen: what the
@@ -312,6 +316,21 @@ export function waitFor(text, base = AUTO_SEND_MS, words) {
 }
 /* Send pressed while a phrase is still being written: sent once it is, or after this long with what is there. */
 export const WRITE_WAIT_MS = 15_000;
+/* THE SOUND, DRAWN: while dictating, five bars beside the label follow how loud the microphone is
+   (on.level, 0 to 1). The newest level in the middle, the ones before it towards the sides, so a voice
+   ripples outwards; lower at the sides. Each bar is a share of its full height; a dot when quiet. */
+export const LEVEL_BARS = 5;
+export const LEVEL_DOT = 0.2;
+export function levelBars(recent, n = LEVEL_BARS) {
+    const levels = (Array.isArray(recent) ? recent : [recent]).map((v) => (Number.isFinite(v) ? Math.min(1, Math.max(0, v)) : 0));
+    const middle = (n - 1) / 2;
+    return Array.from({ length: n }, (_, i) => {
+        const away = Math.abs(i - middle);
+        const level = levels[Math.round(away)] ?? levels.at(-1) ?? 0;
+        const shape = middle > 0 ? 1 - 0.4 * (away / middle) : 1;
+        return Math.round((LEVEL_DOT + (1 - LEVEL_DOT) * level * shape) * 100) / 100;
+    });
+}
 /* Questions asked together: so many at most. */
 export const GROUP_MAX = 5;
 /* Ready answers: so many at most, each label so long. */
@@ -2382,7 +2401,11 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
        seen; the same words in a status for whoever does not see it. */
     const heard = el('div', 'parley-voice'); heard.hidden = true; heard.setAttribute('aria-hidden', 'true');
     const heardText = el('span', 'parley-voice-text');
-    heard.append(heardText);
+    /* How loud the microphone is: drawn only once the application tells it (on.level). */
+    const heardLevel = el('span', 'parley-voice-level');
+    const heardBars = Array.from({ length: LEVEL_BARS }, () => el('i'));
+    heardLevel.append(...heardBars);
+    heard.append(heardLevel, heardText);
     const heardSaid = el('span', 'parley-voice-said'); heardSaid.setAttribute('role', 'status');
     field.append(box, heard, heardSaid);
     const problem = el('p', 'parley-problem'); problem.hidden = true; problem.setAttribute('role', 'alert');
@@ -3841,13 +3864,25 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
         if (on) tell(hearing || 'listening', writing ? said(words, 'voice-wait') : said(words, `voice-${hearing || 'listening'}`));
         else if (!hush) { heard.hidden = true; heard.dataset.state = ''; heardSaid.textContent = ''; }
     };
+    /* The level, drawn once per frame: it rises at once, and falls slowly (a voice does not flicker). */
+    let levels = [];
+    let levelFrame = null;
+    const paintLevel = () => { levelFrame = null; if (levels.length) levelBars(levels).forEach((h, i) => { heardBars[i].style.transform = `scaleY(${h})`; }); };
+    const heardLoud = (n) => {
+        if (!stopping) return;
+        const v = Number.isFinite(n) ? Math.min(1, Math.max(0, n)) : 0;
+        levels = [Math.max(v, (levels[0] ?? 0) * 0.8), ...levels].slice(0, Math.ceil(LEVEL_BARS / 2));
+        heard.dataset.level = 'on';
+        if (levelFrame === null) levelFrame = requestAnimationFrame(paintLevel);
+    };
+    const levelOff = () => { levels = []; delete heard.dataset.level; for (const bar of heardBars) bar.style.transform = ''; };
     const sendWritten = () => { clearTimeout(writing); writing = null; void sendBox(); paintVoice(); };
     const quiet = () => {
         const was = stopping; stopping = null;
         try { was?.(); } catch { /* the application's business */ }
         disarm();
         if (writing) sendWritten();
-        hearing = ''; paintVoice();
+        hearing = ''; levelOff(); paintVoice();
     };
     const listened = {
         phrase: (text) => {
@@ -3868,6 +3903,7 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
             paintVoice();
         },
         speech: () => disarm(),
+        level: heardLoud,
         error: (message) => { if (stopping) tell('error', String(message ?? '')); },
     };
     mic.addEventListener('click', async () => {

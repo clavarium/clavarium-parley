@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { fakePage } from './fake-dom.mjs';
-import { mount, KEYS, AUTO_SEND_MS, waitFor } from '../ui/parley-ui.js';
+import { mount, KEYS, AUTO_SEND_MS, waitFor, levelBars, LEVEL_BARS, LEVEL_DOT } from '../ui/parley-ui.js';
 import { texts } from '../host/parley-host.mjs';
 
 const CSS = readFileSync(fileURLToPath(new URL('../ui/parley-ui.css', import.meta.url)), 'utf8');
@@ -255,4 +255,41 @@ test('the wait before an automatic send: longer after a phrase plainly not over,
     assert.equal(waitFor('Il fait beau.', 3000, fr), 3000);
     assert.equal(waitFor('Tu viens ?', 3000, fr), 2500);
     assert.equal(waitFor('¿Vienes?', 2000), 2000, 'never under 2 s');
+});
+
+test('the sound, drawn: a level becomes five bars, newest in the middle, lower at the sides, a dot when quiet', () => {
+    assert.equal(LEVEL_BARS, 5);
+    assert.deepEqual(levelBars(0), [LEVEL_DOT, LEVEL_DOT, LEVEL_DOT, LEVEL_DOT, LEVEL_DOT], 'silence: flat dots');
+    assert.deepEqual(levelBars(1), [0.68, 0.84, 1, 0.84, 0.68], 'full: the middle reaches the top');
+    assert.deepEqual(levelBars([1, 0, 0]), [LEVEL_DOT, LEVEL_DOT, 1, LEVEL_DOT, LEVEL_DOT], 'a new sound starts in the middle');
+    assert.deepEqual(levelBars([0, 0, 1]), [0.68, LEVEL_DOT, LEVEL_DOT, LEVEL_DOT, 0.68], 'and moves outwards');
+    for (const odd of [NaN, -3, undefined, 'x', []]) assert.deepEqual(levelBars(odd), levelBars(0), `${String(odd)}: quiet`);
+    assert.deepEqual(levelBars(7), levelBars(1), 'never past the top');
+});
+
+test('the bars follow the level the application gives, are decorative, and stop with the microphone', async (t) => {
+    const { $, on } = chat(t);
+    const frame = () => new Promise((r) => setTimeout(r, 5));
+    await settle();
+    const voice = $('.parley-voice');
+    const bars = [...$('.parley-voice-level').children];
+    assert.equal(bars.length, LEVEL_BARS);
+    assert.ok(voice.contains($('.parley-voice-level')) && voice.getAttribute('aria-hidden') === 'true', 'inside the label, hidden from screen readers');
+    $('.parley-mic').click(); await settle();
+    on().state('listening');
+    assert.equal(voice.dataset.level, undefined, 'no level told yet: the dot, as before');
+    on().level(0); await frame();
+    assert.equal(voice.dataset.level, 'on');
+    assert.deepEqual(bars.map((b) => b.style.transform), Array(5).fill(`scaleY(${LEVEL_DOT})`), 'quiet: dots');
+    on().level(1); await frame();
+    assert.equal(bars[2].style.transform, 'scaleY(1)', 'loud: the middle bar is full');
+    on().level(0); await frame();
+    assert.equal(bars[2].style.transform, `scaleY(${levelBars(0.8)[2]})`, 'and falls slowly');
+    assert.equal(bars[1].style.transform, `scaleY(${levelBars(1)[1]})`, 'while the bars beside take the sound before');
+    assert.equal($('.parley-voice-said').textContent, texts('en')['voice-listening'], 'the state is still told in words');
+    $('.parley-mic').click(); await frame();
+    assert.equal(voice.dataset.level, undefined);
+    assert.deepEqual(bars.map((b) => b.style.transform), Array(5).fill(''), 'stopped: drawn no more');
+    on().level(1); await frame();
+    assert.equal(voice.dataset.level, undefined, 'a level after the end changes nothing');
 });
