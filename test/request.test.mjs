@@ -176,6 +176,70 @@ test('decided: one line, its mark and its time; no buttons. The same card stands
 
 test('its words are in both dictionaries', () => {
     const fr = texts('fr');
-    for (const key of KEYS.filter((k) => k.startsWith('request-'))) { assert.ok(Object.hasOwn(en, key), key); assert.ok(Object.hasOwn(fr, key), key); }
+    for (const key of KEYS.filter((k) => k.startsWith('request-') || k.startsWith('req-'))) { assert.ok(Object.hasOwn(en, key), key); assert.ok(Object.hasOwn(fr, key), key); }
     assert.equal(texts('fr')['request-see-all'], 'Tout voir');
+});
+
+/* 0.17.70: the application gives words and values, each screen says them in its own language. */
+const keyed = (id) => ({
+    kind: 'calendar', title: { k: 'req-cal-move', v: { name: { k: 'req-quoted', v: { text: 'Project' } }, when: { at: '2030-11-12T15:00', end: '2030-11-12T16:00' } } },
+    sub: ['Work calendar', { k: 'req-was', v: { when: { at: '2030-11-08T10:00', end: '2030-11-08T11:00' } } }, { k: 'req-guests-told', v: { count: 3 } }],
+    risk: [{ k: 'req-risk-outside' }],
+    facts: [[{ k: 'req-fact-to' }, [{ text: 'sales@example.com', ext: true }]], [{ k: 'req-fact-joined' }, { list: [{ k: 'req-file-size', v: { name: 'plan.pdf', size: { k: 'req-size-mb', v: { n: 1.5 } } } }, 'notes.txt'] }]],
+    before: [{ at: '2030-11-08T10:00', end: '2030-11-08T11:00' }, 'Room 2'], after: [{ at: '2030-11-12T15:00', end: '2030-11-12T16:00' }, 'Room 2'],
+    yes: { id: `allow:${id}`, label: { k: 'req-yes-move' } }, no: { id: `deny:${id}`, label: { k: 'req-no' } },
+    others: [{ id: `always:${id}`, label: { k: 'req-always', v: { what: 'drafts/' } } }],
+});
+
+test('a card from keys: said in English, and in French with French days and numbers', () => {
+    const leave = fakePage();
+    try {
+        const r = requestOf(keyed('k1'), { words: en, locale: 'en-GB' });
+        assert.equal(r.title, 'Move “Project” to Tue 12 Nov · 15:00–16:00');
+        assert.equal(r.sub, 'Work calendar · was Fri 8 Nov · 10:00–11:00 · 3 guests told');
+        assert.deepEqual(r.risk, ['Goes outside your domain']);
+        assert.deepEqual(r.facts, [{ label: 'To', chips: [{ text: 'sales@example.com', ext: true }] }, { label: 'Joined', text: 'plan.pdf (1.5 MB), notes.txt' }]);
+        assert.deepEqual([r.yes.label, r.no.label, r.others[0].label], ['Move', 'Refuse', 'Always allow drafts/']);
+        assert.deepEqual(requestOf(r), r, 'once said, it is plain text: taken back the same');
+        const fr = texts('fr');
+        const card = requestCard(keyed('k2'), { words: fr, act: () => {}, open: true });
+        assert.equal(card.querySelector('.parley-request-title').textContent, 'Déplacer « Project » au mar. 12 nov. · 15:00–16:00');
+        assert.equal(card.querySelector('.parley-request-sub').textContent, 'Work calendar · avant : ven. 8 nov. · 10:00–11:00 · 3 invités prévenus');
+        assert.equal(card.querySelector('.parley-request-risk').textContent, 'Part hors de votre domaine');
+        assert.equal(card.querySelector('.parley-request-yes').textContent, 'Déplacer');
+        assert.equal(card.querySelector('.parley-request-no').textContent, 'Refuser');
+        assert.equal(card.querySelector('.parley-request-all').textContent, 'Tout voir');
+        const dts = [...card.querySelector('.parley-request-facts').children].filter((d) => d.tagName === 'DT').map((d) => d.textContent);
+        assert.deepEqual(dts, ['À', 'Pièces jointes']);
+        assert.ok(card.querySelector('.parley-request-facts').textContent.includes('plan.pdf (1,5 Mo), notes.txt'), 'a French number, a French unit');
+        assert.ok(card.querySelector('.parley-request-was').textContent.includes('ven. 8 nov. · 10:00–11:00'));
+        /* One count: its own word. */
+        assert.equal(requestOf({ title: { k: 'req-guests-told-one', v: { count: 1 } } }, { words: fr }).title, '1 invité prévenu');
+    } finally { leave(); }
+});
+
+test('a plain-text card, as older lines hold it, is drawn as it is in any language', () => {
+    const leave = fakePage();
+    try {
+        const fr = texts('fr');
+        const card = requestCard(mail('p'), { words: fr, act: () => {} });
+        assert.equal(card.querySelector('.parley-request-title').textContent, 'Send “Quote p” to sales@example.com');
+        assert.equal(card.querySelector('.parley-request-sub').textContent, 'Work mailbox · 8 lines · 1 attachment');
+        assert.equal(card.querySelector('.parley-request-yes').textContent, 'Send');
+        assert.equal(card.querySelector('.parley-request-all').textContent, 'Tout voir', 'the screen’s own words in its language');
+        assert.deepEqual(requestOf(mail('p'), { words: fr }), requestOf(mail('p')), 'plain text: words change nothing');
+    } finally { leave(); }
+});
+
+test('days and times in the locale: French, English, a day without a time, a date that is not one', () => {
+    const fr = texts('fr');
+    const say = (when, words = fr, locale) => requestOf({ title: { k: 'req-leaves', v: { when } } }, { words, locale }).title;
+    assert.equal(say({ at: '2030-01-10T09:05', end: '2030-01-10T10:30' }), 'jeu. 10 janv. · 09:05–10:30 (attend dans Brouillons)');
+    assert.equal(say({ at: '2030-01-10' }), 'jeu. 10 janv. (attend dans Brouillons)');
+    assert.equal(say({ at: '2030-01-10T23:30:00Z' }, fr, 'fr-FR'), 'jeu. 10 janv. · 23:30 (attend dans Brouillons)', 'the time as given: no zone moves it to another day');
+    assert.equal(say({ at: '2030-01-10T15:00' }, en, 'en-GB'), 'Thu 10 Jan · 15:00 (waits in Drafts)');
+    assert.equal(say({ at: 'Tomorrow' }, en), 'Tomorrow (waits in Drafts)');
+    /* Through the thread: view says them with its words and locale. */
+    const v = view({ messages: [line('l1', 0, keyed('k3'))] }, { words: fr, locale: 'fr-FR' });
+    assert.equal(v.rows.find((r) => r.request).request.title, 'Déplacer « Project » au mar. 12 nov. · 15:00–16:00');
 });

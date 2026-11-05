@@ -305,9 +305,25 @@ what will happen rather than as a technical line. Plain data, never markup:
   unfolds one there): Refuse all, and Accept all -- or "Accept the N
   others" when some are irreversible: those are decided one by one.
 
+- In the reader's language (0.17.70): any text of it (`title`, `sub` or each
+  part of `sub` given as a list, joined " · ", a `risk`, a fact's label or
+  text, `before`/`after`, a button's `label`, `state.text`) may be `{k, v}`:
+  a word of the screen's dictionary (`req-…` in ui/texts) and its values,
+  said by each screen in its own language. A value is text as it is (data:
+  a subject, an address, a path), a number (written the locale's way),
+  `{k, v}` again, `{at, end?}` (ISO day and time, written the locale's way:
+  "Thu 12 Nov · 15:00–16:00", the time as given), `{list}` (joined ", "),
+  or a list of those. For one or several, the application picks the word
+  (`req-lines-one`, `req-lines`). Plain text is shown as it is: an older
+  line, another application.
+
+      title: {k: "req-mail-send-to", v: {subject: {k: "req-quoted", v: {text: "Quote"}}, to: "sales@example.com"}}
+      facts: [[{k: "req-fact-to"}, [{text: "sales@example.com", ext: true}]]]
+      yes:   {id: "allow:42", label: {k: "req-yes-send"}}
+
 A line's `actions` and `text` stay its fallback for an older screen. The same
 card is exported for the application's own pages: `requestCard(request,
-{act, words, open, steps, host})`, and `requestBlock(list, ...)`.
+{act, words, locale, open, steps, host})`, and `requestBlock(list, ...)`.
 
 ## The application's own copy
 

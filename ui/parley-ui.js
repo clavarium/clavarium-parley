@@ -256,7 +256,17 @@ export const KEYS = Object.freeze(['send', 'placeholder', 'empty', 'view', 'simp
     'decide', 'media', 'media-pictures', 'media-files', 'media-none', 'see-in-thread', 'done-end', 'done-end-note', 'dictated', 'said-to', 'side-now', 'side-machine', 'side-nothing', 'history-changed',
     'chart', 'chart-table', 'chart-show', 'chart-other', 'chart-total', 'earlier', 'media-earlier', 'panel', 'panel-show', 'panel-hide', 'panel-empty', 'panel-done', 'panel-not-saved',
     'request-preview', 'request-fold', 'request-see-all', 'request-see', 'request-outside', 'request-before', 'request-after', 'request-why', 'request-hold', 'request-undo',
-    'request-accepted', 'request-refused', 'request-ended', 'request-irreversible', 'request-many', 'request-refuse-all', 'request-accept-all', 'request-accept-others', 'request-accept-n', 'request-others']);
+    'request-accepted', 'request-refused', 'request-ended', 'request-irreversible', 'request-many', 'request-refuse-all', 'request-accept-all', 'request-accept-others', 'request-accept-n', 'request-others',
+    'req-quoted', 'req-a-message', 'req-a-folder', 'req-an-event', 'req-an-invitation', 'req-new-event', 'req-a-contact', 'req-a-machine', 'req-a-request', 'req-file-size', 'req-size-bytes',
+    'req-size-kb', 'req-size-mb', 'req-mail-send', 'req-mail-send-to', 'req-mail-schedule', 'req-mail-schedule-to', 'req-mail-draft', 'req-mail-draft-to', 'req-mail-reply', 'req-mail-reply-on',
+    'req-mail-reply-all', 'req-mail-reply-all-on', 'req-mail-forward', 'req-mail-forward-to', 'req-mail-move', 'req-mail-flag', 'req-mail-delete', 'req-keeps-none', 'req-keeps-files', 'req-leaves',
+    'req-lines-one', 'req-lines', 'req-attachments-one', 'req-attachments', 'req-cal-respond', 'req-cal-respond-when', 'req-cal-create', 'req-cal-create-when', 'req-cal-delete', 'req-cal-delete-when',
+    'req-cal-move', 'req-cal-change', 'req-cal-attach', 'req-was', 'req-guests-told-one', 'req-guests-told', 'req-teams', 'req-contact-add', 'req-contact-update', 'req-contact-delete',
+    'req-contact-photo', 'req-term-run', 'req-term-type', 'req-term-open', 'req-files-write', 'req-files-delete', 'req-files-move', 'req-browser-open', 'req-risk-outside', 'req-risk-invites-outside',
+    'req-risk-clash', 'req-risk-admin', 'req-risk-final', 'req-fact-from', 'req-fact-date', 'req-fact-to', 'req-fact-cc', 'req-fact-bcc', 'req-fact-joined', 'req-fact-leaves', 'req-fact-keeps',
+    'req-fact-where', 'req-fact-guests', 'req-fact-online', 'req-fact-name', 'req-fact-email', 'req-fact-phone', 'req-fact-size', 'req-fact-path', 'req-yes-accept', 'req-yes-decline', 'req-yes-maybe',
+    'req-yes-answer', 'req-yes-send', 'req-yes-schedule', 'req-yes-save-draft', 'req-yes-forward', 'req-yes-move', 'req-yes-mark', 'req-yes-delete', 'req-yes-create', 'req-yes-create-invite',
+    'req-yes-change', 'req-yes-add', 'req-yes-update', 'req-yes-run', 'req-yes-type', 'req-yes-open', 'req-yes-write', 'req-no', 'req-always', 'req-always-this']);
 /* THE REACTIONS offered by default, each with its Lucide icon; their words
    are "react-<id>" (shown under the icon) and "react-<id>-hint" (on hover).
    The same ids as REACTIONS of parley-host.mjs, which says which wake. */
@@ -712,7 +722,7 @@ export function view(data, { words = {}, view: as = 'simple', now = Date.now(), 
                 actions: (Array.isArray(m.actions) ? m.actions : []).filter((a) => a && typeof a.id === 'string' && typeof a.label === 'string' && a.label.trim()).slice(0, ACTIONS_MAX).map((a) => ({ id: a.id, label: a.label.trim().slice(0, LABEL_MAX) })),
                 links: (Array.isArray(m.links) ? m.links : []).filter((a) => a && typeof a.id === 'string' && typeof a.text === 'string' && a.text && a.text.length <= 80).slice(0, LINKS_MAX).map((a) => ({ id: a.id, text: a.text })),
                 /* A request the person decides (an act of the application's, shown as a card): null when there is none. */
-                request: requestOf(m.request) };
+                request: requestOf(m.request, { words, locale }) };
         }
         const show = m.kind === 'show';
         const open = openQuestion(m, answered);
@@ -2662,26 +2672,59 @@ export const REQUEST_QUOTE_LINES = 6;
 const REQUEST_QUOTE_MAX = 4000;
 /* A button pressed: its buttons stay off this long while the application answers (then given back if nothing came). */
 const REQUEST_GONE_MS = 15 * 1000;
-const actOf = (a) => (a && typeof a === 'object' && typeof a.id === 'string' && a.id && a.id.length <= 200 && typeof a.label === 'string' && a.label.trim() ? { id: a.id, label: a.label.trim().slice(0, LABEL_MAX) } : null);
-/* A request as given, made safe: only what is known, each bounded; null when it is not one. */
-export function requestOf(r) {
+/* THE APPLICATION'S WORDS, IN THE READER'S (0.17.70). Any text of a request -- its title, `sub` or a
+   part of it, a risk, a fact's label or text, before/after, a button's label, `state.text` -- may be
+   given as `{ k, v }`: a word of the dictionary and its values, said here in this screen's language
+   (the application cannot know it: a language may be each device's). A value is text as it is (a
+   subject, an address, a path), a number (written the locale's way), `{ k, v }` again, `{ at, end }`
+   (ISO day and time, written the locale's way: "Thu 12 Nov · 15:00–16:00", the time as given, no
+   zone moved), `{ list }` (", " between), or a list of those. Plain text stays as it is: an older
+   line, another application. */
+const REQUEST_AT = /^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2}))?/;
+function requestWhen(at, end, locale) {
+    const a = REQUEST_AT.exec(String(at ?? ''));
+    if (!a) return String(at ?? '');
+    const b = REQUEST_AT.exec(String(end ?? ''));
+    const as = (m, options) => { const d = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3], m[4] ? +m[4] : 12, m[5] ? +m[5] : 0)); try { return d.toLocaleString(locale, { ...options, timeZone: 'UTC' }); } catch { return d.toLocaleString(undefined, { ...options, timeZone: 'UTC' }); } };
+    const hm = (m) => (m?.[4] ? as(m, { timeStyle: 'short' }) : '');
+    return [as(a, { weekday: 'short', day: 'numeric', month: 'short' }), [hm(a), hm(b)].filter(Boolean).join('–')].filter(Boolean).join(' · ');
+}
+function requestSaid(x, words, locale, depth = 0) {
+    if (typeof x === 'string') return x;
+    if (typeof x === 'number') { if (!Number.isFinite(x)) return ''; try { return new Intl.NumberFormat(locale, { maximumFractionDigits: 1 }).format(x); } catch { return String(x); } }
+    if (!x || typeof x !== 'object' || depth > 6) return '';
+    if (Array.isArray(x)) return x.map((y) => requestSaid(y, words, locale, depth + 1)).filter(Boolean).join(', ');
+    if (typeof x.at === 'string') return requestWhen(x.at, x.end, locale);
+    if (Array.isArray(x.list)) return requestSaid(x.list, words, locale, depth + 1);
+    if (typeof x.k !== 'string' || !/^[a-z0-9-]{1,60}$/.test(x.k)) return '';
+    const v = x.v && typeof x.v === 'object' && !Array.isArray(x.v) ? x.v : {};
+    return said(words, x.k, Object.fromEntries(Object.entries(v).map(([n, y]) => [n, requestSaid(y, words, locale, depth + 1)])));
+}
+/* A request as given, made safe: only what is known, each bounded; null when it is not one.
+   `words` and `locale` say the texts given as `{ k, v }` (above). */
+export function requestOf(r, { words, locale } = {}) {
     if (!r || typeof r !== 'object' || Array.isArray(r)) return null;
-    const title = cut(r.title, 160);
+    const lang = locale ?? (typeof words?.lang === 'string' ? words.lang : undefined);
+    const say = (x) => requestSaid(x, words, lang);
+    const title = cut(say(r.title), 160);
     if (!title) return null;
     const text = (v, n) => (typeof v === 'string' ? cut(v, n) : '');
-    const strings = (v, most, n) => (Array.isArray(v) ? v.filter((x) => typeof x === 'string' && x.trim()).slice(0, most).map((x) => cut(x, n)) : []);
-    const chip = (c) => (typeof c === 'string' && c.trim() ? { text: cut(c, 120), ext: false } : c && typeof c.text === 'string' && c.text.trim() ? { text: cut(c.text, 120), ext: c.ext === true } : null);
+    const strings = (v, most, n) => (Array.isArray(v) ? v.map(say).filter((x) => x.trim()).slice(0, most).map((x) => cut(x, n)) : []);
+    const chip = (c) => (typeof c === 'string' && c.trim() ? { text: cut(c, 120), ext: false } : c && typeof c === 'object' && say(c.text).trim() ? { text: cut(say(c.text), 120), ext: c.ext === true } : null);
     /* A fact: [label, text] or [label, [chips]] -- or as requestOf gives it back, { label, text } or { label, chips }. */
     const fact = (f) => {
-        const [label, v] = Array.isArray(f) ? f : f && typeof f === 'object' ? [f.label, f.chips ?? f.text] : [];
-        if (typeof label !== 'string') return null;
+        const [given, v] = Array.isArray(f) ? f : f && typeof f === 'object' ? [f.label, f.chips ?? f.text] : [];
+        const label = say(given);
+        if (!label) return null;
         if (Array.isArray(v)) { const chips = v.map(chip).filter(Boolean).slice(0, 30); return chips.length ? { label: cut(label, 30), chips } : null; }
-        return typeof v === 'string' && v.trim() ? { label: cut(label, 30), text: cut(v, 400) } : null;
+        const t = say(v);
+        return t.trim() ? { label: cut(label, 30), text: cut(t, 400) } : null;
     };
+    const actOf = (a) => { if (!a || typeof a !== 'object' || typeof a.id !== 'string' || !a.id || a.id.length > 200) return null; const label = say(a.label).trim(); return label ? { id: a.id, label: label.slice(0, LABEL_MAX) } : null; };
     const s = r.state && typeof r.state === 'object' ? r.state : null;
     return {
         kind: REQUEST_KINDS.includes(r.kind) ? r.kind : 'other',
-        title, sub: text(r.sub, 160),
+        title, sub: cut(Array.isArray(r.sub) ? r.sub.map(say).filter((x) => x.trim()).join(' · ') : say(r.sub), 160),
         risk: strings(r.risk, 4, 160),
         facts: (Array.isArray(r.facts) ? r.facts : []).map(fact).filter(Boolean).slice(0, 12),
         before: strings(r.before, 6, 120), after: strings(r.after, 6, 120),
@@ -2692,7 +2735,7 @@ export function requestOf(r) {
         yes: actOf(r.yes), no: actOf(r.no), more: actOf(r.more),
         others: (Array.isArray(r.others) ? r.others : []).map(actOf).filter(Boolean).slice(0, 2),
         hold: Number.isFinite(r.hold) ? Math.max(0, Math.min(REQUEST_HOLD_MAX, r.hold)) : 0,
-        state: s ? { decision: s.decision === 'yes' || s.decision === 'no' ? s.decision : 'ended', at: typeof s.at === 'string' ? s.at : '', text: text(s.text, 160) } : null,
+        state: s ? { decision: s.decision === 'yes' || s.decision === 'no' ? s.decision : 'ended', at: typeof s.at === 'string' ? s.at : '', text: cut(say(s.text), 160) } : null,
     };
 }
 /* What the person did that the application has not answered yet, by request: kept while the page is
@@ -2822,7 +2865,7 @@ function requestSheet(r, ctx) {
    choice wins once made); `onFold(open)`, told when the person folds or unfolds it; `steps`, the
    page's steps for Back (stepper); `host`, where the sheet goes (the page's body by default). */
 export function requestCard(given, ctx = {}) {
-    const r = requestOf(given);
+    const r = requestOf(given, ctx);
     const card = el('article', 'parley-request');
     if (!r) return card;
     const words = ctx.words ?? {};
@@ -2877,7 +2920,7 @@ export function requestCard(given, ctx = {}) {
    decided alone. `list`: the requests (requestOf), `ctx` as for requestCard, `key` names the block. */
 export function requestBlock(list, ctx = {}) {
     const words = ctx.words ?? {};
-    const rs = (Array.isArray(list) ? list : []).map(requestOf).filter(Boolean);
+    const rs = (Array.isArray(list) ? list : []).map((x) => requestOf(x, ctx)).filter(Boolean);
     const block = el('article', 'parley-requests');
     const bkey = `B:${ctx.key ?? rs.map(requestKey).join('|')}`;
     const paint = () => {
