@@ -246,7 +246,7 @@ export const KEYS = Object.freeze(['send', 'placeholder', 'empty', 'view', 'simp
     'mic', 'mic-stop', 'auto-send', 'auto-on', 'settings', 'voice-placeholder', 'voice-calibrating', 'voice-listening', 'voice-hearing', 'voice-transcribing', 'voice-wait', 'voice-off', 'replies', 'replies-more', 'replies-less',
     'recommended', 'recommended-value', 'recommended-order', 'suggestion', 'suggest-take',
     'attach', 'remove-file', 'sending-files', 'attach-where', 'draw-open', 'draw-again', 'drawn-from', 'draw-marked', 'draw-colour', 'draw-undo', 'draw-clear', 'draw-cancel', 'draw-done', 'draw-note', 'draw-hint',
-    'copy', 'copied', 'see-details', 'see-more', 'see-less', 'note', 'tip', 'important', 'warning', 'caution', 'badge-ok', 'badge-todo', 'badge-blocked', 'badge-warn',
+    'copy', 'copied', 'copy-md', 'copy-rich', 'see-details', 'see-more', 'see-less', 'note', 'tip', 'important', 'warning', 'caution', 'badge-ok', 'badge-todo', 'badge-blocked', 'badge-warn',
     'waits-you', 'waits-you-note', 'busy', 'pulse', 'state-sent', 'state-read', 'state-working', 'state-done', 'sent-at', 'read-at', 'done-at',
     'reply', 'to-card', 'other-answer', 'group-count', 'group-step', 'group-next', 'group-back', 'group-review', 'group-check', 'group-modify', 'group-send', 'group-several', 'group-own', 'group-missing',
     'replying', 'not-a-reply', 'in-reply', 'closed', 'you', 'agent', 'drop', 'picture', 'diagram', 'not-shown', 'grouped', 'issue-machine', 'issue-fixed', 'issue-details', 'sent-after-retry', 'auto-wait', 'dictation-joining', 'room-fold', 'room-a', 'room-open',
@@ -1222,6 +1222,49 @@ function copying(b, text, words, select) {
         const w = globalThis.navigator?.clipboard?.writeText?.(text);
         if (w && typeof w.then === 'function') w.then(done, fallback); else fallback();
     } catch { fallback(); }
+}
+
+/* A drawn message as HTML text for the clipboard, written node by node (the library never reads or writes
+   markup through the browser): elements and their few plain attributes, text escaped. */
+const HTML_ESC = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' };
+const htmlEsc = (t) => String(t).replace(/[&<>"]/g, (c) => HTML_ESC[c]);
+const HTML_KEEP = new Set(['href', 'src', 'alt', 'title', 'colspan', 'rowspan', 'start']);
+function htmlOf(node) {
+    if (node.nodeType === 3) return htmlEsc(node.textContent ?? '');
+    if (node.nodeType !== 1) return '';
+    const tag = String(node.tagName ?? '').toLowerCase();
+    const inner = [...(node.childNodes ?? [])].map(htmlOf).join('');
+    if (!/^[a-z][a-z0-9]*$/.test(tag) || tag === 'div' || tag === 'span') return inner;
+    const attrs = [...(node.attributes ?? [])].filter((a) => HTML_KEEP.has(a.name) && !/^\s*javascript:/i.test(a.value)).map((a) => ` ${a.name}="${htmlEsc(a.value)}"`).join('');
+    return ['br', 'hr', 'img'].includes(tag) ? `<${tag}${attrs}>` : `<${tag}${attrs}>${inner}</${tag}>`;
+}
+
+/* The same drawn message as plain text: blocks on lines of their own, list items with a dash, table cells
+   separated by a tab -- no Markdown marks. */
+const DRAWN_BLOCKS = new Set(['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'li', 'pre', 'blockquote', 'tr', 'table', 'ul', 'ol', 'hr', 'figure']);
+function drawnPlain(node) {
+    if (node.nodeType === 3) return node.textContent ?? '';
+    if (node.nodeType !== 1) return '';
+    const tag = String(node.tagName ?? '').toLowerCase();
+    if (tag === 'br') return '\n';
+    const parts = [...(node.childNodes ?? [])].map(drawnPlain);
+    let inner = tag === 'tr' ? parts.map((x) => x.trim()).join('\t') : parts.join('');
+    if (tag === 'li') inner = `- ${inner.trim()}`;
+    if (tag === 'li' || tag === 'tr') return `${inner.trim()}\n`;
+    return DRAWN_BLOCKS.has(tag) ? `\n${inner.trim()}\n` : inner;
+}
+const drawnText = (node) => drawnPlain(node).replace(/\n{3,}/g, '\n\n').trim();
+
+/* A message copied as it is drawn (05-11), for Word or a mail: its HTML and its plain text together, so
+   that what it is pasted into takes what it can. Refused: the plain text, the usual way. */
+function copyingRich(b, html, text, words, select) {
+    const done = () => { b.dataset.copied = 'true'; setTimeout(() => { delete b.dataset.copied; }, 1200); };
+    try {
+        const C = globalThis.ClipboardItem; const clip = globalThis.navigator?.clipboard;
+        if (!C || !clip?.write) { copying(b, text, words, select); return; }
+        const w = clip.write([new C({ 'text/html': new Blob([html], { type: 'text/html' }), 'text/plain': new Blob([text], { type: 'text/plain' }) })]);
+        if (w && typeof w.then === 'function') w.then(done, () => copying(b, text, words, select)); else done();
+    } catch { copying(b, text, words, select); }
 }
 
 /* THE PAGE, MADE FROM THE DATA OF markdown(): element by element, text as text. */
@@ -3752,9 +3795,9 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
         if (item.id && item.id === revealed) bubble.dataset.reveal = 'true';
         if (item.when) bubble.title = item.when;
         /* The person's own message: only the host's action (attach it to a card), by a clip in its corner. */
-        if (item.from === 'person' && toCard && item.id) {
-            const r = el('button', 'parley-react-open'); r.type = 'button'; r.title = said(words, 'to-card'); r.setAttribute('aria-label', r.title); r.setAttribute('aria-haspopup', 'true');
-            r.append(icon('paperclip', 'parley-sign'));
+        if (item.from === 'person' && item.id && (toCard || (item.text ?? '').trim())) {
+            const r = el('button', 'parley-react-open'); r.type = 'button'; r.title = said(words, toCard ? 'to-card' : 'copy'); r.setAttribute('aria-label', r.title); r.setAttribute('aria-haspopup', 'true');
+            r.append(toCard ? icon('paperclip', 'parley-sign') : sign('copy'));
             r.addEventListener('click', (event) => { event.stopPropagation(); reacting.open(item, bubble); });
             bubble.append(r);
         }
@@ -3766,7 +3809,7 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
             if (item.time) head.append(time(item.trail ? `${item.time} - ${item.trail.label}` : item.time, item.when));
             bubble.append(head);
             /* React to it: a button that shows on hover (a right click too); on a touch screen, a short tap on the message shows it a few seconds, in its corner. */
-            if (react && reactions.length && ['say', 'ask', 'show'].includes(item.kind)) {
+            if (['say', 'ask', 'show'].includes(item.kind) && ((react && reactions.length) || (item.text ?? '').trim())) {
                 const r = el('button', 'parley-react-open'); r.type = 'button'; r.title = said(words, 'react'); r.setAttribute('aria-label', r.title); r.setAttribute('aria-haspopup', 'true');
                 r.append(icon('smile-plus', 'parley-sign'));
                 r.addEventListener('click', (event) => { event.stopPropagation(); reacting.open(item, bubble); });
@@ -3948,7 +3991,14 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
         const replyB = el('button', 'parley-react-reply'); replyB.type = 'button'; replyB.title = said(words, 'reply'); replyB.append(icon('reply', 'parley-sign'), el('span', '', said(words, 'reply')));
         /* The host's own: this message attached to a card of its binders (card(message), optional). */
         const cardB = el('button', 'parley-react-reply parley-react-card'); cardB.type = 'button'; cardB.title = said(words, 'to-card'); cardB.append(icon('paperclip', 'parley-sign'), el('span', '', said(words, 'to-card')));
-        box.append(grid, replyB, cardB);
+        /* COPY (05-11, after the personas): "Copy" puts the message whole (even folded) on the clipboard twice
+           -- drawn (HTML) and as clean text --, so Word or a mail keep its look and a plain field gets plain
+           words without marks; "Copy as Markdown" gives its text as written. A message of the person, written
+           without marks: one "Copy". */
+        const copyMdWord = el('span', '', said(words, 'copy-md'));
+        const copyMd = el('button', 'parley-react-reply parley-react-copy'); copyMd.type = 'button'; copyMd.append(sign('copy'), copyMdWord);
+        const copyRich = el('button', 'parley-react-reply parley-react-copy'); copyRich.type = 'button'; copyRich.append(sign('copy'), el('span', '', said(words, 'copy-rich')));
+        box.append(grid, replyB, cardB, copyRich, copyMd);
         let target = null;
         let marked = null;
         const close = () => {
@@ -3964,6 +4014,15 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
             try { await react(t.id, id); await refresh(); } catch (error) { problem.textContent = said(words, 'not-sent', { error: String(error?.message ?? error) }); problem.hidden = false; }
         };
         cardB.addEventListener('click', () => { const t = target; close(); if (t && toCard) void toCard({ id: t.id, text: t.text, short: t.short }); });
+        const later = () => setTimeout(close, 900);
+        copyMd.addEventListener('click', () => { const t = target; if (!t) return; copying(copyMd, maskSecrets(t.text ?? ''), words, marked ?? copyMd); later(); });
+        copyRich.addEventListener('click', () => {
+            const t = target; if (!t) return;
+            const text = maskSecrets(t.text ?? '');
+            const drawn = painter({ words, locale, refs: new Map(), secrets: {} }).blocks(markdown(text), el('div', 'parley-md'));
+            for (const x of drawn.querySelectorAll('button, svg, [aria-hidden="true"]')) x.remove();
+            copyingRich(copyRich, htmlOf(drawn), drawnText(drawn), words, marked ?? copyRich); later();
+        });
         replyB.addEventListener('click', () => { const t = target; close(); if (!t) return; replyTo = { id: t.id, text: cut(t.short || t.text, 90), auto: false }; dismissed.delete(t.id); paintReply(); focusBox(); });
         box.addEventListener('keydown', (event) => { if (event.key === 'Escape') { event.preventDefault(); close(); } });
         document.addEventListener('pointerdown', (event) => { if (!box.hidden && !(event.target instanceof Node && box.contains(event.target)) && !(event.target instanceof Element && event.target.closest('.parley-react-open, .parley-reaction'))) close(); });
@@ -3971,7 +4030,8 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
             box,
             open(item, bubble) {
                 const reacts = Boolean(react && reactions.length && item.from !== 'person');
-                if (!reacts && !toCard) return;
+                const copies = typeof item.text === 'string' && item.text.trim() !== '';
+                if (!reacts && !toCard && !copies) return;
                 if (marked) delete marked.dataset.reacting;
                 target = item; marked = bubble; bubble.dataset.reacting = 'true';
                 /* "Go ahead" first, "Stop" last: the two never side by side. */
@@ -3989,6 +4049,8 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
                 }));
                 replyB.hidden = !send;
                 cardB.hidden = !toCard;
+                copyMd.hidden = !copies; copyRich.hidden = !copies || item.from === 'person';
+                copyMdWord.textContent = said(words, item.from === 'person' ? 'copy' : 'copy-md');
                 box.style.left = ''; box.style.top = '';
                 /* On a narrow screen: a panel that rises from the bottom, the message kept in sight above it. */
                 const sheet = root.getBoundingClientRect().width < SHEET_PX;
@@ -4351,12 +4413,12 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
     let pointer = '';
     thread.addEventListener('pointerdown', (event) => { pointer = event.pointerType ?? ''; });
     thread.addEventListener('contextmenu', (event) => {
-        if (!react || !reactions.length || typedIn(event.target)) return;
+        if (typedIn(event.target)) return;
         const by = event.pointerType || pointer;
         if (by ? by !== 'mouse' : touching) return;
-        const bubble = event.target instanceof Element ? event.target.closest('.parley-said[data-from="agent"]') : null;
+        const bubble = event.target instanceof Element ? event.target.closest('.parley-said[data-from="agent"], .parley-said[data-from="person"]') : null;
         if (!bubble || (event.target instanceof Element && event.target.closest('a, img, pre, code')) || String(globalThis.getSelection?.() ?? '')) return;
-        const item = latestItems().find((i) => i.id === bubble.dataset.id && ['say', 'ask', 'show'].includes(i.kind));
+        const item = latestItems().find((i) => i.id === bubble.dataset.id && (i.from === 'person' || ['say', 'ask', 'show'].includes(i.kind)));
         if (!item) return;
         event.preventDefault(); reacting.open(item, bubble);
     });

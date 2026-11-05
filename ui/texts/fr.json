@@ -249,5 +249,7 @@
   "request-accept-all": "Tout accepter",
   "request-accept-others": "Accepter les {count} autres",
   "request-accept-n": "Accepter {count}",
-  "request-others": "Autres façons d'accepter"
+  "request-others": "Autres façons d'accepter",
+  "copy-md": "Copier en Markdown",
+  "copy-rich": "Copier"
 }
