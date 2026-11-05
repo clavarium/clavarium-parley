@@ -227,5 +227,7 @@
   "box-wake-tune-kept": "Réglé le {date} : seuil {from} gardé",
   "box-wake-tune-refused": "Seuil {to} refusé par le boîtier",
   "box-wake-tune-sent": "Seuil {from} → {to} : en attente du boîtier",
-  "box-wake-tuned": "Réglé le {date} : {from} → {to}"
+  "box-wake-tuned": "Réglé le {date} : {from} → {to}",
+  "answer-others": "voir les choix",
+  "answer-others-hide": "masquer les choix"
 }

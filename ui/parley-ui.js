@@ -659,6 +659,8 @@ export function view(data, { words = {}, view: as = 'simple', now = Date.now(), 
     const detailed = as === 'detailed';
     const all = Array.isArray(data?.messages) ? data.messages.filter((m) => m && typeof m === 'object') : [];
     const answered = new Set(all.filter((m) => m.from === 'person').map((m) => m.answers).filter(Boolean));
+    /* The person's answer to each question, the last one given (05-11): shown in the question itself. */
+    const answerOf = new Map(all.filter((m) => m.from === 'person' && m.answers).map((m) => [m.answers, m]));
     /* Simple shows nothing the person cannot act on: a file that cannot be opened, a trace, are in the detailed view only. */
     const messages = all.filter((m) => detailed || !((m.kind === 'show' && (Array.isArray(m.files) && m.files.length ? !m.files.some((f) => f && typeof f.open === 'string') : typeof m.open !== 'string')) || (m.from === 'system' && levelOf(m.level) === 'trace')));
     /* WHAT CHANGED IN THE BRIDGE FOLDER after the application kept it (read().altered): the copy
@@ -694,6 +696,8 @@ export function view(data, { words = {}, view: as = 'simple', now = Date.now(), 
     const doneEnd = doneStatus !== null && lastEvent <= doneStatus;
     /* The newest message of the agent: never folded, so that nothing seems left below it. */
     const newestAgent = [...messages].reverse().find((m) => m.from !== 'person' && m.from !== 'system')?.id;
+    /* An answer whose question is the agent's message just before it needs no quote: the question is in sight. */
+    const justBefore = (m) => { const i = all.indexOf(m); for (let k = i - 1; k >= 0; k--) { const x = all[k]; if (x.from === 'system') continue; if (x.from === 'person') continue; return x.id === m.answers; } return false; };
     const items = messages.map((m) => {
         const t = stamp(m.at);
         if (m.from === 'system') {
@@ -750,11 +754,19 @@ export function view(data, { words = {}, view: as = 'simple', now = Date.now(), 
             steps: m.steps === true,
             open,
             closed: m.kind === 'ask' && m.closed && !answered.has(m.id) ? said(words, 'closed', { answer: cut(m.closed.text, 300) }) : '',
-            reply: person && (m.answers || m.re) ? said(words, 'in-reply', { question: cut(m.question || m.quote, 90) }) : '',
+            reply: person && (m.answers || m.re) && !(m.answers && justBefore(m)) ? said(words, 'in-reply', { question: cut(m.question || m.quote, 90) }) : '',
             /* The message it answers (03-11): a tap on the quote brings it back into view; for a question, its
                choices, the one taken marked. */
             replyTo: person ? String(m.answers || m.re || '') : '',
-            replyChoices: person && m.answers ? (() => { const q = all.find((x) => x.from === 'agent' && x.id === m.answers); const taken = new Set([...(Array.isArray(m.picked) ? m.picked : []), String(m.text ?? '').trim()]); return q && Array.isArray(q.choices) && q.choices.length > 1 ? q.choices.slice(0, 8).map((c) => ({ text: cut(String(c), 60), taken: taken.has(String(c)) })) : []; })() : [],
+            /* A question answered (05-11): the answer ticked in the question, its other choices folded --
+               the answer's own message no longer repeats them. */
+            answer: m.kind === 'ask' && answered.has(m.id) && Array.isArray(m.choices) && m.choices.length > 1 ? (() => {
+                const a = answerOf.get(m.id); const text = String(a?.text ?? '').trim();
+                const picked = new Set([...(Array.isArray(a?.picked) ? a.picked.map(String) : []), text]);
+                const choices = m.choices.slice(0, 8).map(String);
+                const taken = choices.filter((c) => picked.has(c));
+                return { taken: (taken.length ? taken : [text]).filter(Boolean).map((c) => cut(c, 60)), others: choices.filter((c) => !picked.has(c)).map((c) => cut(c, 60)) };
+            })() : null,
             mark: '',
         };
         if (item.questions.length < 2 && !item.questions.some((q) => q.input)) item.questions = [];
@@ -3460,11 +3472,21 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
                 target.classList.add('parley-flash'); setTimeout(() => target.classList.remove('parley-flash'), 1600);
             });
             bubble.append(q);
-            if (item.replyChoices.length) { const c = el('p', 'parley-inreply-choices'); for (const x of item.replyChoices) { const sp = el('span', x.taken ? 'parley-choice-taken' : 'parley-choice-other', x.text); c.append(sp); } bubble.append(c); }
         }
         if (item.closed) bubble.append(el('p', 'parley-closed', item.closed));
         if (item.from === 'agent') bubble.append(...body(item, v));
         else if (item.text) { const p = el('p', 'parley-text'); textWithSecrets(item.text, p, words, liveSecrets, forget); bubble.append(p); }
+        if (item.answer) {
+            const row = el('div', 'parley-answered');
+            for (const x of item.answer.taken) row.append(el('span', 'parley-choice-taken', x));
+            if (item.answer.others.length) {
+                const others = el('div', 'parley-answered-others'); others.hidden = true;
+                for (const x of item.answer.others) others.append(el('span', 'parley-choice-other', x));
+                const fold = el('button', 'parley-answered-fold', said(words, 'answer-others')); fold.type = 'button'; fold.setAttribute('aria-expanded', 'false');
+                fold.addEventListener('click', () => { others.hidden = !others.hidden; fold.setAttribute('aria-expanded', String(!others.hidden)); fold.textContent = said(words, others.hidden ? 'answer-others' : 'answer-others-hide'); });
+                row.append(fold); bubble.append(row, others);
+            } else bubble.append(row);
+        }
         if (item.file) {
             if (item.file.open !== null && item.file.picture && pictureUrl(item.file)) bubble.append(fileView(item.file));
             else if (item.file.open !== null && SOUND.test(item.file.name) && pictureUrl(item.file)) bubble.append(soundView(item.file, pictureUrl(item.file), words, open));

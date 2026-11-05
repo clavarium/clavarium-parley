@@ -116,16 +116,25 @@ test('in a conversation\'s own thread, what happened in a room is one line « In
     } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
-test('an answer to a question says which message it answers (to bring it back) and the choices there were, the one taken marked', () => {
+test('an answered question shows the answer ticked in it, its other choices apart; the answer does not repeat them, nor quote a question just above it', () => {
     const dir = folder();
     try {
         const own = new Parley(dir);
         const { appendFileSync } = require_fs;
         appendFileSync(join(dir, 'from-agent.jsonl'), `${JSON.stringify({ id: 'q1', at: new Date().toISOString(), kind: 'ask', text: 'On part sur quoi ?', choices: ['Le ballon', 'KSM', 'Les deux'] })}\n`);
         own.say('Le ballon', 'q1');
-        const row = view(own.read(), { words: {} }).items.find((r) => r.from === 'person');
+        let items = view(own.read(), { words: {} }).items;
+        const row = items.find((r) => r.from === 'person');
         assert.equal(row.replyTo, 'q1');
-        assert.deepEqual(row.replyChoices, [{ text: 'Le ballon', taken: true }, { text: 'KSM', taken: false }, { text: 'Les deux', taken: false }]);
+        assert.equal(row.replyChoices, undefined, 'the answer does not repeat the choices');
+        assert.equal(row.reply, '', 'the question is just above: no quote');
+        assert.deepEqual(items.find((r) => r.id === 'q1').answer, { taken: ['Le ballon'], others: ['KSM', 'Les deux'] });
+        /* Another message of the agent between them: the quote brings the question back. */
+        appendFileSync(join(dir, 'from-agent.jsonl'), `${JSON.stringify({ id: 'q2', at: new Date().toISOString(), kind: 'ask', text: 'Et ensuite ?', choices: ['A', 'B'] })}\n`);
+        own.say('Les deux', 'q1');
+        items = view(own.read(), { words: {} }).items;
+        assert.notEqual(items.filter((r) => r.from === 'person').at(-1).reply, '');
+        assert.deepEqual(items.find((r) => r.id === 'q1').answer, { taken: ['Les deux'], others: ['Le ballon', 'KSM'] }, 'the last answer counts');
     } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 

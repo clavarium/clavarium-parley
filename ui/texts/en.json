@@ -227,5 +227,7 @@
   "box-wake-tune-kept": "Tuned {date}: threshold {from} kept",
   "box-wake-tune-refused": "Threshold {to} refused by the box",
   "box-wake-tune-sent": "Threshold {from} → {to}: waiting for the box",
-  "box-wake-tuned": "Tuned {date}: {from} → {to}"
+  "box-wake-tuned": "Tuned {date}: {from} → {to}",
+  "answer-others": "see the choices",
+  "answer-others-hide": "hide the choices"
 }
