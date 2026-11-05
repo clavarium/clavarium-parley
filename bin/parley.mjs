@@ -9,7 +9,7 @@
 import { readFileSync, realpathSync, existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { bridge, findFolder, STATES, VERSION, FOLDER, WRITING, SHORTER, GALLERY, ASKING, GROUPING, GROUP_MAX, RICH } from '../server/parley-mcp.mjs';
+import { bridge, findFolder, STATES, VERSION, FOLDER, WRITING, SHORTER, GALLERY, ASKING, GROUPING, GROUP_MAX, RICH, CHARTS } from '../server/parley-mcp.mjs';
 
 /* How to work with the person, in a few lines: what an agent comes back to
    when it forgot. Its words are accepted as they are. */
@@ -39,6 +39,7 @@ export const GUIDE = `How to work with the person through Parley
    goes in the short version (--short), first line.
    A formula, a family, zones on a picture: only when
    the topic calls for it (parley --help says how).
+   Numbers: a \`\`\`chart block; results: \`\`\`cards.
 
 5. After a restart: parley read --last 100
    Older: parley read --before ID (it gives the ID)
@@ -98,6 +99,8 @@ export const HELP = `parley: talk with the person you work for. They read and an
 ${wrap(WRITING)}
 
 ${wrap(RICH)}
+
+${wrap(CHARTS)}
   parley ask - "My brother" "A cousin" <<'EOF'
   Who is this, on the right?
   \`\`\`picture

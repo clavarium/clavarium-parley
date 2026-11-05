@@ -251,7 +251,7 @@ export const KEYS = Object.freeze(['send', 'placeholder', 'empty', 'view', 'simp
     'react', 'react-remove', 'react-agree', 'react-go', 'react-disagree', 'react-unclear', 'react-stop', 'react-redo', 'react-later', 'react-love',
     'react-agree-hint', 'react-go-hint', 'react-disagree-hint', 'react-unclear-hint', 'react-stop-hint', 'react-redo-hint', 'react-later-hint', 'react-love-hint',
     'decide', 'media', 'media-pictures', 'media-files', 'media-none', 'see-in-thread', 'done-end', 'done-end-note', 'dictated', 'said-to', 'side-now', 'side-machine', 'side-nothing', 'history-changed',
-    'earlier', 'media-earlier', 'panel', 'panel-show', 'panel-hide', 'panel-empty', 'panel-done', 'panel-not-saved']);
+    'chart', 'chart-table', 'chart-show', 'chart-other', 'chart-total', 'earlier', 'media-earlier', 'panel', 'panel-show', 'panel-hide', 'panel-empty', 'panel-done', 'panel-not-saved']);
 /* THE REACTIONS offered by default, each with its Lucide icon; their words
    are "react-<id>" (shown under the icon) and "react-<id>-hint" (on hover).
    The same ids as REACTIONS of parley-host.mjs, which says which wake. */
@@ -1270,6 +1270,154 @@ export function zonesOf(text) {
     }
     return { alt: pic[1], src: pic[2], zones };
 }
+/* A CHART (```chart): a few lines "key: value" (type, title, unit, x, y),
+   then its numbers -- "Label: 12" a line for one series, or a small table for
+   several: its first row the labels along x, each next row a series, its
+   name first ("| Mon | Tue" then "Visits | 12 | 15"). Null when anything
+   cannot be read: the block is then shown as it was written. */
+export const CHART_TYPES = Object.freeze(['bar', 'line', 'pie', 'donut', 'stacked']);
+export const CHART_SERIES_MAX = 6;
+export const CHART_POINTS_MAX = 60;
+export const CHART_SLICES_MAX = 7;
+const CHART_KEYS = new Map([['type', 'type'], ['title', 'title'], ['titre', 'title'], ['unit', 'unit'], ['unite', 'unit'], ['unité', 'unit'], ['x', 'x'], ['y', 'y'], ['data', 'data'], ['données', 'data'], ['donnees', 'data']]);
+/* A number as people write it: 5.7, 5,7, 1 234, 1,234.5, -3, 12 %, 22 Go (its unit after it). */
+export function numberOf(text, unit = '') {
+    let s = String(text ?? '').trim().replace(/^−/, '-');
+    if (unit && s.toLowerCase().endsWith(unit.toLowerCase())) s = s.slice(0, -unit.length).trim();
+    s = s.replace(/\s*%$/, '').replace(/[\s  ']/g, '');
+    if (s.includes(',') && s.includes('.')) s = s.replace(/,/g, '');
+    else if (/^[-+]?[1-9]\d{0,2}(,\d{3})+$/.test(s)) s = s.replace(/,/g, '');
+    else s = s.replace(',', '.');
+    if (!/^[-+]?(\d+\.?\d*|\.\d+)$/.test(s)) return null;
+    const n = Number(s);
+    return Number.isFinite(n) && Math.abs(n) < 1e15 ? n : null;
+}
+const cellsOf = (line) => { let t = line.trim(); if (t.startsWith('|')) t = t.slice(1); if (t.endsWith('|')) t = t.slice(0, -1); return t.split('|').map((c) => c.trim()); };
+export function chartOf(text) {
+    const lines = String(text ?? '').replace(/\t/g, '  ').split('\n').map((l) => l.trim()).filter(Boolean);
+    const c = { type: '', title: '', unit: '', x: '', y: '', labels: [], series: [] };
+    let k = 0;
+    for (; k < lines.length; k += 1) {
+        const m = /^([a-zé]{1,8})\s*:\s*(.*)$/i.exec(lines[k]);
+        const key = m && CHART_KEYS.get(m[1].toLowerCase());
+        if (!key) break;
+        if (key === 'data') { if (m[2].trim()) return null; k += 1; break; }
+        c[key] = m[2].trim().replace(/^["']|["']$/g, '').slice(0, key === 'unit' ? 12 : 120);
+    }
+    c.type = (c.type || 'bar').toLowerCase();
+    if (c.type === 'column' || c.type === 'columns' || c.type === 'bars') c.type = 'bar';
+    if (c.type === 'stack') c.type = 'stacked';
+    if (!CHART_TYPES.includes(c.type)) return null;
+    const rows = lines.slice(k);
+    if (!rows.length) return null;
+    if (rows.some((l) => l.includes('|'))) {
+        const table = rows.filter((l) => !/^[\s|:-]+$/.test(l)).map(cellsOf);
+        if (table.length < 2) return null;
+        const [head, ...rest] = table;
+        for (const row of rest) {
+            const name = row[0];
+            const values = row.slice(1).map((v) => numberOf(v, c.unit));
+            if (!name || values.some((v) => v === null)) return null;
+            c.series.push({ name: name.slice(0, 60), values });
+        }
+        const n = c.series[0].values.length;
+        if (c.series.some((s) => s.values.length !== n)) return null;
+        const labels = head.length === n + 1 ? head.slice(1) : head.length === n ? head : null;
+        if (!labels || labels.some((l) => !l)) return null;
+        c.labels = labels.map((l) => l.slice(0, 60));
+    } else {
+        const values = [];
+        for (const l of rows) {
+            const at = l.lastIndexOf(':');
+            const label = l.slice(0, at).replace(/^[-*•]\s+/, '').trim().replace(/^["']|["']$/g, '');
+            const v = at > 0 ? numberOf(l.slice(at + 1), c.unit) : null;
+            if (!label || v === null) return null;
+            c.labels.push(label.slice(0, 60)); values.push(v);
+        }
+        c.series.push({ name: c.title || c.y || '', values });
+    }
+    const n = c.labels.length;
+    if (!n || n > CHART_POINTS_MAX || c.series.length > CHART_SERIES_MAX) return null;
+    const all = c.series.flatMap((s) => s.values);
+    if (c.type === 'line' && n < 2) return null;
+    if ((c.type === 'stacked' || c.type === 'pie' || c.type === 'donut') && all.some((v) => v < 0)) return null;
+    if (c.type === 'pie' || c.type === 'donut') {
+        if (c.series.length !== 1 || !(all.reduce((a, b) => a + b, 0) > 0)) return null;
+        /* More slices than colours: the smallest, together, are "Other". */
+        if (n > CHART_SLICES_MAX) {
+            const order = c.labels.map((_, i) => i).sort((a, b) => all[b] - all[a]);
+            const kept = new Set(order.slice(0, CHART_SLICES_MAX - 1));
+            const rest = order.slice(CHART_SLICES_MAX - 1).reduce((s, i) => s + all[i], 0);
+            c.labels = [...c.labels.filter((_, i) => kept.has(i)), ''];
+            c.series[0].values = [...all.filter((_, i) => kept.has(i)), rest];
+            c.other = true;
+        }
+    }
+    return c;
+}
+
+/* A pie or an xychart of Mermaid, read as a chart, to be drawn in the
+   screen's colours; anything else of Mermaid: null, drawn by Mermaid. */
+export function mermaidChart(text) {
+    const lines = String(text ?? '').split('\n').map((l) => l.trim()).filter((l) => l && !l.startsWith('%%'));
+    const first = lines.shift() ?? '';
+    const unq = (s) => s.trim().replace(/^"(.*)"$/, '$1').trim();
+    if (/^pie\b/i.test(first)) {
+        let title = /\btitle\s+(.+)$/i.exec(first)?.[1] ?? '';
+        const data = [];
+        for (const l of lines) {
+            const t = /^title\s+(.+)$/i.exec(l);
+            if (t) { title = t[1]; continue; }
+            if (/^showData$/i.test(l)) continue;
+            const m = /^"([^"]{1,60})"\s*:\s*([-+\d.,\s]+)$/.exec(l);
+            if (!m) return null;
+            data.push(`${m[1].replace(/:/g, ' ')}: ${m[2].trim()}`);
+        }
+        return chartOf(`type: donut\ntitle: ${unq(title)}\n${data.join('\n')}`);
+    }
+    if (/^xychart(-beta)?\b/i.test(first)) {
+        let title = ''; let labels = null; let y = ''; const series = [];
+        for (const l of lines) {
+            let m;
+            if ((m = /^title\s+(.+)$/i.exec(l))) title = unq(m[1]);
+            else if ((m = /^x-axis\s+(?:"[^"]*"\s+)?\[(.+)\]$/i.exec(l))) labels = m[1].split(',').map(unq);
+            else if ((m = /^y-axis\s+"([^"]*)"/i.exec(l))) y = m[1];
+            else if (/^y-axis\b/i.test(l)) continue;
+            else if ((m = /^(bar|line)\s+(?:"([^"]*)"\s+)?\[(.+)\]$/i.exec(l))) series.push({ kind: m[1].toLowerCase(), name: m[2] ?? '', values: m[3].split(',').map((v) => v.trim()) });
+            else return null;
+        }
+        if (!labels || !series.length || labels.some((l) => !l || l.includes('|'))) return null;
+        const type = series.some((s) => s.kind === 'line') ? 'line' : 'bar';
+        const rows = series.map((s, i) => `${(s.name || (series.length === 1 ? title || y : `${s.kind} ${i + 1}`) || s.kind).replace(/\|/g, ' ')} | ${s.values.join(' | ')}`);
+        return chartOf(`type: ${type}\ntitle: ${title}\ny: ${y}\n| ${labels.join(' | ')}\n${rows.join('\n')}`);
+    }
+    return null;
+}
+
+/* RESULT CARDS (```cards): "Title | value | state | note" a line, state one
+   of ok, todo, blocked, warn (or none), the note one short line; an optional
+   first line "# Heading". Null when a line cannot be read. */
+export const CARDS_MAX = 12;
+export const CARD_STATES = Object.freeze(['ok', 'todo', 'blocked', 'warn']);
+export function cardsOf(text) {
+    let heading = '';
+    const cards = [];
+    for (const raw of String(text ?? '').split('\n')) {
+        const line = raw.trim();
+        if (!line) continue;
+        const head = /^#+\s*(.*)$/.exec(line);
+        if (head && !cards.length && !heading) { heading = head[1].trim().slice(0, 60); continue; }
+        const fields = line.replace(/^[-*•]\s+/, '').split('|').map((f) => f.trim());
+        if (fields.length < 2 || !fields[0] || !fields[1]) return null;
+        const word = (fields[2] ?? '').toLowerCase().replace(/^\[(.*)\]$/, '$1');
+        const state = CARD_STATES.includes(word) ? word : '';
+        const note = fields.slice(state || word === '' ? 3 : 2).filter(Boolean).join(' | ');
+        cards.push({ title: fields[0].slice(0, 60), value: fields[1].slice(0, 32), state, note: note.slice(0, 120) });
+        if (cards.length > CARDS_MAX) return null;
+    }
+    return cards.length ? { heading, cards } : null;
+}
+
 /* The one zone a question asks about ("?"), when it has exactly one: its answer goes back with it. */
 export function askedZone(text) {
     const found = [];
@@ -1372,6 +1520,17 @@ function placeAt(n, left) {
     const kids = n.children.reduce((s, c) => s + c.w, 0) + FSIB * Math.max(0, n.children.length - 1);
     let x = left + (n.w - kids) / 2;
     for (const c of n.children) { placeAt(c, x); x += c.w + FSIB; }
+}
+
+/* Round steps for an axis, from lo to hi, about `count` of them. */
+export function niceTicks(lo, hi, count = 5) {
+    if (!(hi > lo)) { const d = Math.abs(hi) || 1; lo -= d / 2; hi += d / 2; if (lo < 0 && hi - d / 2 >= 0) lo = 0; }
+    const raw = (hi - lo) / count; const mag = 10 ** Math.floor(Math.log10(raw));
+    const step = [1, 2, 2.5, 5, 10].map((m) => m * mag).find((m) => m >= raw - 1e-12);
+    const out = [];
+    for (let v = Math.floor(lo / step + 1e-9) * step; v <= hi + step * 1e-9 || out.length < 2; v += step) out.push(Number(v.toPrecision(12)));
+    if (out.at(-1) < hi - 1e-9) out.push(Number((out.at(-1) + step).toPrecision(12)));
+    return out;
 }
 
 function painter(ctx) {
@@ -1643,6 +1802,286 @@ function painter(ctx) {
         const show = picker(frame, items);
         return fig;
     }
+    /* A CHART, drawn here as SVG made node by node, at the width it is given
+       (drawn again when that changes), in the screen's colours: its series
+       --parley-s1... in a fixed order, its text in the text's colours. A
+       value on hover or tap (and with the arrow keys), a legend from two
+       series, its numbers as a table on a button. */
+    function chart(block) {
+        const c = block.text.length <= 20_000 ? chartOf(block.text) : null;
+        return c ? chartFigure(c) : code(block);
+    }
+    function chartFigure(c) {
+        let nf; let nfc;
+        try { nf = new Intl.NumberFormat(ctx.locale, { maximumFractionDigits: 2 }); nfc = new Intl.NumberFormat(ctx.locale, { notation: 'compact', maximumFractionDigits: 1 }); } catch { nf = new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 }); nfc = nf; }
+        const num = (v) => nf.format(v);
+        const tick = (v, span) => (span >= 10_000 ? nfc.format(v) : num(v));
+        const valued = (v) => (c.unit ? `${num(v)} ${c.unit}` : num(v));
+        const labelOf = (i) => (c.other && i === c.labels.length - 1 ? said(words, 'chart-other') : c.labels[i]);
+        const pie = c.type === 'pie' || c.type === 'donut';
+        /* Its colour: a series by its place, never its rank; a pie's "Other" grey. */
+        const slot = (k, slice) => (slice && c.other && k === c.labels.length - 1 ? '0' : String((k % CHART_SERIES_MAX) + 1));
+        const single = c.series.length === 1;
+        const total = pie ? c.series[0].values.reduce((a, b) => a + b, 0) : 0;
+        const pct = (v) => `${new Intl.NumberFormat(ctx.locale && /^[a-z]{2}/i.test(ctx.locale) ? ctx.locale : undefined, { maximumFractionDigits: v / total < 0.1 ? 1 : 0 }).format((v / total) * 100)} %`;
+        const fig = el('figure', 'parley-chart'); fig.dataset.type = c.type;
+        const head = el('div', 'parley-chart-head');
+        const name = el('p', 'parley-chart-title', c.title || said(words, 'chart'));
+        if (c.unit && !pie) name.append(el('span', 'parley-chart-unit', c.unit));
+        const toggle = button(said(words, 'chart-table'), 'parley-chart-toggle', () => {
+            const on = table.hidden; table.hidden = !on; stage.hidden = on; if (legend) legend.hidden = on;
+            toggle.setAttribute('aria-pressed', String(on)); toggle.textContent = said(words, on ? 'chart-show' : 'chart-table');
+        });
+        toggle.setAttribute('aria-pressed', 'false');
+        head.append(name, toggle);
+        const stage = el('div', 'parley-chart-stage'); stage.tabIndex = 0;
+        const tip = el('div', 'parley-chart-tip'); tip.hidden = true; tip.setAttribute('aria-hidden', 'true');
+        /* The summary a screen reader says, the numbers being in the table. */
+        const said2 = single ? c.labels.map((_, i) => `${labelOf(i)} ${valued(c.series[0].values[i])}`).slice(0, 12).join(', ') + (c.labels.length > 12 ? ', …' : '')
+            : `${c.series.map((s) => s.name).join(', ')}; ${c.labels[0]} – ${c.labels.at(-1)}`;
+        const summary = `${c.title || said(words, 'chart')}: ${said2}`;
+        /* The legend: from two series; a pie's slices, each with its value and share. */
+        let legend = null;
+        if (pie || !single) {
+            legend = el('ul', 'parley-chart-legend');
+            const keys = pie ? c.labels.map((_, i) => ({ name: labelOf(i), s: slot(i, true), v: c.series[0].values[i] })) : c.series.map((s, k) => ({ name: s.name, s: slot(k) }));
+            keys.forEach((key, i) => {
+                const li = el('li'); li.dataset.s = key.s;
+                li.append(el('span', `parley-chart-key${c.type === 'line' ? ' parley-chart-key-line' : ''}`), el('span', 'parley-chart-name', key.name));
+                if (pie) { li.append(el('span', 'parley-chart-num', valued(key.v)), el('span', 'parley-chart-pct', pct(key.v))); li.addEventListener('pointerenter', () => show(i)); li.addEventListener('click', () => show(i, true)); }
+                legend.append(li);
+            });
+        }
+        /* The numbers, as a table. */
+        const table = el('div', 'parley-table parley-chart-table'); table.hidden = true; table.tabIndex = 0;
+        const t = el('table'); const th = el('thead'); const tr = el('tr');
+        const heads = [c.x, ...(pie ? [c.unit, '%'] : single ? [c.unit] : c.series.map((s) => s.name))];
+        for (const h of heads) tr.append(el('th', '', h ?? ''));
+        th.append(tr);
+        /* Nothing to name: no head row. */
+        if (heads.some(Boolean)) t.append(th);
+        const tb = el('tbody');
+        c.labels.forEach((_, i) => {
+            const r = el('tr'); r.append(el('td', '', labelOf(i)));
+            for (const s of c.series) { const td = el('td', 'parley-chart-cell', valued(s.values[i])); r.append(td); }
+            if (pie) r.append(el('td', 'parley-chart-cell', pct(c.series[0].values[i])));
+            tb.append(r);
+        });
+        t.append(tb); table.append(t);
+
+        let items = []; let active = -1; let pinned = false; let width = 0;
+        function show(i, tap = false) {
+            if (tap && pinned && active === i) { hide(); return; }
+            pinned = tap || pinned;
+            active = i;
+            const it = items[i]; if (!it) return;
+            for (const n of fig.querySelectorAll('[data-on]')) n.removeAttribute('data-on');
+            fig.dataset.focus = 'true';
+            for (const n of it.marks) n.setAttribute('data-on', 'true');
+            legend?.children[pie ? i : -1]?.setAttribute('data-on', 'true');
+            it.cross?.();
+            const rows = [el('p', 'parley-chart-tip-head', it.head)];
+            for (const r of it.rows) { const p = el('p', 'parley-chart-tip-row'); p.dataset.s = r.s; if (!single || pie) p.append(el('span', 'parley-chart-key')); if (r.name) p.append(el('span', 'parley-chart-name', r.name)); p.append(el('strong', '', r.value)); rows.push(p); }
+            tip.replaceChildren(...rows);
+            tip.hidden = false;
+            const w = tip.offsetWidth || 120;
+            tip.style.left = `${Math.max(w / 2 + 2, Math.min(width - w / 2 - 2, it.x))}px`;
+            tip.style.top = `${it.y}px`;
+            tip.dataset.below = String(it.y < 70);
+        }
+        function hide() { active = -1; pinned = false; tip.hidden = true; delete fig.dataset.focus; for (const n of fig.querySelectorAll('[data-on]')) n.removeAttribute('data-on'); items.forEach((it) => it.uncross?.()); }
+        stage.addEventListener('pointerleave', () => { if (!pinned) hide(); });
+        legend?.addEventListener('pointerleave', () => { if (!pinned) hide(); });
+        stage.addEventListener('keydown', (e) => {
+            if (e.key === 'ArrowRight' || e.key === 'ArrowDown') { e.preventDefault(); show((active + 1) % items.length, true); pinned = true; }
+            else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') { e.preventDefault(); show((active - 1 + items.length) % items.length, true); pinned = true; }
+            else if (e.key === 'Escape') hide();
+        });
+        stage.addEventListener('blur', () => hide());
+        const hit = (node, i) => { node.addEventListener('pointerenter', (e) => { if (e.pointerType !== 'touch' && !pinned) show(i); }); node.addEventListener('click', (e) => { e.stopPropagation?.(); show(i, true); }); return node; };
+
+        function draw(W, grow) {
+            width = W; items = []; active = -1; pinned = false; tip.hidden = true;
+            const out = pie ? drawPie(W) : c.type === 'line' ? drawLine(W) : drawBars(W);
+            out.svg.setAttribute('role', 'img'); out.svg.setAttribute('aria-label', summary);
+            if (grow) out.svg.dataset.grow = 'true';
+            stage.replaceChildren(out.svg, tip);
+        }
+        const size = (n) => n * 0.6;
+        const textW = (s, px) => String(s).length * size(px);
+
+        function drawBars(W) {
+            const stacked = c.type === 'stacked';
+            const narrow = W < 460;
+            const nS = stacked ? 1 : c.series.length;
+            const thick = nS === 1 ? 20 : Math.max(8, 15 - nS);
+            const groupH = nS * thick + (nS - 1) * 2;
+            const ends = c.labels.map((_, i) => (stacked ? [c.series.reduce((a, s) => a + s.values[i], 0)] : c.series.map((s) => s.values[i])));
+            const flat = ends.flat();
+            const lo = Math.min(0, ...flat); const hi = Math.max(0, ...flat);
+            const tips = c.labels.length * nS <= 40;
+            const room = Math.max(...flat.map((v) => textW(valued(v), 12))) + 10;
+            const labelW = narrow ? 0 : Math.min(W * 0.36, Math.max(...c.labels.map((l) => textW(l, 13))) + 14);
+            const x0 = labelW + (lo < 0 ? room : 0) + 2;
+            const x1 = W - (hi > 0 ? room : 4);
+            const span = hi - lo || 1;
+            const X = (v) => x0 + ((v - lo) / span) * (x1 - x0);
+            const rowH = (narrow ? 20 : 0) + groupH + (narrow ? 14 : 12);
+            const H = c.labels.length * rowH + 6;
+            const svg = sv('svg', { viewBox: `0 0 ${W} ${H}`, width: '100%', class: 'parley-chart-svg' });
+            const g = sv('g');
+            const zero = X(0);
+            c.labels.forEach((label, i) => {
+                const top = 3 + i * rowH;
+                const barTop = top + (narrow ? 20 : (rowH - groupH) / 2);
+                const marks = [];
+                const row = sv('g', { class: 'parley-chart-row' });
+                const lab = sv('text', narrow ? { x: 0, y: top + 13, class: 'parley-chart-label' } : { x: labelW - 12, y: barTop + groupH / 2 + 4.5, class: 'parley-chart-label', 'text-anchor': 'end' }, narrow || textW(label, 13) <= labelW - 14 ? label : `${label.slice(0, Math.max(3, Math.floor((labelW - 14) / size(13)) - 1))}…`);
+                row.append(lab);
+                if (stacked) {
+                    let at = 0;
+                    const parts = c.series.map((s, k) => ({ v: s.values[i], k })).filter((p) => p.v > 0);
+                    parts.forEach((p, j) => {
+                        const a = X(at); const b = X(at + p.v); at += p.v;
+                        const last = j === parts.length - 1;
+                        const m = sv('path', { d: barPath(a + (j ? 1 : 0), Math.max(a + (j ? 1 : 0) + 0.5, b - (last ? 0 : 1)), barTop, thick, last), class: 'parley-chart-mark' }); m.dataset.s = slot(p.k);
+                        row.append(m); marks.push(m);
+                    });
+                    row.append(sv('text', { x: X(at) + 6, y: barTop + thick / 2 + 4, class: 'parley-chart-value' }, valued(at)));
+                } else {
+                    c.series.forEach((s, k) => {
+                        const v = s.values[i]; const y = barTop + k * (thick + 2);
+                        const m = sv('path', { d: v === 0 ? '' : barPath(zero, X(v), y, thick, true), class: 'parley-chart-mark' }); m.dataset.s = slot(k);
+                        row.append(m); marks.push(m);
+                        if (tips) row.append(sv('text', { x: v < 0 ? X(v) - 6 : X(v) + 6, y: y + thick / 2 + 4, class: 'parley-chart-value', ...(v < 0 ? { 'text-anchor': 'end' } : {}) }, valued(v)));
+                    });
+                }
+                row.append(sv('line', { x1: zero, x2: zero, y1: barTop - 3, y2: barTop + groupH + 3, class: 'parley-chart-base' }));
+                const band = hit(sv('rect', { x: 0, y: top, width: W, height: rowH, class: 'parley-chart-hit' }), i);
+                row.append(band);
+                g.append(row);
+                const totalV = ends[i].reduce((a, b) => a + b, 0);
+                items.push({ marks, x: Math.min(W - 20, Math.max(zero, X(stacked ? totalV : Math.max(...ends[i])))), y: barTop - 4, head: label,
+                    rows: [...c.series.map((s, k) => ({ s: slot(k), name: single ? '' : s.name, value: valued(s.values[i]) })), ...(stacked && !single ? [{ s: '0', name: said(words, 'chart-total'), value: valued(totalV) }] : [])] });
+            });
+            svg.append(g);
+            return { svg };
+        }
+        /* A bar from a to b, its data end rounded, square at the baseline. */
+        function barPath(a, b, y, h, round) {
+            const left = b < a; const len = Math.abs(b - a); const r = round ? Math.min(4, h / 2, len) : 0; const d = left ? -1 : 1;
+            return `M${a} ${y}H${b - d * r}${r ? `Q${b} ${y} ${b} ${y + r}` : ''}V${y + h - r}${r ? `Q${b} ${y + h} ${b - d * r} ${y + h}` : ''}H${a}Z`;
+        }
+        function drawLine(W) {
+            const narrow = W < 460;
+            const H = narrow ? 220 : 280;
+            const flat = c.series.flatMap((s) => s.values);
+            let lo = Math.min(...flat); let hi = Math.max(...flat);
+            if (lo >= 0 && lo <= hi * 0.5) lo = 0;
+            const ticks = niceTicks(lo, hi, narrow ? 4 : 5);
+            const tlo = ticks[0]; const thi = ticks.at(-1); const span = thi - tlo;
+            const tickText = ticks.map((v) => tick(v, span));
+            const top = c.y || (c.unit && single) ? 26 : 12;
+            const left = Math.max(...tickText.map((s) => textW(s, 11))) + 10;
+            const bottom = c.x ? 44 : 26;
+            const right = 14;
+            const pw = W - left - right; const ph = H - top - bottom;
+            const n = c.labels.length; const step = pw / (n - 1);
+            const X = (i) => left + i * step; const Y = (v) => top + ph - ((v - tlo) / span) * ph;
+            const svg = sv('svg', { viewBox: `0 0 ${W} ${H}`, width: '100%', class: 'parley-chart-svg' });
+            const grid = sv('g', { class: 'parley-chart-grid' });
+            ticks.forEach((v, k) => { grid.append(sv('line', { x1: left, x2: W - right, y1: Y(v), y2: Y(v), ...(v === 0 || k === 0 ? { class: 'parley-chart-base' } : {}) }), sv('text', { x: left - 8, y: Y(v) + 4, 'text-anchor': 'end', class: 'parley-chart-tick' }, tickText[k])); });
+            if (c.y || (c.unit && single)) grid.append(sv('text', { x: 0, y: 12, class: 'parley-chart-tick' }, c.y || c.unit));
+            const every = Math.max(1, Math.ceil((Math.max(...c.labels.map((l) => textW(l, 11))) + 12) / step));
+            c.labels.forEach((l, i) => { if (i % every === 0 || (i === n - 1 && (n - 1) % every >= every / 2 + 0.5)) grid.append(sv('text', { x: X(i), y: top + ph + 18, 'text-anchor': i === 0 && left < textW(l, 11) / 2 ? 'start' : i === n - 1 ? 'end' : 'middle', class: 'parley-chart-tick' }, l)); });
+            if (c.x) grid.append(sv('text', { x: left + pw / 2, y: H - 4, 'text-anchor': 'middle', class: 'parley-chart-tick' }, c.x));
+            const cross = sv('line', { x1: 0, x2: 0, y1: top, y2: top + ph, class: 'parley-chart-cross' }); cross.setAttribute('visibility', 'hidden');
+            const lines = sv('g'); const dots = sv('g');
+            const perPoint = c.labels.map(() => []);
+            c.series.forEach((s, k) => {
+                const pts = s.values.map((v, i) => `${X(i).toFixed(1)} ${Y(v).toFixed(1)}`);
+                if (single) { const a = sv('path', { d: `M${pts.join('L')}L${X(n - 1)} ${Y(Math.max(tlo, 0))}L${X(0)} ${Y(Math.max(tlo, 0))}Z`, class: 'parley-chart-area' }); a.dataset.s = slot(k); lines.append(a); }
+                const p = sv('path', { d: `M${pts.join('L')}`, class: 'parley-chart-line', pathLength: 1 }); p.dataset.s = slot(k); lines.append(p);
+                s.values.forEach((v, i) => {
+                    const dot = sv('circle', { cx: X(i), cy: Y(v), r: 4, class: 'parley-chart-dot' }); dot.dataset.s = slot(k);
+                    if (n > 24 && i !== n - 1) dot.dataset.quiet = 'true';
+                    dots.append(dot); perPoint[i].push(dot);
+                });
+            });
+            if (single) { const v = c.series[0].values[n - 1]; dots.append(sv('text', { x: X(n - 1), y: Y(v) - 10, 'text-anchor': 'end', class: 'parley-chart-value' }, valued(v))); }
+            const hits = sv('g');
+            c.labels.forEach((l, i) => {
+                hits.append(hit(sv('rect', { x: X(i) - step / 2, y: top, width: step, height: ph, class: 'parley-chart-hit' }), i));
+                items.push({ marks: perPoint[i], x: X(i), y: Math.min(...c.series.map((s) => Y(s.values[i]))) - 8, head: l,
+                    cross: () => { cross.setAttribute('x1', X(i)); cross.setAttribute('x2', X(i)); cross.setAttribute('visibility', 'visible'); }, uncross: () => cross.setAttribute('visibility', 'hidden'),
+                    rows: c.series.map((s, k) => ({ s: slot(k), name: single ? '' : s.name, value: valued(s.values[i]) })) });
+            });
+            svg.append(grid, cross, lines, dots, hits);
+            return { svg };
+        }
+        function drawPie(W) {
+            const S = Math.min(W, 200); const R = S / 2 - 2; const r0 = c.type === 'donut' ? R * 0.6 : 0;
+            const svg = sv('svg', { viewBox: `0 0 ${S} ${S}`, width: S, height: S, class: 'parley-chart-svg parley-chart-round' });
+            const cx = S / 2; const cy = S / 2;
+            const at = (a, r) => `${(cx + r * Math.cos(a)).toFixed(2)} ${(cy + r * Math.sin(a)).toFixed(2)}`;
+            let a0 = -Math.PI / 2;
+            const vals = c.series[0].values;
+            const g = sv('g');
+            vals.forEach((v, i) => {
+                if (!(v > 0)) { items.push({ marks: [], x: cx, y: cy, head: labelOf(i), rows: [{ s: slot(i, true), name: '', value: `${valued(v)} · ${pct(v)}` }] }); return; }
+                const a1 = a0 + (v / total) * Math.PI * 2;
+                const whole = v / total > 0.9999;
+                const big = a1 - a0 > Math.PI ? 1 : 0;
+                const d = whole
+                    ? `M${at(-Math.PI / 2, R)}A${R} ${R} 0 1 1 ${at(Math.PI / 2, R)}A${R} ${R} 0 1 1 ${at(-Math.PI / 2, R)}Z${r0 ? `M${at(-Math.PI / 2, r0)}A${r0} ${r0} 0 1 0 ${at(Math.PI / 2, r0)}A${r0} ${r0} 0 1 0 ${at(-Math.PI / 2, r0)}Z` : ''}`
+                    : r0 ? `M${at(a0, R)}A${R} ${R} 0 ${big} 1 ${at(a1, R)}L${at(a1, r0)}A${r0} ${r0} 0 ${big} 0 ${at(a0, r0)}Z`
+                        : `M${cx} ${cy}L${at(a0, R)}A${R} ${R} 0 ${big} 1 ${at(a1, R)}Z`;
+                const m = hit(sv('path', { d, class: 'parley-chart-mark parley-chart-slice', 'fill-rule': 'evenodd' }), i); m.dataset.s = slot(i, true);
+                g.append(m);
+                const mid = (a0 + a1) / 2; const rr = (R + r0) / 2 || R * 0.6;
+                items.push({ marks: [m], x: cx + rr * Math.cos(mid), y: cy + rr * Math.sin(mid) - 6, head: labelOf(i), rows: [{ s: slot(i, true), name: '', value: `${valued(v)} · ${pct(v)}` }] });
+                a0 = a1;
+            });
+            svg.append(g);
+            if (r0) svg.append(sv('text', { x: cx, y: cy + 2, 'text-anchor': 'middle', class: 'parley-chart-total' }, valued(total)), sv('text', { x: cx, y: cy + 20, 'text-anchor': 'middle', class: 'parley-chart-tick' }, said(words, 'chart-total')));
+            return { svg };
+        }
+        /* At its width; drawn again when it changes (a phone turned, a panel opened). */
+        const body = el('div', 'parley-chart-body');
+        body.append(stage);
+        if (legend) body.append(legend);
+        fig.append(head, body, table);
+        const watch = !pie && typeof globalThis.ResizeObserver === 'function';
+        draw(pie ? 200 : 560, !watch);
+        if (watch) {
+            let first = true;
+            new globalThis.ResizeObserver((entries) => {
+                const w = Math.round(entries[0]?.contentRect?.width ?? 0);
+                if (w > 40 && (first || Math.abs(w - width) > 2)) draw(w, first);
+                if (w > 40) first = false;
+            }).observe(stage);
+        }
+        return fig;
+    }
+    /* RESULT CARDS: a grid of small cards, each its value large, its title, its state as a badge, a note. */
+    function cards(block) {
+        const set = block.text.length <= 20_000 ? cardsOf(block.text) : null;
+        if (!set) return code(block);
+        const box = el('section', 'parley-cards');
+        if (set.heading) box.append(el('p', 'parley-cards-head', set.heading));
+        const grid = el('ul', 'parley-cards-grid');
+        for (const one of set.cards) {
+            const li = el('li', 'parley-result'); if (one.state) li.dataset.state = one.state;
+            const top = el('div', 'parley-result-top');
+            top.append(el('span', 'parley-result-title', one.title));
+            if (one.state) { const b = el('span', 'parley-badge', said(words, `badge-${one.state}`)); b.dataset.kind = one.state; top.append(b); }
+            li.append(top, el('span', 'parley-result-value', one.value));
+            if (one.note) li.append(el('span', 'parley-result-note', one.note));
+            grid.append(li);
+        }
+        box.append(grid);
+        return box;
+    }
     function blocks(list, into) {
         for (const b of list) into.append(block(b));
         return into;
@@ -1657,7 +2096,10 @@ function painter(ctx) {
         if (b.t === 'h') { const h = el(`h${Math.min(6, b.level + 2)}`, `parley-h parley-h${b.level}`); return inlines(b.c, h); }
         if (b.t === 'hr') return el('hr');
         if (b.t === 'math') return formula(b);
-        if (b.t === 'code') return b.lang === 'mermaid' ? drawing(b) : b.lang === 'family' ? family(b) : b.lang === 'picture' ? zoned(b) : code(b);
+        if (b.t === 'code') {
+            if (b.lang === 'mermaid') { const c = b.text.length <= 20_000 ? mermaidChart(b.text) : null; return c ? chartFigure(c) : drawing(b); }
+            return b.lang === 'chart' ? chart(b) : b.lang === 'cards' ? cards(b) : b.lang === 'family' ? family(b) : b.lang === 'picture' ? zoned(b) : code(b);
+        }
         if (b.t === 'quote') return blocks(b.c, el('blockquote'));
         if (b.t === 'alert') {
             const box = el('div', 'parley-callout'); box.dataset.kind = b.kind; box.setAttribute('role', 'note');
@@ -2847,7 +3289,7 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
         if (item.kind === 'show' && (item.files?.length || item.gallery?.length || item.file) && [...(item.files ?? []), ...(item.gallery ?? []), ...(item.file ? [item.file] : [])].some((f) => f && String(item.text ?? '').trim() === String(f.name ?? '').split('/').pop())) return [];
         if (!rich) return [el('p', 'parley-text', maskSecrets(item.text))];
         const refs = new Map(item.refs.map((r) => [r.path, r.open]));
-        const paint2 = painter({ words, refs, open, picture: picture ? pictureUrl : null, pictureUrl, diagram, highlight, cache, urls, zoom: zoomFrom, math: formula, targets: zoneRefs, secrets: liveSecrets, forget,
+        const paint2 = painter({ words, locale, refs, open, picture: picture ? pictureUrl : null, pictureUrl, diagram, highlight, cache, urls, zoom: zoomFrom, math: formula, targets: zoneRefs, secrets: liveSecrets, forget,
             ...(send ? {
                 /* "Talk about it": said at once, with what it is about. */
                 talk: (about) => { void say(said(words, 'talk-text', { name: about.label }), undefined, undefined, undefined, { about }); },

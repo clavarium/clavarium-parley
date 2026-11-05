@@ -98,10 +98,13 @@ test('a mermaid drawing is shown as a picture, never as markup; a failure shows 
     const made = globalThis.URL.createObjectURL;
     globalThis.URL.createObjectURL = (blob) => { urls.push(blob.type); return `blob:test/${urls.length}`; };
     t.after(() => { globalThis.URL.createObjectURL = made; });
-    const ok = await shown(t, '```mermaid\npie title Disk\n"snaps" : 1.5\n```', { diagram: async () => '<svg xmlns="http://www.w3.org/2000/svg"><text>pie</text></svg>' });
+    const ok = await shown(t, '```mermaid\nflowchart LR\nA --> B\n```', { diagram: async () => '<svg xmlns="http://www.w3.org/2000/svg"><text>flow</text></svg>' });
     await settle();
     const img = ok.said.querySelector('img');
     assert.equal(img.src, 'blob:test/1'); assert.deepEqual(urls, ['image/svg+xml']);
+    const pie = await shown(t, '```mermaid\npie title Disk\n"snaps" : 1.5\n```', { diagram: async () => { throw new Error('a pie is drawn here, in the screen\'s colours'); } });
+    await settle();
+    assert.ok(pie.said.querySelector('.parley-chart') && !pie.said.querySelector('img'), 'a Mermaid pie: a chart of its own');
     const bad = await shown(t, '```mermaid\ngraph TD\nA-->B\nclick A "javascript:alert(1)"\n```', { diagram: async () => { throw new Error('no'); } });
     await settle();
     assert.equal(bad.said.querySelector('img'), null);

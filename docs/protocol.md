@@ -373,7 +373,7 @@ brackets of a picture is its title, under it. Files shown at once are one
 gallery, each its title under it (no title: the name of the file without its
 extension and dashes); the name of the file on hover and in the detailed view.
 
-Three kinds of block are drawn by the library itself, and the agent is told to
+Five kinds of block are drawn by the library itself, and the agent is told to
 use them only when the topic calls for it:
 
 - **Formulas**: `$...$` and `\(...\)` in a line, `$$...$$` and `\[...\]` on
@@ -396,6 +396,24 @@ use them only when the topic calls for it:
   zone a line: a label (plain, `[label](ref)`, or `?`), `x y w h` as fractions
   of the picture from its top left, and a line about it; twenty at most. The
   picture is shown only from a path the application opens, as any picture.
+- **A chart**, ```chart: a few lines `key: value` (`type: bar|line|pie|donut|stacked`,
+  `title`, `unit`, `x`, `y`), then `data:` and one `Label: 12` a line; several
+  series: a small table, its first row the labels along x (`| Mon | Tue`),
+  then one row a series, its name first (`Visits | 12 | 15`). Numbers as
+  people write them (`5.7`, `5,7`, `1 234`, `12 %`, the unit after them);
+  60 points, 6 series at most; a pie's slices past seven are one "Other". Drawn
+  as SVG node by node at the width it is given, in the screen's colours: the
+  series take `--parley-s1`...`--parley-s6` in that order (`--parley-s0`:
+  "Other"), every word the text's colours. A value on hover, a tap or the
+  arrow keys; a legend from two series; its numbers as a table on a button;
+  read by a screen reader as a summary. A Mermaid `pie` or `xychart-beta` is
+  read the same way and drawn so; anything else of Mermaid goes to `diagram`.
+- **Result cards**, ```cards: one card a line, `Title | value | state |
+  note`, the state one of `ok todo blocked warn` (the badges' colours) and
+  the note optional; an optional first line `# Heading`; twelve at most. A
+  grid of small cards, the value large.
+
+A block of any of these that cannot be read is shown as code, as written.
 
 A tap on a person or a zone opens a small card: its label, its line, a button
 for its ref when the application names one (`refs: { label(ref), open(ref) }`:

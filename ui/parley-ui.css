@@ -941,3 +941,94 @@ mark.parley-found[data-now="true"] { outline: 2px solid var(--parley-ask); }
 .parley .parley-auto-wait { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; padding: 2px 12px 8px; font-size: .75rem; color: var(--parley-dim); }
 .parley .parley-auto-wait button { min-height: 28px; padding: 2px 9px; border-radius: 999px; font-size: .75rem; }
 .parley .parley-auto-wait button[aria-pressed="true"] { color: var(--parley-action); border-color: var(--parley-action); }
+/* CHARTS (```chart, a Mermaid pie or xychart): SVG in the screen's colours. The series take
+   --parley-s1...s6 in this order, never by rank (the charter's categorical palette, one step per
+   theme); --parley-s0 is "Other". Marks carry the colour; every word stays in the text's colours. */
+.parley {
+  --parley-s1: #2a78d6; --parley-s2: #eb6834; --parley-s3: #1baf7a; --parley-s4: #eda100; --parley-s5: #e87ba4; --parley-s6: #008300; --parley-s0: #a4adb8;
+}
+@media (prefers-color-scheme: dark) {
+  .parley:not([data-theme="light"]) { --parley-s1: #3987e5; --parley-s2: #d95926; --parley-s3: #199e70; --parley-s4: #c98500; --parley-s5: #d55181; --parley-s6: #008300; --parley-s0: #5b6878; }
+}
+.parley[data-theme="dark"] { --parley-s1: #3987e5; --parley-s2: #d95926; --parley-s3: #199e70; --parley-s4: #c98500; --parley-s5: #d55181; --parley-s6: #008300; --parley-s0: #5b6878; }
+.parley-chart [data-s="1"] { --parley-c: var(--parley-s1); } .parley-chart [data-s="2"] { --parley-c: var(--parley-s2); } .parley-chart [data-s="3"] { --parley-c: var(--parley-s3); }
+.parley-chart [data-s="4"] { --parley-c: var(--parley-s4); } .parley-chart [data-s="5"] { --parley-c: var(--parley-s5); } .parley-chart [data-s="6"] { --parley-c: var(--parley-s6); } .parley-chart [data-s="0"] { --parley-c: var(--parley-s0); }
+.parley-chart { margin: 0; max-width: 46rem; padding: .7em .9em .8em; border: 1px solid var(--parley-line); border-radius: 12px; background: var(--parley-bg); }
+.parley-chart-head { display: flex; align-items: baseline; justify-content: space-between; gap: .6em; margin-bottom: .55em; }
+.parley-chart-title { font-weight: 600; line-height: 1.3; }
+.parley-chart-unit { margin-left: .45em; font-weight: 400; font-size: .85em; color: var(--parley-dim); }
+.parley-chart-unit::before { content: "· "; }
+.parley .parley-chart-toggle { flex: none; min-height: 2em; padding: 0 .55em; border: 0; border-radius: 6px; background: transparent; color: var(--parley-dim); font-size: .8em; font-weight: 600; cursor: pointer; }
+.parley .parley-chart-toggle:hover, .parley .parley-chart-toggle:focus-visible { color: var(--parley-text); background: color-mix(in srgb, var(--parley-text) 7%, transparent); outline: none; }
+.parley-chart-body { display: flex; flex-direction: column; gap: .7em; }
+.parley-chart-stage { position: relative; min-width: 0; border-radius: 6px; outline: none; }
+.parley-chart-stage:focus-visible { box-shadow: 0 0 0 2px var(--parley-action); }
+.parley-chart-svg { display: block; overflow: visible; font-family: inherit; -webkit-tap-highlight-color: transparent; }
+.parley-chart-svg text { font-family: inherit; }
+.parley-chart-label { font-size: 13px; fill: var(--parley-text); }
+.parley-chart-value { font-size: 12px; font-weight: 600; fill: var(--parley-text); font-variant-numeric: tabular-nums; }
+.parley-chart-tick { font-size: 11px; fill: var(--parley-dim); font-variant-numeric: tabular-nums; }
+.parley-chart-total { font-size: 17px; font-weight: 700; fill: var(--parley-text); font-variant-numeric: tabular-nums; }
+.parley-chart-grid line { stroke: color-mix(in srgb, var(--parley-line) 70%, transparent); stroke-width: 1; shape-rendering: crispEdges; }
+.parley-chart-base, .parley-chart-grid line.parley-chart-base { stroke: var(--parley-line); stroke-width: 1; shape-rendering: crispEdges; }
+.parley-chart-mark { fill: var(--parley-c); transition: opacity .15s; }
+.parley-chart-slice { stroke: var(--parley-bg); stroke-width: 2; stroke-linejoin: round; }
+.parley-chart-line { fill: none; stroke: var(--parley-c); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.parley-chart-area { fill: var(--parley-c); opacity: .1; stroke: none; }
+.parley-chart-dot { fill: var(--parley-c); stroke: var(--parley-bg); stroke-width: 2; }
+.parley-chart-dot[data-quiet="true"] { opacity: 0; }
+.parley-chart-dot[data-on="true"] { opacity: 1; r: 5.5px; }
+.parley-chart-cross { stroke: var(--parley-dim); stroke-width: 1; stroke-dasharray: 3 3; }
+.parley-chart-hit { fill: transparent; cursor: pointer; }
+/* The one pointed at stands out: the others step back. */
+.parley-chart[data-focus="true"] .parley-chart-mark:not([data-on="true"]) { opacity: .35; }
+.parley-chart-tip { position: absolute; z-index: 2; transform: translate(-50%, calc(-100% - 8px)); pointer-events: none; min-width: 6em; max-width: 16em; padding: .4em .6em; border-radius: 8px; border: 1px solid var(--parley-line);
+  background: var(--parley-agent); color: var(--parley-text); box-shadow: 0 4px 14px rgb(0 0 0 / .18); font-size: .82em; line-height: 1.35; white-space: nowrap; }
+.parley-chart-tip[data-below="true"] { transform: translate(-50%, 26px); }
+.parley-chart-tip-head { font-weight: 600; color: var(--parley-dim); margin-bottom: .1em; overflow: hidden; text-overflow: ellipsis; }
+.parley-chart-tip-row { display: flex; align-items: center; gap: .45em; }
+.parley-chart-tip-row strong { margin-left: auto; padding-left: .6em; font-variant-numeric: tabular-nums; }
+.parley-chart-tip-row:only-of-type strong { margin-left: 0; padding-left: 0; font-size: 1.1em; }
+.parley-chart-key { flex: none; display: inline-block; width: .7em; height: .7em; border-radius: 3px; background: var(--parley-c); }
+.parley-chart-key-line { width: 1em; height: 2px; border-radius: 1px; }
+.parley-chart-legend { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: .3em 1.1em; font-size: .85em; color: var(--parley-dim); }
+.parley-chart-legend li { display: inline-flex; align-items: center; gap: .45em; min-width: 0; }
+.parley-chart-legend li[data-on="true"] { color: var(--parley-text); }
+/* A pie: its slices beside it on a wide screen, under it on a narrow one; each with its value and share. */
+.parley-chart[data-type="pie"] .parley-chart-body, .parley-chart[data-type="donut"] .parley-chart-body { flex-direction: row; flex-wrap: wrap; align-items: center; justify-content: center; gap: 1em 2.2em; }
+.parley-chart[data-type="pie"] .parley-chart-stage, .parley-chart[data-type="donut"] .parley-chart-stage { flex: none; }
+.parley-chart[data-type="pie"] .parley-chart-legend, .parley-chart[data-type="donut"] .parley-chart-legend { flex: 0 1 24em; display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: center; gap: .4em .8em; font-size: .9em; color: var(--parley-text); }
+.parley-chart[data-type="pie"] .parley-chart-legend li, .parley-chart[data-type="donut"] .parley-chart-legend li { display: contents; cursor: pointer; }
+.parley-chart-legend .parley-chart-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.parley-chart-num { text-align: right; font-weight: 600; font-variant-numeric: tabular-nums; }
+.parley-chart-pct { text-align: right; color: var(--parley-dim); font-variant-numeric: tabular-nums; min-width: 3.2em; }
+.parley-chart[data-focus="true"] .parley-chart-legend li:not([data-on="true"]) > * { opacity: .55; }
+.parley-chart-table { margin-top: .1em; }
+.parley-chart-table td.parley-chart-cell { text-align: right; font-variant-numeric: tabular-nums; min-width: 4em; }
+/* They grow in once, briefly; not at all for whoever asked for less motion. */
+.parley-chart-svg[data-grow="true"] .parley-chart-row .parley-chart-mark { transform-box: fill-box; transform-origin: left center; animation: parley-chart-grow .5s cubic-bezier(.2, .7, .2, 1) both; }
+.parley-chart-svg[data-grow="true"] .parley-chart-line { stroke-dasharray: 1; animation: parley-chart-draw .7s ease-out both; }
+.parley-chart-svg[data-grow="true"] .parley-chart-area, .parley-chart-svg[data-grow="true"] .parley-chart-dot, .parley-chart-svg[data-grow="true"] .parley-chart-value { animation: parley-chart-fade .4s .35s ease-out both; }
+.parley-chart-svg[data-grow="true"] .parley-chart-slice { transform-box: view-box; transform-origin: center; animation: parley-chart-turn .55s cubic-bezier(.2, .7, .2, 1) both; }
+@keyframes parley-chart-grow { from { transform: scaleX(0); } }
+@keyframes parley-chart-draw { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
+@keyframes parley-chart-fade { from { opacity: 0; } }
+@keyframes parley-chart-turn { from { transform: scale(.85) rotate(-20deg); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .parley-chart-svg[data-grow="true"] * { animation: none !important; } .parley-chart-mark { transition: none; } }
+
+/* RESULT CARDS (```cards): a grid of small cards, a value large, its state as a badge. */
+.parley-cards { max-width: 46rem; }
+.parley-cards-head { margin: 0 0 .4em; font-size: .75em; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--parley-dim); }
+.parley-cards-grid { list-style: none; margin: 0; padding: 0 !important; display: grid; grid-template-columns: repeat(auto-fill, minmax(9.5rem, 1fr)); gap: .5em; }
+.parley-result { --parley-c: var(--parley-line); display: flex; flex-direction: column; gap: .15em; min-width: 0; margin: 0 !important; padding: .65em .8em .7em; border: 1px solid var(--parley-line); border-radius: 12px; background: var(--parley-bg); box-shadow: inset 0 3px 0 -1px var(--parley-c); }
+.parley-result[data-state="ok"] { --parley-c: var(--parley-tip); }
+.parley-result[data-state="todo"] { --parley-c: var(--parley-note); }
+.parley-result[data-state="blocked"] { --parley-c: var(--parley-caution); }
+.parley-result[data-state="warn"] { --parley-c: var(--parley-warning); }
+.parley-result-top { display: flex; align-items: center; justify-content: space-between; gap: .4em; }
+.parley-result-value { order: 0; margin-top: .1em; font-size: 1.45em; font-weight: 700; line-height: 1.2; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; min-width: 0; }
+.parley-result .parley-badge { flex: none; font-size: .72em; }
+.parley-result-title { min-width: 0; font-size: .85em; font-weight: 600; color: var(--parley-dim); line-height: 1.3; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.parley-result-note { font-size: .8em; color: var(--parley-dim); line-height: 1.3; opacity: .9; }
+@container parley (max-width: 26rem) { .parley-cards-grid { grid-template-columns: 1fr 1fr; } .parley-result-value { font-size: 1.25em; } }
+.parley .parley-md .parley-chart-legend li, .parley .parley-md .parley-chart-legend li > *, .parley .parley-md .parley-result, .parley .parley-md .parley-result > * { margin-top: 0; }
