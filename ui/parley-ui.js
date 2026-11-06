@@ -263,7 +263,7 @@ export const KEYS = Object.freeze(['send', 'placeholder', 'empty', 'view', 'simp
     'copy', 'copied', 'copy-md', 'copy-rich', 'see-details', 'see-more', 'see-less', 'note', 'tip', 'important', 'warning', 'caution', 'badge-ok', 'badge-todo', 'badge-blocked', 'badge-warn',
     'waits-you', 'waits-you-note', 'busy', 'pulse', 'state-sent', 'state-read', 'state-working', 'state-done', 'sent-at', 'read-at', 'done-at',
     'reply', 'to-card', 'other-answer', 'group-count', 'group-step', 'group-next', 'group-back', 'group-review', 'group-check', 'group-modify', 'group-send', 'group-several', 'group-own', 'group-missing',
-    'replying', 'not-a-reply', 'in-reply', 'closed', 'you', 'agent', 'drop', 'picture', 'diagram', 'not-shown', 'grouped', 'issue-machine', 'issue-fixed', 'issue-details', 'sent-after-retry', 'auto-wait', 'dictation-joining', 'room-fold', 'room-a', 'room-open', 'ai-fold',
+    'replying', 'not-a-reply', 'in-reply', 'closed', 'you', 'agent', 'drop', 'picture', 'diagram', 'not-shown', 'grouped', 'issue-machine', 'issue-fixed', 'issue-details', 'sent-after-retry', 'auto-wait', 'dictation-joining', 'room-fold', 'room-a', 'room-open', 'ai-fold', 'replying-go',
     'zoom-in', 'zoom-out', 'zoom-actual', 'zoom-fit', 'zoom-actual-short', 'zoom-fit-short', 'close', 'previous', 'next', 'search', 'found', 'newest', 'dictation', 'auto-send-off',
     'react', 'react-remove', 'react-agree', 'react-go', 'react-disagree', 'react-unclear', 'react-stop', 'react-redo', 'react-later', 'react-love',
     'react-agree-hint', 'react-go-hint', 'react-disagree-hint', 'react-unclear-hint', 'react-stop-hint', 'react-redo-hint', 'react-later-hint', 'react-love-hint',
@@ -4641,7 +4641,10 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
         if (!replyTo) { replyRow.replaceChildren(); return; }
         const x = button('×', 'parley-unreply', () => { dismissed.add(replyTo.id); replyTo = null; paintReply(); stayIn(); });
         x.title = said(words, 'not-a-reply'); x.setAttribute('aria-label', x.title);
-        replyRow.replaceChildren(el('span', 'parley-replying-text', said(words, 'replying', { question: replyTo.text })), x);
+        /* What it answers, one tap away (06-11: « il faut que je cherche »): the thread goes to the question. */
+        const what = button(said(words, 'replying', { question: replyTo.text }), 'parley-replying-text', () => { pointAt(replyTo.id); });
+        what.title = said(words, 'replying-go'); 
+        replyRow.replaceChildren(what, x);
     }
     /* ---- the box: the keyboard, the ready answers, the voice ---- */
     const mediaQuery = (q) => typeof matchMedia === 'function' && matchMedia(q).matches;

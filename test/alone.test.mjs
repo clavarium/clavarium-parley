@@ -108,6 +108,9 @@ test('alone, on a page: lines of the application by their neutral level; a run o
     assert.deepEqual(acted, ['fix']);
     /* The one question waiting: what is typed answers it, unless the tag is taken away. */
     assert.match(root.querySelector('.parley-replying').textContent, /In reply to: Which day\?/);
+    /* One tap on it: the thread goes to the question (06-11). */
+    root.querySelector('.parley-replying-text').click();
+    assert.ok(root.querySelectorAll('.parley-said').some((b) => b.dataset.found === 'true'), 'the question marked, in sight');
     const box = root.querySelector('.parley-box');
     box.value = 'Tuesday';
     root.querySelector('.parley-form').requestSubmit();

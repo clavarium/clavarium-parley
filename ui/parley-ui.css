@@ -382,7 +382,8 @@
 .parley-said[data-closed="true"] .parley-choices button { opacity: .55; }
 .parley-replying { display: flex; align-items: center; gap: .3em; max-width: 100%; align-self: flex-start; padding: 0 0 0 .8em; border: 1px solid var(--parley-line); border-left: 3px solid var(--parley-ask); border-radius: 8px; font-size: .9em; color: var(--parley-text); margin-bottom: calc(var(--parley-gap) * -.4); }
 .parley-replying[hidden] { display: none; }
-.parley-replying-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.parley-replying-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 1; text-align: left; background: none; border: 0; padding: 0; color: inherit; font: inherit; cursor: pointer; }
+.parley-replying-text:hover { text-decoration: underline; text-underline-offset: 2px; }
 .parley .parley-unreply { min-height: 2.6em; min-width: 2.6em; padding: 0; border: 0; background: transparent; color: var(--parley-dim); font-size: 1.1em; }
 /* ---- where each message of the person is: a small sign in its corner ---- */
 .parley-said[data-from="person"] { padding-right: 2em; }

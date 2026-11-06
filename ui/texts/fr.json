@@ -199,6 +199,7 @@
   "issue-details": "détails",
   "room-fold": "Dans le salon {room} · {count}",
   "ai-fold": "Entre les IA · {count} → {names}",
+  "replying-go": "Voir la question",
   "room-a": "un salon",
   "room-open": "Ouvrir le salon",
   "room-fold-topic": "Dans le salon {room} · {count} — « {topic} »",
