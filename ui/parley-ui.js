@@ -2741,7 +2741,8 @@ export const REQUEST_BATCH_MS = 60 * 1000;
 export const REQUEST_HOLD_MAX = 10;
 /* Unfolded, so many lines of the text; the rest in "See all". */
 export const REQUEST_QUOTE_LINES = 6;
-const REQUEST_QUOTE_MAX = 4000;
+/* A mail is approved as it will leave: its whole text, bounded (06-11: Tether cut it at 600). */
+export const REQUEST_QUOTE_MAX = 20000;
 /* A button pressed: its buttons stay off this long while the application answers (then given back if nothing came). */
 const REQUEST_GONE_MS = 15 * 1000;
 /* THE APPLICATION'S WORDS, IN THE READER'S (0.17.70). Any text of a request -- its title, `sub` or a

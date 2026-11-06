@@ -4,7 +4,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { fakePage } from './fake-dom.mjs';
-import { mount, view, requestOf, requestCard, requestBlock, lineText, KEYS, REQUEST_BATCH_MS } from '../ui/parley-ui.js';
+import { mount, view, requestOf, requestCard, requestBlock, lineText, KEYS, REQUEST_BATCH_MS, REQUEST_QUOTE_MAX } from '../ui/parley-ui.js';
 import { texts } from '../host/parley-host.mjs';
 
 const settle = () => new Promise((r) => setTimeout(r, 5));
@@ -287,4 +287,10 @@ test('the words of the lines are in both dictionaries', () => {
         assert.ok(Object.hasOwn(en, key), key); assert.ok(Object.hasOwn(fr, key), key);
         if (!/^line-notice/.test(key)) assert.notEqual(fr[key], en[key], `${key} is said in French`);
     }
+});
+
+test('a long mail on a request is kept whole, up to its bound (06-11: cut at 600, its end could not be read)', () => {
+    const text = `${'Une ligne assez longue pour un vrai mail.\n'.repeat(150)}La fin.`;
+    assert.ok(requestOf({ id: 'q', title: 'Send', quote: text }).quote.endsWith('La fin.'));
+    assert.equal(requestOf({ id: 'q', title: 'Send', quote: 'z'.repeat(REQUEST_QUOTE_MAX + 50) }).quote.length, REQUEST_QUOTE_MAX);
 });
