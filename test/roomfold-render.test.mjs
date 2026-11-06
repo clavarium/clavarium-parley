@@ -98,3 +98,24 @@ test('a room\'s thread is marked read by the application once its AIs have it: t
         assert.throws(() => new Parley(d).seen(), /Only a room/);
     } finally { rmSync(dir, { recursive: true, force: true }); }
 });
+
+test('in a room, a message for the person is marked, not tabbed « → Toi »; for the person and an AI, never folded (06-11)', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'parley-you-'));
+    try {
+        const d = join(dir, '.parley'); mkdirSync(d);
+        const room = new Parley(d, { room: true });
+        room.setSpeakers([{ id: 'me', name: 'Toi', kind: 'person' }, { id: 'msm', name: 'Main Sales', kind: 'ai' }]);
+        room.relay({ text: 'Pour toi.', by: { id: 'perso', name: 'Perso', kind: 'ai' }, to: ['me'] });
+        room.relay({ text: 'Pour vous deux.', by: { id: 'perso', name: 'Perso', kind: 'ai' }, to: ['me', 'msm'] });
+        room.relay({ text: 'Entre nous.', by: { id: 'perso', name: 'Perso', kind: 'ai' }, to: ['msm'] });
+        const read = room.read();
+        const [a, b, c] = read.messages.slice(-3);
+        assert.equal(a.toYou, true); assert.deepEqual(a.toNames, []);
+        assert.equal(b.toYou, true); assert.deepEqual(b.toNames, ['Main Sales']);
+        assert.equal(c.toYou, undefined); assert.deepEqual(c.toNames, ['Main Sales']);
+        const v = view(read, { words: fr });
+        const fold = v.rows.find((r) => r.type === 'aifold');
+        assert.deepEqual(fold.items.map((x) => x.text), ['Entre nous.'], 'only what is between the AIs folds');
+        assert.ok(v.rows.some((r) => r.text === 'Pour toi.' && r.toYou), 'for the person: in sight, marked');
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+});

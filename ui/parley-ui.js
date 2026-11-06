@@ -825,6 +825,8 @@ export function view(data, { words = {}, view: as = 'simple', now = Date.now(), 
             room: m.room && typeof m.room === 'object' && typeof m.room.id === 'string' ? { id: m.room.id, name: cut(m.room.name, 60) } : typeof m.room === 'string' ? { id: m.room, name: '' } : null,
             /* For some of them only: their names of the moment, on a small tab astride the message. */
             toNames: !person && Array.isArray(m.toNames) ? m.toNames.slice(0, 20).map((x) => cut(String(x), 40)).filter(Boolean) : [],
+            /* Said to the person among others (a room): marked as a mention is, a thin bar of colour (06-11). */
+            toYou: !person && m.toYou === true,
             tool: detailed && !person && agentTool ? String(agentTool) : '',
             /* What the person attached: by name, opened the application's way; its whole path in the detailed view. */
             files: (person && Array.isArray(m.files) ? m.files : []).slice(0, FILES_MAX).filter((f) => f && typeof f === 'object').map((f) => ({ path: String(f.path ?? ''), name: String(f.name || nameOf(f.path)), open: typeof f.open === 'string' ? f.open : null, shown: detailed ? String(f.path ?? '') : '', size: sizeText(f.size), picture: PICTURE.test(String(f.name || f.path || '')), ...(String(f.note ?? '').trim() ? { note: cut(String(f.note).replace(/\s+/g, ' ').trim(), 500) } : {}) })),
@@ -989,7 +991,7 @@ export function view(data, { words = {}, view: as = 'simple', now = Date.now(), 
            folded under one line, opened by a tap -- the person reads the answers, not every hand-over (06-11). */
         const ais = [];
         for (const row of rows) {
-            if (row.type === 'message' && row.from === 'agent' && row.by && !row.byBox && row.toNames?.length && !row.room) {
+            if (row.type === 'message' && row.from === 'agent' && row.by && !row.byBox && row.toNames?.length && !row.toYou && !row.room) {
                 const prev = ais.at(-1);
                 if (prev?.type === 'aifold') { prev.items.push(row); continue; }
                 ais.push({ type: 'aifold', key: `A:${row.id ?? row.key}`, items: [row] });
@@ -4145,6 +4147,7 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
             }
         }
         /* Whose words (a voice box) and for whom (#215): a small tab astride its top edge. */
+        if (item.toYou) bubble.dataset.forYou = 'true';
         if (item.toNames?.length) { const t = el('span', 'parley-tab parley-to', `\u2192 ${item.toNames.join(' \u00b7 ')}`); t.title = said(words, 'said-to', { names: item.toNames.join(', ') }); bubble.classList.add('parley-tabbed'); bubble.prepend(t); }
         /* Dictated: a small microphone, said in words to whoever does not see it. */
         if (item.dictated) { const d = el('span', 'parley-dictated'); d.title = said(words, 'dictated'); d.setAttribute('role', 'img'); d.setAttribute('aria-label', d.title); d.append(icon('mic', 'parley-sign')); bubble.append(d); }

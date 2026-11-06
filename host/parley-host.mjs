@@ -408,7 +408,9 @@ export class Parley {
             /* A box by its name and place; an AI or a person of one of its rooms by its name (06-11: an id showed instead). */
             const names = new Map([...this.rooms().flatMap((r) => r.members.map((x) => [x.id, x.name])), ...this.speakers().map((x) => [x.id, x.place ? `${x.name} \u00b7 ${x.place}` : x.name])]);
             const to = m.to.slice(0, SPEAKERS_MAX).map((x) => oneLine(x, 80)).filter(Boolean);
-            if (to.length) { entry.to = to; entry.toNames = to.map((id) => names.get(id) ?? id); }
+            /* For the person (06-11): not a « → Toi » tab, a mark on the message (toYou); the others by their names. */
+            const persons = new Set([...this.speakers(), ...this.rooms().flatMap((r) => r.members)].filter((x) => x.kind === 'person').map((x) => x.id));
+            if (to.length) { entry.to = to; entry.toNames = to.filter((id) => !persons.has(id)).map((id) => names.get(id) ?? id); if (to.some((id) => persons.has(id))) entry.toYou = true; }
         }
         /* In a room (#215): which AI wrote it (the application signs what it relays), and the message it answers. */
         if (this.#room && byOf(m.by)) entry.by = byOf(m.by);

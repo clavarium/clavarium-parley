@@ -1146,3 +1146,5 @@ mark.parley-found[data-now="true"] { outline: 2px solid var(--parley-ask); }
 .parley-who-person .parley-look { margin-right: .3em; }
 .parley-roomfold-signs { display: inline-flex; gap: 2px; margin-right: .4em; vertical-align: middle; }
 .parley-roomfold-signs .parley-look { margin-right: 0; }
+/* FOR YOU (06-11): in a room, what is said to the person is marked as a mention is -- a thin bar of colour, no label. */
+.parley-said[data-for-you="true"] { box-shadow: inset 3px 0 0 var(--parley-accent, #d4a017); padding-left: .75em; }
