@@ -24,7 +24,7 @@ async function shown(t, messages) {
 test('in a room, what the AIs say to one another is folded under one line; what is said to all stays in sight (06-11)', async (t) => {
     const messages = [
         { from: 'person', id: 'p1', at: at(1), kind: 'say', text: 'Regarde les autres conversations.', refs: [], choices: [] },
-        { from: 'agent', id: 'a1', at: at(2), kind: 'say', text: 'Bonjour, quels sujets couvres-tu ?', by: { id: 'thomas', name: 'Thomas', kind: 'ai' }, to: ['msm'], toNames: ['Main MSM'], refs: [], choices: [] },
+        { from: 'agent', id: 'a1', at: at(2), kind: 'say', text: 'Bonjour, quels sujets couvres-tu ?', by: { id: 'thomas', name: 'Thomas', kind: 'ai', look: { initial: 'M', hue: 40 } }, to: ['msm'], toNames: ['Main MSM'], refs: [], choices: [] },
         { from: 'agent', id: 'a2', at: at(3), kind: 'say', text: 'Bonjour, quels sujets couvres-tu ?', by: { id: 'thomas', name: 'Thomas', kind: 'ai' }, to: ['perso'], toNames: ['Main Perso'], refs: [], choices: [] },
         { from: 'agent', id: 'a3', at: at(4), kind: 'say', text: 'J’ai demandé aux deux, je te fais une synthèse.', by: { id: 'thomas', name: 'Thomas', kind: 'ai' }, refs: [], choices: [] },
     ];
@@ -41,6 +41,9 @@ test('in a room, what the AIs say to one another is folded under one line; what 
     const fold = root.querySelector('.parley-roomfold[data-ais="true"]');
     assert.ok(fold, 'drawn as a fold');
     assert.equal(fold.querySelector('.parley-roomfold-open'), null, 'no « open the room »: it is the room');
+    const sign = fold.querySelector('.parley-roomfold-signs')?.querySelector('.parley-look');
+    assert.ok(sign, 'who speaks in it: its sign on the folded line (06-11)');
+    assert.equal(sign.textContent, 'M'); assert.equal(sign.dataset.hue, '40');
 });
 
 test('a message to an AI of a room names it, never by its id (06-11: « → 4d9f6c73-… »)', async () => {
@@ -56,4 +59,11 @@ test('a message to an AI of a room names it, never by its id (06-11: « → 4d9f
         agent.tell('Bonjour, quels sujets ?', { room: 'room-1', to: [msm] });
         assert.deepEqual(own.read().messages.at(-1).toNames, ['Main Sales']);
     } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('a speaker keeps its sign (letter, colour) through the host; a bad one is dropped', async () => {
+    const { byOf } = await import('../host/parley-host.mjs');
+    assert.deepEqual(byOf({ id: 'a', name: 'Thomas', kind: 'ai', look: { initial: 'M', hue: 40 } }).look, { initial: 'M', hue: 40 });
+    assert.equal(byOf({ id: 'a', name: 'Thomas', look: { initial: 'MM', hue: 40 } }).look, undefined);
+    assert.equal(byOf({ id: 'a', name: 'Thomas', look: { initial: 'M', hue: 400 } }).look, undefined);
 });

@@ -132,7 +132,9 @@ export function byOf(v) {
     const why = oneLine(v.why, 120);
     /* Which sort of speaker (#215, the rooms): a person, an AI (a conversation), a voice box. */
     const kind = ['person', 'ai', 'box'].includes(v.kind) ? v.kind : '';
-    return id && name ? { id, name, ...(kind ? { kind } : {}), ...(place ? { place } : {}), ...(why ? { why } : {}) } : null;
+    /* Its small sign (06-11): the letter and colour the application shows it by elsewhere (a conversation's card). */
+    const look = v.look && typeof v.look === 'object' && Number.isInteger(v.look.hue) && v.look.hue >= 0 && v.look.hue < 360 && typeof v.look.initial === 'string' && [...v.look.initial].length === 1 ? { hue: v.look.hue, initial: v.look.initial } : null;
+    return id && name ? { id, name, ...(kind ? { kind } : {}), ...(place ? { place } : {}), ...(why ? { why } : {}), ...(look ? { look } : {}) } : null;
 }
 
 export function invitation({ lang = 'en', install, shared } = {}) {

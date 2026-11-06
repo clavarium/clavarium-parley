@@ -819,6 +819,8 @@ export function view(data, { words = {}, view: as = 'simple', now = Date.now(), 
             byWhy: person && m.by && typeof m.by.why === 'string' ? cut(m.by.why, 120) : '',
             /* A voice box speaking (#215): a small speaker beside its name (03-11). */
             byBox: Boolean(m.by && (m.by.kind === 'box' || (person && !m.by.kind))),
+            /* Its small sign, beside its name, where several speak (a room, what came from one): its letter and colour (06-11). */
+            look: m.by?.look && Number.isInteger(m.by.look.hue) && typeof m.by.look.initial === 'string' ? { hue: m.by.look.hue, initial: [...m.by.look.initial][0] ?? '' } : null,
             /* Said or answered in a room (#268): folded in this thread under one line, the room a link away (03-11). */
             room: m.room && typeof m.room === 'object' && typeof m.room.id === 'string' ? { id: m.room.id, name: cut(m.room.name, 60) } : typeof m.room === 'string' ? { id: m.room, name: '' } : null,
             /* For some of them only: their names of the moment, on a small tab astride the message. */
@@ -1267,6 +1269,8 @@ export function pastedName(file, now = new Date()) {
 }
 
 const el = (tag, className, text) => { const e = document.createElement(tag); if (className) e.className = className; if (text !== undefined) e.textContent = text; return e; };
+/* A speaker's small sign: its letter on its colour, as the application draws it elsewhere. */
+const lookSign = (look) => { const s = el('span', 'parley-look', look.initial); s.style.setProperty?.('--h', String(look.hue)); s.dataset.hue = String(look.hue); s.setAttribute('aria-hidden', 'true'); return s; };
 const button = (text, className, act) => { const b = el('button', className, text); b.type = 'button'; b.addEventListener('click', act); return b; };
 
 const SVG = 'http://www.w3.org/2000/svg';
@@ -3909,6 +3913,9 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
             if (row.type === 'aifold') holder.dataset.ais = 'true';
             const head = el('div', 'parley-roomfold-head');
             const more = button('', 'parley-roomfold-line', () => {});
+            /* Who speaks in it, by their signs (06-11): seen at a glance, folded. */
+            const signs = [...new Map(row.items.filter((x) => x.look).map((x) => [`${x.look.initial}${x.look.hue}`, x.look])).values()].slice(0, 4);
+            if (signs.length) { const s = el('span', 'parley-roomfold-signs'); for (const l of signs) s.append(lookSign(l)); more.append(s); }
             more.append(el('span', 'parley-roomfold-text', row.text), time(row.time, row.when)); more.title = row.text;
             head.append(more);
             if (act && row.type === 'roomfold') { const go = button(said(words, 'room-open'), 'parley-roomfold-open', () => { try { act(`salon:${row.roomId}`, {}); } catch { /* the application's business */ } }); head.append(go); }
@@ -3973,7 +3980,7 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
         }
         if (item.from === 'agent') {
             const head = el('p', 'parley-who');
-            if (item.name) { const nm = el('span', 'parley-name', item.name); if (item.byBox) nm.dataset.box = 'true'; head.append(nm); }
+            if (item.name) { if (item.look) head.append(lookSign(item.look)); const nm = el('span', 'parley-name', item.name); if (item.byBox) nm.dataset.box = 'true'; head.append(nm); }
             /* Which tool it is: small, in the detailed view only. */
             if (item.name && item.tool && item.tool !== item.name) head.append(el('span', 'parley-tool', item.tool));
             if (item.time) head.append(time(item.trail ? `${item.time} - ${item.trail.label}` : item.time, item.when));
@@ -3985,7 +3992,7 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
                 r.addEventListener('click', (event) => { event.stopPropagation(); reacting.open(item, bubble); });
                 bubble.append(r);
             }
-        } else if (item.name) bubble.append(el('p', 'parley-who-person', item.name));
+        } else if (item.name) { const who = el('p', 'parley-who-person'); if (item.look) who.append(lookSign(item.look)); who.append(item.name); bubble.append(who); }
         /* Why a voice box listened, and what it cut short: small, beside the words (01-11). */
         if (item.byWhy) bubble.append(el('p', 'parley-by-why', item.byWhy));
         if (item.label) bubble.append(el('p', 'parley-label', item.label));
