@@ -78,6 +78,7 @@ export const ICONS = Object.freeze({
     'smartphone': [['rect',{width:14,height:20,x:5,y:2,rx:2,ry:2}],['path',{d:'M12 18h.01'}]],
     'square-terminal': [['path',{d:'m7 11 2-2-2-2'}],['path',{d:'M11 13h4'}],['rect',{width:18,height:18,x:3,y:3,rx:2,ry:2}]],
     'git-branch': [['path',{d:'M15 6a9 9 0 0 0-9 9V3'}],['circle',{cx:18,cy:6,r:3}],['circle',{cx:6,cy:18,r:3}]],
+    'link': [['path',{d:'M10 13a5 5 0 0 0 7.54 .54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71'}],['path',{d:'M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71'}]],
     'mail': [['path',{d:'m22 7-8.991 5.727a2 2 0 0 1-2.009 0L2 7'}],['rect',{x:2,y:4,width:20,height:16,rx:2}]],
     'key-round': [['path',{d:'M2.586 17.414A2 2 0 0 0 2 18.828V21a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h1a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h.172a2 2 0 0 0 1.414-.586l.814-.814a6.5 6.5 0 1 0-4-4z'}],['circle',{cx:16.5,cy:7.5,r:'.5',fill:'currentColor'}]],
     'arrow-up': [['path',{d:'m5 12 7-7 7 7'}],['path',{d:'M12 19V5'}]],

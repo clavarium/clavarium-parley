@@ -380,5 +380,10 @@
   "notice-mail-later-late": "Scheduled mail sent late",
   "notice-mail-sent-late": "Mail sent late",
   "notice-mail-later-draft-kept": "Scheduled mail sent, draft kept",
-  "notice-calendar-declined": "Invitation declined"
+  "notice-calendar-declined": "Invitation declined",
+  "request-re": "in reply to",
+  "request-re-forward": "forwarding",
+  "request-re-mail": "the mail",
+  "line-re-sent": "the mail sent",
+  "ref-chip": "Open {label}"
 }

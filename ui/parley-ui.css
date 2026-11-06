@@ -1068,6 +1068,23 @@ mark.parley-found[data-now="true"] { outline: 2px solid var(--parley-ask); }
 .parley-request-facts dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
 .parley-request-chip { display: inline-block; max-width: 100%; box-sizing: border-box; overflow-wrap: anywhere; font-size: .92em; padding: 0 .55em; margin: 0 .3em .2em 0; border-radius: 999px; border: 1px solid var(--parley-line, #d3d7de); color: var(--parley-dim, #5a5f69); }
 .parley-request-chip[data-ext="true"] { border-color: var(--parley-risk, #a3581a); color: var(--parley-risk, #a3581a); }
+/* A chip of the application's (0.17.72): a mail cited ([Subject](mail:...)), what a request answers. One line, an
+   ellipsis where room is short: its note cut first, then its label; dashed when nothing here opens it. */
+.parley .parley-refchip { display: inline-flex; align-items: center; gap: .4em; max-width: 100%; min-width: 0; min-height: 0; box-sizing: border-box; vertical-align: baseline; margin: .1em 0; padding: .15em .7em .15em .55em;
+  font: inherit; font-size: .9em; font-weight: 500; line-height: 1.35; color: var(--parley-text); background: var(--parley-bg); border: 1px solid var(--parley-line); border-radius: 999px; cursor: pointer; text-align: left; text-decoration: none; }
+.parley .parley-refchip:hover { border-color: var(--parley-action); }
+.parley .parley-refchip:focus-visible { outline: 2px solid var(--parley-action); outline-offset: 2px; }
+.parley-refchip .parley-sign { flex: none; width: 1.05em; height: 1.05em; color: var(--parley-action); }
+.parley-refchip-text { flex: 0 1 auto; min-width: 2.5em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.parley-refchip-note { flex: 0 6 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--parley-dim); font-weight: 400; white-space: nowrap; }
+.parley .parley-refchip[data-off="true"] { color: var(--parley-dim); border-style: dashed; cursor: default; }
+.parley-refchip[data-off="true"] .parley-sign { color: var(--parley-dim); }
+.parley-request-re, .parley-line-re { display: flex; flex-wrap: wrap; align-items: center; gap: .4em; min-width: 0; font-size: .9em; color: var(--parley-dim); }
+.parley-request-re { margin: .4em .8em 0; flex-wrap: nowrap; }
+.parley-request-re-lead { flex: none; }
+.parley-request-re .parley-refchip { flex: 0 1 auto; }
+.parley-line-re { display: inline-flex; vertical-align: baseline; max-width: 100%; }
+@media (pointer: coarse) { .parley .parley-refchip { padding: .35em .8em .35em .65em; } }
 .parley-request-change { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); gap: .5em; align-items: center; font-size: .87em; }
 .parley-request-change > div { display: flex; flex-direction: column; min-width: 0; padding: .35em .55em; border: 1px solid var(--parley-line, #d3d7de); border-radius: 8px; overflow-wrap: anywhere; }
 .parley-request-change small { font-size: .78em; text-transform: uppercase; letter-spacing: .04em; color: var(--parley-dim, #5a5f69); }

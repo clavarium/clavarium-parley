@@ -260,7 +260,7 @@ itself (never in the folder: the agent writes there) and adds them to the
 messages it gives the screen:
 
     {from: "system", id, at, text, level: "needs-you"|"news"|"trace", tone?: "warn"|"bad",
-     topic?, brief?, actions: [{id, label}], links?: [{text, id}]}
+     topic?, brief?, actions: [{id, label}], links?: [{text, id}], re?: {ref, label, note?, lead?}}
 
 The application gives each line a neutral level, and nothing else is decided
 here: `needs-you` is shown in both views; `news` in both, as a compact line in
@@ -270,7 +270,9 @@ the simple one, where lines of one `topic` that follow each other are one line
 line across, with its time and its buttons (four at most); a button calls the
 application's `act(id, line)`. `links` are words of its own text that are
 buttons too (a commit it names): each, where it first stands in the text,
-calls `act(id, line)`; the rest stays text. A line of
+calls `act(id, line)`; the rest stays text. `re` (0.17.72): what the line is
+about -- the mail that came back -- a chip after its text, as a request's
+(below), opened through the application's `schemes`. A line of
 the application takes no step and does not hide that the person's last
 message is not read yet.
 
@@ -296,7 +298,8 @@ what will happen rather than as a technical line. Plain data, never markup:
               title, sub?, risk?: [text], facts?: [[label, text | [{text, ext?}]]],
               before?: [text], after?: [text], quote?, code?, why?, detail?,
               irreversible?, yes?: {id, label}, no?: {id, label}, more?: {id, label}, others?: [{id, label}],
-              hold?: seconds, state?: {decision: "yes"|"no"|"ended", at?, text?}}
+              hold?: seconds, state?: {decision: "yes"|"no"|"ended", at?, text?},
+              re?: {ref, label, note?, lead?}}
 
 - Folded: its icon, `title` (one sentence: the act and its object), `sub`
   (one or two key facts), each `risk` in an amber band, then See all,
@@ -311,6 +314,14 @@ what will happen rather than as a technical line. Plain data, never markup:
 - `irreversible`: an amber edge; the newest one still waiting comes
   unfolded. `hold`: seconds (10 at most) the accept waits, with Undo, before
   `act(yes.id)` is called; without it, at once. Refuse goes at once.
+- `re` (0.17.72): what the act answers or acts on -- the mail a reply
+  answers -- one line under the title: `lead` ("in reply to" by default:
+  the word `request-re`; `request-re-forward`, `request-re-mail` for the
+  others), then a chip ✉ `label` · `note` (on one line: where room is
+  short, the note is cut first, then the label). A tap opens `ref` through the application: a scheme it
+  declared (`schemes`, below), else `openRef(ref, label)` given to
+  `requestCard`; neither, the chip is dashed and opens nothing. The tap
+  does not unfold the card. Shown folded, unfolded and in See all.
 - `state`: decided; the card folds to one line ("✓ Accepted · title",
   "× Refused · title", or `state.text`), with the time of `at`.
 - Requests still waiting, within a minute of each other, are one block, a line each ("See"
@@ -336,7 +347,7 @@ what will happen rather than as a technical line. Plain data, never markup:
 
 A line's `actions` and `text` stay its fallback for an older screen. The same
 card is exported for the application's own pages: `requestCard(request,
-{act, words, locale, open, steps, host})`, and `requestBlock(list, ...)`.
+{act, words, locale, open, steps, host, schemes, openRef})`, and `requestBlock(list, ...)`.
 
 ## The application's own copy
 
@@ -424,7 +435,8 @@ With `markdown: true`, the library reads the agent's Markdown into plain data
 of GitHub `> [!NOTE|TIP|IMPORTANT|WARNING|CAUTION]`, badges `[ok] [todo]
 [blocked] [warn]`, code blocks) and builds the page from that data element by
 element. A link is followed only when it is http or https (a new tab,
-`rel="noopener noreferrer"`), or when it is a path the application opens. A
+`rel="noopener noreferrer"`), when it is a path the application opens, or
+one of the application's own kinds (a chip, `schemes` below). A
 picture is shown only from a path the application opens (`picture(file)`):
 never from anywhere else. A ```mermaid block is drawn by the application's
 `diagram(code)` and shown as a picture, never inserted as markup; a failure
@@ -484,6 +496,28 @@ for its ref when the application names one (`refs: { label(ref), open(ref) }`:
 the word on the button, or null for none; what opening it does), and "Talk
 about it". A `?` zone asks "What is it?" and Reply. A ref is the
 application's: Parley shows it nowhere and reads nothing in it.
+
+### Links of the application's own kinds (0.17.72)
+
+An application may name kinds of link of its own, each opened by itself:
+
+    mount(root, { ..., schemes: { mail: { icon: 'mail', open: (ref, label) => openMail(ref) } } })
+
+A Markdown link of a declared scheme in what the agent wrote --
+`[Re: Leak · Plumber](mail:work/CAF12%40mail.example.com)` -- is drawn as a
+chip: the icon (a name of `parley-icons.js`; another, a link sign), the
+link's text on one line, and a last ` · part` (a sender, a date) apart: where
+room is short, an ellipsis cuts the part first, then the text. A tap calls `open(ref, label)`: `ref` the link whole as written
+(its scheme in lower case), `label` its text. Parley reads nothing in the
+ref. A scheme's name is a URL scheme's (a letter, then letters, digits,
+`+ . -`, 31 at most); a ref has no space or control and is 2000 characters
+at most. A link of a scheme not declared stays its text, as any that is
+neither http(s) nor a path. The schemes a browser acts on by itself
+(`javascript`, `vbscript`, `data`, `file`, `blob`, `about`, `http`, `https`,
+`ws`, `ftp`, `view-source`, `intent` and the like) are never one of the
+application's, whatever it declares. The same chips say what a request or a
+line is about (`re`, above); `schemesOf` and `schemeRef` are exported for the
+application's own pages.
 
 ## Reactions, the media, the viewer
 

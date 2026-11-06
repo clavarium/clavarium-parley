@@ -380,5 +380,10 @@
   "notice-mail-later-late": "Mail programmé envoyé en retard",
   "notice-mail-sent-late": "Mail envoyé en retard",
   "notice-mail-later-draft-kept": "Mail programmé envoyé, brouillon gardé",
-  "notice-calendar-declined": "Invitation refusée"
+  "notice-calendar-declined": "Invitation refusée",
+  "request-re": "en réponse à",
+  "request-re-forward": "transfert de",
+  "request-re-mail": "le mail",
+  "line-re-sent": "le mail envoyé",
+  "ref-chip": "Ouvrir {label}"
 }

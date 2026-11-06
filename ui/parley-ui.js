@@ -4,7 +4,7 @@
  *   mount(element, { load, send, words, open, terminal, remind, view, onView, locale,
  *                    voice, autoSend, onAutoSend, replies, enter, touch, attach, act,
  *                    markdown, picture, diagram, highlight, math, refs, agentName, agentTool, react, reactions, back,
- *                    window, search, side });
+ *                    window, search, side, schemes });
  *
  *   load(options)          resolves with what parley-host.mjs read(options) gives;
  *                          the application may add lines of its own to its
@@ -83,8 +83,9 @@
  * tables (wide ones scroll in their message), quotes, the alerts of GitHub
  * (> [!IMPORTANT] ... as coloured boxes), badges ([ok] [todo] [blocked]
  * [warn]), code blocks with a Copy button. A link opens only when it is
- * http or https (in a new tab, sending nothing of this page), or a path the
- * application can open (`open`); any other is its text. A picture is shown
+ * http or https (in a new tab, sending nothing of this page), a path the
+ * application can open (`open`), or one of its own kinds (`schemes`, a chip);
+ * any other is its text. A picture is shown
  * only from a path the application can open (`picture`): never from
  * anywhere else, since loading it would tell that place who reads. Slots of
  * the application, each optional:
@@ -110,6 +111,19 @@
  *                          agent wrote it ([Anna](app:people/12)); label names
  *                          the button of its card (null: none), open opens it.
  *                          Parley reads nothing in a ref.
+ *   schemes                { name: { icon, open(ref, label) } } (0.17.72): links
+ *                          of the application's own kinds, as the agent wrote
+ *                          them ([Quote](mail:work/abc%40example.com)), each
+ *                          drawn as a chip -- its icon (a name of
+ *                          parley-icons.js), its text on one line --
+ *                          that calls open(ref, label): `ref` the whole link
+ *                          as written, `label` its text. A text " · note" at
+ *                          its end is drawn apart, cut first. A scheme not
+ *                          declared stays text, as any link that is neither
+ *                          http(s) nor a path; javascript:, data:, file:,
+ *                          blob:, about:, http(s): and the like are never
+ *                          taken as a scheme of the application's. The same
+ *                          chips say what a request (`re`) or a line is about.
  *
  * A PANEL BESIDE THE THREAD (`side`), optional: a list the application
  * keeps -- its tasks, its batches -- shown on the right of the thread, never
@@ -237,7 +251,7 @@
  * PAGE AS TEXT, never as markup: the first is chosen by a program, the
  * second by whoever wrote the dictionary.
  */
-import { icon, fileIcon } from './parley-icons.js';
+import { icon, fileIcon, ICONS } from './parley-icons.js';
 
 export const VIEWS = Object.freeze(['simple', 'detailed']);
 /* The words this screen uses: a dictionary needs these keys. */
@@ -269,7 +283,8 @@ export const KEYS = Object.freeze(['send', 'placeholder', 'empty', 'view', 'simp
     'req-yes-change', 'req-yes-add', 'req-yes-update', 'req-yes-run', 'req-yes-type', 'req-yes-open', 'req-yes-write', 'req-no', 'req-always', 'req-always-this',
     'line-topic-request', 'line-topic-notice', 'line-accepted', 'line-done', 'line-failed', 'line-failed-plain', 'line-refused', 'line-timeout', 'line-withdrawn', 'line-stopped', 'line-handled',
     'line-flash', 'line-flash-device', 'line-notice', 'line-notice-said', 'line-notice-at', 'notice-later', 'notice-mail-bounced', 'notice-mail-delayed', 'notice-mail-send-failed',
-    'notice-mail-later-failed', 'notice-mail-later-unsure', 'notice-mail-later-late', 'notice-mail-sent-late', 'notice-mail-later-draft-kept', 'notice-calendar-declined']);
+    'notice-mail-later-failed', 'notice-mail-later-unsure', 'notice-mail-later-late', 'notice-mail-sent-late', 'notice-mail-later-draft-kept', 'notice-calendar-declined',
+    'request-re', 'request-re-forward', 'request-re-mail', 'line-re-sent', 'ref-chip']);
 /* THE REACTIONS offered by default, each with its Lucide icon; their words
    are "react-<id>" (shown under the icon) and "react-<id>-hint" (on hover).
    The same ids as REACTIONS of parley-host.mjs, which says which wake. */
@@ -420,6 +435,55 @@ export function safeLink(href) {
     const raw = String(href ?? '').trim();
     if (!/^https?:\/\//i.test(raw)) return null;
     try { const u = new URL(raw); return u.protocol === 'http:' || u.protocol === 'https:' ? u.href : null; } catch { return null; }
+}
+
+/* THE APPLICATION'S OWN KINDS OF LINK (0.17.72): `schemes` of mount, { name: { icon, open(ref, label) } }.
+   A name is a URL scheme's (a letter, then letters, digits, + . -); the schemes a browser acts on by
+   itself are never one of the application's, whatever it declares: a link of theirs is drawn as text. */
+const SCHEME_NAME = /^[a-z][a-z0-9+.-]{0,30}$/;
+const SCHEME_NEVER = new Set(['javascript', 'vbscript', 'livescript', 'data', 'file', 'blob', 'about', 'filesystem', 'http', 'https', 'ws', 'wss', 'ftp',
+    'view-source', 'intent', 'chrome', 'chrome-extension', 'moz-extension', 'resource', 'jar', 'ms-appx', 'res']);
+/* A ref of the application's, at most this long: a longer one is text. */
+export const SCHEME_REF_MAX = 2000;
+/* The schemes declared, made safe: a Map name -> { icon, open }. A Map is taken as it is (made once by mount). */
+export function schemesOf(given) {
+    if (given instanceof Map) return given;
+    const out = new Map();
+    if (!given || typeof given !== 'object') return out;
+    for (const [name, s] of Object.entries(given)) {
+        const n = String(name).toLowerCase();
+        if (!SCHEME_NAME.test(n) || SCHEME_NEVER.has(n) || !s || typeof s.open !== 'function') continue;
+        out.set(n, { icon: typeof s.icon === 'string' && Object.hasOwn(ICONS, s.icon) ? s.icon : 'link', open: s.open });
+    }
+    return out;
+}
+/* A link of a declared scheme: { scheme, ref, icon, open }, `ref` the link whole (its scheme in lower case);
+   null for anything else -- an undeclared scheme, one a browser acts on, a space or a control in it. */
+export function schemeRef(href, schemes) {
+    const raw = String(href ?? '').trim();
+    if (!raw || raw.length > SCHEME_REF_MAX || /[\s\u0000-\u001f\u007f]/.test(raw)) return null;
+    const m = /^([A-Za-z][A-Za-z0-9+.-]{0,30}):(.+)$/.exec(raw);
+    if (!m) return null;
+    const name = m[1].toLowerCase();
+    if (SCHEME_NEVER.has(name)) return null;
+    const s = schemesOf(schemes).get(name);
+    return s ? { scheme: name, ref: `${name}:${m[2]}`, icon: s.icon, open: s.open } : null;
+}
+/* A text " · note" at its end: the note apart (never cut), the rest the label. */
+const labelParts = (text) => { const t = String(text ?? '').replace(/\s+/g, ' ').trim(); const at = t.lastIndexOf(' · '); return at > 0 && at < t.length - 3 ? [t.slice(0, at), t.slice(at + 3)] : [t, '']; };
+/* ONE CHIP of the application's: its icon, its label (an ellipsis when long), its note; a tap, open(ref,
+   label). Without `found` (nothing opens it here), the same chip, dashed, a tap does nothing. */
+function refChip(found, label, note = '', words = {}) {
+    const b = el(found ? 'button' : 'span', 'parley-refchip');
+    const whole = note ? `${label} · ${note}` : label;
+    if (found) {
+        b.type = 'button'; b.dataset.scheme = found.scheme;
+        b.addEventListener('click', (event) => { event?.stopPropagation?.(); try { found.open(found.ref, whole); } catch { /* the application's business */ } });
+    } else b.dataset.off = 'true';
+    b.append(icon(found?.icon ?? 'link', 'parley-sign'), el('span', 'parley-refchip-text', label));
+    if (note) b.append(el('span', 'parley-refchip-note', `· ${note}`));
+    b.title = whole; b.setAttribute('aria-label', said(words, 'ref-chip', { label: whole }));
+    return b;
 }
 
 const ESCAPABLE = /[\\`*_{}[\]()#+\-.!|~=<>"'$]/;
@@ -725,7 +789,9 @@ export function view(data, { words = {}, view: as = 'simple', now = Date.now(), 
                 actions: (Array.isArray(m.actions) ? m.actions : []).filter((a) => a && typeof a.id === 'string' && typeof a.label === 'string' && a.label.trim()).slice(0, ACTIONS_MAX).map((a) => ({ id: a.id, label: a.label.trim().slice(0, LABEL_MAX) })),
                 links: (Array.isArray(m.links) ? m.links : []).filter((a) => a && typeof a.id === 'string' && typeof a.text === 'string' && a.text && a.text.length <= 80).slice(0, LINKS_MAX).map((a) => ({ id: a.id, text: a.text })),
                 /* A request the person decides (an act of the application's, shown as a card): null when there is none. */
-                request: requestOf(m.request, { words, locale }) };
+                request: requestOf(m.request, { words, locale }),
+                /* What it is about, a chip after its text (0.17.72): the mail that came back, say. */
+                re: reOf(m.re, (x) => lineText(x, { words, locale })) };
         }
         const show = m.kind === 'show';
         const open = openQuestion(m, answered);
@@ -1640,7 +1706,9 @@ function painter(ctx) {
             else if (n.t === 'link') {
                 const href = safeLink(n.href);
                 const f = n.href.startsWith('/') ? fileOf(n.href) : null;
-                if (href) { const a = el('a', 'parley-link'); a.href = href; a.target = '_blank'; a.rel = 'noopener noreferrer nofollow'; a.title = href; inlines(n.c, a); into.append(a); }
+                const own = href || f ? null : schemeRef(n.href, ctx.schemes);
+                if (own) { const holder = el('span'); inlines(n.c, holder); const [label, note] = labelParts(holder.textContent || own.ref); into.append(refChip(own, label, note, words)); }
+                else if (href) { const a = el('a', 'parley-link'); a.href = href; a.target = '_blank'; a.rel = 'noopener noreferrer nofollow'; a.title = href; inlines(n.c, a); into.append(a); }
                 else if (f && open) { const holder = el('span'); inlines(n.c, holder); into.append(pathLink(f, holder)); }
                 else inlines(n.c, into);
             } else if (n.t === 'img') into.append(imageOf(n));
@@ -2711,6 +2779,26 @@ function requestSaid(x, words, locale, depth = 0) {
    be `{ k, v, t? }` as a request's texts are (above): said with this screen's words and locale; a word it
    does not know, its English `t`. Plain text stays as it is. */
 export const lineText = (x, { words, locale } = {}) => requestSaid(x, words, locale ?? (typeof words?.lang === 'string' ? words.lang : undefined));
+/* WHAT IT IS ABOUT (0.17.72), `re`: { ref, label, note?, lead? } -- the mail a reply answers, say: a chip
+   under the title ("in reply to ✉ Subject · sender"), its tap the application's (`schemes` or `openRef`).
+   Texts as any of a request's ({k, v} or plain); `ref` is the application's, read nowhere here. */
+function reOf(x, say) {
+    if (!x || typeof x !== 'object' || Array.isArray(x) || typeof x.ref !== 'string') return null;
+    const ref = x.ref.trim();
+    if (!ref || ref.length > SCHEME_REF_MAX || /[\s\u0000-\u001f\u007f]/.test(ref)) return null;
+    return { ref, label: cut(say(x.label), 120) || cut(ref, 60), note: cut(say(x.note), 60), lead: cut(say(x.lead), 40) };
+}
+/* Its chip, with the words before it; a tap opens it through the application: a scheme it declared
+   (`ctx.schemes`, as mount's), else its `openRef(ref, label)`; neither: dashed, nothing opens. */
+function reRow(re, ctx, words, kind = 'other', cls = 'parley-request-re') {
+    const row = el('div', cls);
+    const declared = ctx.schemes ? schemeRef(re.ref, ctx.schemes) : null;
+    const found = declared ?? (typeof ctx.openRef === 'function' ? { scheme: '', ref: re.ref, icon: REQUEST_ICON[kind] ?? 'link', open: ctx.openRef } : null);
+    const lead = re.lead || (cls === 'parley-request-re' ? said(words, 'request-re') : '');
+    if (lead) row.append(el('span', 'parley-request-re-lead', lead));
+    row.append(refChip(found, re.label, re.note, words));
+    return row;
+}
 /* A request as given, made safe: only what is known, each bounded; null when it is not one.
    `words` and `locale` say the texts given as `{ k, v }` (above). */
 export function requestOf(r, { words, locale } = {}) {
@@ -2745,6 +2833,7 @@ export function requestOf(r, { words, locale } = {}) {
         irreversible: r.irreversible === true,
         yes: actOf(r.yes), no: actOf(r.no), more: actOf(r.more),
         others: (Array.isArray(r.others) ? r.others : []).map(actOf).filter(Boolean).slice(0, 2),
+        re: reOf(r.re, say),
         hold: Number.isFinite(r.hold) ? Math.max(0, Math.min(REQUEST_HOLD_MAX, r.hold)) : 0,
         state: s ? { decision: s.decision === 'yes' || s.decision === 'no' ? s.decision : 'ended', at: typeof s.at === 'string' ? s.at : '', text: cut(say(s.text), 160) } : null,
     };
@@ -2852,6 +2941,7 @@ function requestSheet(r, ctx) {
     const hw = el('div', 'parley-request-hw'); hw.append(el('b', 'parley-request-title', r.title)); if (r.sub) hw.append(el('span', 'parley-request-sub', r.sub));
     head.append(requestIcon(r.kind), hw);
     sheet.append(el('span', 'parley-request-grip'), head);
+    if (r.re) sheet.append(reRow(r.re, ctx, words, r.kind));
     for (const x of r.risk) { const b = el('div', 'parley-request-risk'); b.append(icon('triangle-alert', 'parley-sign'), el('span', '', x)); sheet.append(b); }
     sheet.append(requestBody(r, words, true));
     const acts = el('div', 'parley-request-acts');
@@ -2874,7 +2964,8 @@ function requestSheet(r, ctx) {
 /* ONE REQUEST, AS A CARD: `given` as requestOf takes it. `act(id)` is called with the id of the button
    pressed (none: no buttons); `words`, the dictionary; `open`, unfolded at first (the person's own
    choice wins once made); `onFold(open)`, told when the person folds or unfolds it; `steps`, the
-   page's steps for Back (stepper); `host`, where the sheet goes (the page's body by default). */
+   page's steps for Back (stepper); `host`, where the sheet goes (the page's body by default);
+   `schemes` (as mount's) or `openRef(ref, label)`, what opens the chip of its `re`. */
 export function requestCard(given, ctx = {}) {
     const r = requestOf(given, ctx);
     const card = el('article', 'parley-request');
@@ -2893,6 +2984,7 @@ export function requestCard(given, ctx = {}) {
         head.append(requestIcon(r.kind), hw, el('span', 'parley-request-chev', said(words, open ? 'request-fold' : 'request-preview')));
         if (ctx.when) head.title = ctx.when;
         const parts = [head];
+        if (r.re) parts.push(reRow(r.re, ctx, words, r.kind));
         for (const x of r.risk) { const b = el('div', 'parley-request-risk'); b.append(icon('triangle-alert', 'parley-sign'), el('span', '', x)); parts.push(b); }
         if (open) parts.push(requestBody(r, words, false));
         const h = requestHolds.get(key);
@@ -2986,8 +3078,10 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
     markdown: rich = false, picture, diagram, highlight, agentName, agentTool, react, reactions: offered = REACTIONS,
     secrets: liveSecrets = {}, forget,
     receivedAfter = RECEIVED_MS, noAnswerAfter = NO_ANSWER_MS, back = true, draft: draftKey = '', math: mathGiven, refs: zoneRefs,
-    window: shownAtFirst, search: searchAll, side: sideGiven, card: toCard } = {}) {
+    window: shownAtFirst, search: searchAll, side: sideGiven, card: toCard, schemes: schemesGiven } = {}) {
     const steps = stepper(back);
+    /* The application's own kinds of link (mail:...), each a chip that it opens. */
+    const schemes = schemesOf(schemesGiven);
     /* What is asked of load() at first, and for each page before it: { last } or { days }. */
     const span = windowOf(shownAtFirst);
     const formula = mathFrom(mathGiven);
@@ -3708,7 +3802,7 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
         if (item.kind === 'show' && (item.files?.length || item.gallery?.length || item.file) && [...(item.files ?? []), ...(item.gallery ?? []), ...(item.file ? [item.file] : [])].some((f) => f && String(item.text ?? '').trim() === String(f.name ?? '').split('/').pop())) return [];
         if (!rich) return [el('p', 'parley-text', maskSecrets(item.text))];
         const refs = new Map(item.refs.map((r) => [r.path, r.open]));
-        const paint2 = painter({ words, locale, refs, open, picture: picture ? pictureUrl : null, pictureUrl, diagram, highlight, cache, urls, zoom: zoomFrom, math: formula, targets: zoneRefs, secrets: liveSecrets, forget,
+        const paint2 = painter({ words, locale, refs, open, schemes, picture: picture ? pictureUrl : null, pictureUrl, diagram, highlight, cache, urls, zoom: zoomFrom, math: formula, targets: zoneRefs, secrets: liveSecrets, forget,
             ...(send ? {
                 /* "Talk about it": said at once, with what it is about. */
                 talk: (about) => { void say(said(words, 'talk-text', { name: about.label }), undefined, undefined, undefined, { about }); },
@@ -3752,7 +3846,7 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
         return card(f, words, open, size);
     }
     const item0 = (row) => (row.type === 'message' ? row : {});
-    const requestCtx = (row) => ({ act: act ? (id) => act(id, { id: row.id, text: row.text ?? '' }) : null, words, steps, host: root, locale, key: row.key, time: row.time, when: row.when });
+    const requestCtx = (row) => ({ act: act ? (id) => act(id, { id: row.id, text: row.text ?? '' }) : null, words, steps, host: root, locale, key: row.key, time: row.time, when: row.when, schemes });
     function systemLine(row) {
         const line = el('div', 'parley-system'); line.dataset.from = 'system'; line.dataset.level = row.level; if (row.tone) line.dataset.tone = row.tone; line.dataset.id = row.id;
         if (row.when) line.title = row.when;
@@ -3767,6 +3861,7 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
             rest = rest.slice(at + a.text.length);
         }
         text.append(rest);
+        if (row.re) text.append(' ', reRow(row.re, { schemes }, words, 'other', 'parley-line-re'));
         line.append(text, time(row.time, row.when));
         if (row.actions.length && act) {
             const buttons = el('div', 'parley-system-actions');
