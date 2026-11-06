@@ -21,7 +21,8 @@ class FakeNode {
     contains(other) { for (let at = other; at; at = at.parentNode) if (at === this) return true; return false; }
     append(...nodes) {
         for (const n of nodes) {
-            const node = typeof n === 'string' ? new FakeText(n) : n;
+            /* As a browser does: what is not a node is written as text (an array: « [object …],[object …] »). */
+            const node = n instanceof FakeNode ? n : new FakeText(String(n));
             node.parentNode?.removeChild(node);
             node.parentNode = this; this.childNodes.push(node);
         }

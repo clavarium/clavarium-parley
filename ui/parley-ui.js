@@ -3920,7 +3920,8 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
             head.append(more);
             if (act && row.type === 'roomfold') { const go = button(said(words, 'room-open'), 'parley-roomfold-open', () => { try { act(`salon:${row.roomId}`, {}); } catch { /* the application's business */ } }); head.append(go); }
             const list = el('div', 'parley-roomfold-items');
-            for (const it of row.items) { const n = rowOf(it, v); if (n) list.append(n); }
+            /* A message with its steps is two nodes (06-11: appended as one, it read « [object HTMLOListElement],[object HTMLDivElement] »). */
+            for (const it of row.items) { const n = rowOf(it, v); if (n) list.append(...[n].flat()); }
             holder.append(head, list);
             folding({ key: row.key, open: false }, holder, more, list);
             return holder;

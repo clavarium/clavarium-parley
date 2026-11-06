@@ -394,7 +394,9 @@ export class Parley {
     /* One line the agent wrote, as it is handed over. */
     #fromAgent(m) {
         const kind = KINDS.includes(m.kind) ? m.kind : 'say';
-        const entry = { from: 'agent', id: String(m.id ?? ''), at: String(m.at ?? ''), kind, text: clean(m.text), choices: kind === 'ask' && Array.isArray(m.choices) ? m.choices.slice(0, 8).map((x) => oneLine(x, 200)).filter(Boolean) : [] };
+        /* A member of one of its rooms named in its words (@{id}): by its name of the moment (06-11: the id showed). */
+        const named = (t) => (t.includes('@{') ? t.replace(/@\{([0-9a-f-]{36})\}/g, (whole, mid) => { for (const r of this.rooms()) { const x = r.members.find((y) => y.id === mid); if (x) return `@${x.name}`; } return whole; }) : t);
+        const entry = { from: 'agent', id: String(m.id ?? ''), at: String(m.at ?? ''), kind, text: named(clean(m.text)), choices: kind === 'ask' && Array.isArray(m.choices) ? m.choices.slice(0, 8).map((x) => oneLine(x, 200)).filter(Boolean) : [] };
         if ((kind === 'say' || kind === 'ask') && typeof m.short === 'string' && oneLine(m.short, SHORT_KEPT)) entry.short = oneLine(m.short, SHORT_KEPT);
         /* Several of its choices may be ticked, sent together. */
         if (kind === 'ask' && m.many === true && entry.choices.length > 1) entry.many = true;

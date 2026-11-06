@@ -12,10 +12,10 @@ const at = (k) => new Date(Date.UTC(2030, 0, 1, 10, k)).toISOString();
 const room = { id: 'room-1', name: 'Assistants', message: 'm1' };
 const fr = texts('fr');
 
-async function shown(t, messages) {
+async function shown(t, messages, more = {}) {
     const leave = fakePage();
     const root = document.createElement('div'); document.body.append(root);
-    const handle = mount(root, { load: async () => ({ messages }), send: async () => {}, words: fr, every: 0, touch: false, markdown: true, locale: 'fr-FR' });
+    const handle = mount(root, { load: async () => ({ messages, ...more }), send: async () => {}, words: fr, every: 0, touch: false, markdown: true, locale: 'fr-FR' });
     t.after(() => { handle.destroy(); leave(); });
     await settle(); await settle();
     return root;
@@ -58,6 +58,8 @@ test('a message to an AI of a room names it, never by its id (06-11: « → 4d9f
         const agent = bridge(d); agent.read();
         agent.tell('Bonjour, quels sujets ?', { room: 'room-1', to: [msm] });
         assert.deepEqual(own.read().messages.at(-1).toNames, ['Main Sales']);
+        agent.tell(`J’ai demandé à @{${msm}}.`, { room: 'room-1' });
+        assert.equal(own.read().messages.at(-1).text, 'J’ai demandé à @Main Sales.', 'a member named in the words: by its name');
     } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
@@ -66,4 +68,19 @@ test('a speaker keeps its sign (letter, colour) through the host; a bad one is d
     assert.deepEqual(byOf({ id: 'a', name: 'Thomas', kind: 'ai', look: { initial: 'M', hue: 40 } }).look, { initial: 'M', hue: 40 });
     assert.equal(byOf({ id: 'a', name: 'Thomas', look: { initial: 'MM', hue: 40 } }).look, undefined);
     assert.equal(byOf({ id: 'a', name: 'Thomas', look: { initial: 'M', hue: 400 } }).look, undefined);
+});
+
+test('in a conversation, a room fold shows a message that came with its steps as a message, never « [object …] » (06-11)', async (t) => {
+    const room = { id: 'room-1', name: 'Assistants', message: 'm1' };
+    const root = await shown(t, [
+        { from: 'person', id: 'p1', at: at(1), kind: 'say', text: 'Regarde les autres conversations.', room, refs: [], choices: [] },
+        { from: 'agent', id: 'a1', at: at(3), kind: 'say', text: 'J’ai demandé aux deux.', room, refs: [], choices: [] },
+        { from: 'agent', id: 'z', at: at(9), kind: 'say', text: 'fin', refs: [], choices: [] },
+    ], { steps: [{ kind: 'doing', text: 'Je lis le salon', at: at(2) }] });
+    const walk = (n, out = []) => { if (n.nodeType === 3) out.push(n.data); for (const c of n.childNodes ?? []) walk(c, out); return out; };
+    const folds = root.querySelectorAll('.parley-roomfold');
+    assert.ok(folds.length);
+    const text = folds.map((f) => walk(f).join(' ')).join(' | ');
+    assert.doesNotMatch(text, /\[object /, text);
+    assert.match(text, /J’ai demandé aux deux\./);
 });
