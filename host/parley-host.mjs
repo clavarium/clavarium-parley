@@ -722,6 +722,18 @@ export class Parley {
         return entry.id;
     }
 
+    /* A ROOM'S THREAD has no agent of its own to read it (06-11: the clock stayed on every message): once the
+       application has handed what was said to its AIs, it is read -- said here, as an agent's read would. */
+    seen() {
+        if (!this.#room) throw new RangeError('Only a room\'s thread is marked read by the application.');
+        const lines = lineCount(`${this.#dir}/to-agent.jsonl`);
+        if (lines <= readCount(this.#dir)) return lines;
+        const reads = [...readTimes(this.#dir), { lines, at: this.#now().toISOString() }].slice(-200);
+        mkdirSync(this.#dir, { recursive: true });
+        writeFileSync(`${this.#dir}/read.json`, JSON.stringify({ lines, reads }));
+        return lines;
+    }
+
     say(text, answers, files = [], { via, picked, replies, about, by, room } = {}) {
         const given = Array.isArray(files) ? files : [];
         if (given.length > FILES_MAX) throw new RangeError(`${FILES_MAX} files at most in one message.`);

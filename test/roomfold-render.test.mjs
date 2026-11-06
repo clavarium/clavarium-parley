@@ -84,3 +84,17 @@ test('in a conversation, a room fold shows a message that came with its steps as
     assert.doesNotMatch(text, /\[object /, text);
     assert.match(text, /J’ai demandé aux deux\./);
 });
+
+test('a room\'s thread is marked read by the application once its AIs have it: the clock goes (06-11)', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'parley-seen-'));
+    try {
+        const d = join(dir, '.parley'); mkdirSync(d);
+        const room = new Parley(d, { room: true });
+        room.say('Bonjour à tous.');
+        assert.equal(room.unread(), 1);
+        assert.equal(room.seen(), 1);
+        assert.equal(room.unread(), 0);
+        assert.equal(room.seen(), 1, 'again: nothing changes');
+        assert.throws(() => new Parley(d).seen(), /Only a room/);
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+});
