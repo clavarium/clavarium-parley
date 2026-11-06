@@ -34,10 +34,13 @@ test('on the screen each AI of a room is named over its own words, the name agai
     const dir = folder();
     try {
         const room = new Parley(dir, { room: true });
-        room.say('On part à Lisbonne le 12 ?');
-        room.relay({ text: 'Je regarde.', by: { id: 'hugo', name: 'Hugo', kind: 'ai' } });
-        room.relay({ text: 'Le budget suit.', by: { id: 'compta', name: 'Compta', kind: 'ai' } });
-        room.relay({ text: 'Et le 12 est libre.', by: { id: 'compta', name: 'Compta', kind: 'ai' } });
+        /* Each line a moment after the one before: two lines of the same millisecond have no order between them
+           (the thread is sorted by time) -- 06-11, about 3 % of runs failed on it. */
+        const later = () => { const t = Date.now(); while (Date.now() <= t + 1) { /* a millisecond or two */ } };
+        room.say('On part à Lisbonne le 12 ?'); later();
+        room.relay({ text: 'Je regarde.', by: { id: 'hugo', name: 'Hugo', kind: 'ai' } }); later();
+        room.relay({ text: 'Le budget suit.', by: { id: 'compta', name: 'Compta', kind: 'ai' } }); later();
+        room.relay({ text: 'Et le 12 est libre.', by: { id: 'compta', name: 'Compta', kind: 'ai' } }); later();
         room.relay({ text: 'Oui, on peut.', by: { id: 'hugo', name: 'Hugo', kind: 'ai' } });
         const names = view(room.read(), { words: {} }).items.filter((r) => r.from === 'agent').map((r) => r.name);
         assert.deepEqual(names, ['Hugo', 'Compta', '', 'Hugo']);
