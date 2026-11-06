@@ -4,7 +4,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { fakePage } from './fake-dom.mjs';
-import { mount, view, requestOf, requestCard, requestBlock, KEYS, REQUEST_BATCH_MS } from '../ui/parley-ui.js';
+import { mount, view, requestOf, requestCard, requestBlock, lineText, KEYS, REQUEST_BATCH_MS } from '../ui/parley-ui.js';
 import { texts } from '../host/parley-host.mjs';
 
 const settle = () => new Promise((r) => setTimeout(r, 5));
@@ -242,4 +242,49 @@ test('days and times in the locale: French, English, a day without a time, a dat
     /* Through the thread: view says them with its words and locale. */
     const v = view({ messages: [line('l1', 0, keyed('k3'))] }, { words: fr, locale: 'fr-FR' });
     assert.equal(v.rows.find((r) => r.request).request.title, 'Déplacer « Project » au mar. 12 nov. · 15:00–16:00');
+});
+
+/* 0.17.71: the application's own lines (a request accepted, done, failed; later news) from words too. */
+const said = (id, m, text, more = {}) => ({ from: 'system', id, at: at(m), text, level: 'needs-you', tone: 'warn', actions: [], ...more });
+const failed = { k: 'line-failed', v: { verb: 'mail.send', reason: 'the server refused it' }, t: 'Failed: mail.send — the server refused it' };
+const bounced = { k: 'line-notice', v: { head: { k: 'notice-mail-bounced', t: 'Mail came back' }, target: 'Work mail', text: 'No such mailbox.' }, t: 'Mail came back (Work mail): No such mailbox.' };
+
+test('a line from keys: said in English and in French, its topic too', async () => {
+    const lines = [said('a', 0, failed, { topic: { k: 'line-topic-request', t: 'Request' } }), said('b', 1, bounced, { topic: { k: 'line-topic-notice', t: 'Later news' } })];
+    const fr = texts('fr');
+    const rows = (words, locale) => view({ messages: lines }, { words, locale, detailed: true }).rows.filter((r) => r.from === 'system');
+    assert.deepEqual(rows(en).map((r) => [r.text, r.topic]), [['Failed: mail.send — the server refused it', 'Request'], ['Mail came back (Work mail): No such mailbox.', 'Later news']]);
+    assert.deepEqual(rows(fr, 'fr-FR').map((r) => [r.text, r.topic]), [['Échec : mail.send — the server refused it', 'Demande'], ['Mail revenu (Work mail) : No such mailbox.', 'Nouvelles']]);
+    assert.equal(lineText({ k: 'line-accepted', v: { verb: 'calendar.move' } }, { words: fr }), 'Accepté : calendar.move — en cours');
+    assert.equal(lineText({ k: 'line-done', v: { verb: 'mail.send' } }, { words: en }), 'Done: mail.send');
+    const leave = fakePage();
+    try {
+        const root = document.createElement('div'); document.body.append(root);
+        const handle = mount(root, { load: async () => ({ messages: lines }), send: async () => {}, words: fr, every: 0, touch: false, detailed: true });
+        await settle();
+        const shown = [...root.querySelectorAll('.parley-system-text')].map((n) => n.textContent);
+        assert.ok(shown.includes('Échec : mail.send — the server refused it'), shown.join(' | '));
+        assert.ok(shown.includes('Mail revenu (Work mail) : No such mailbox.'), shown.join(' | '));
+        handle.destroy?.();
+    } finally { leave(); }
+});
+
+test('a plain line is shown as it is; a word this screen does not know, its English fallback', () => {
+    const fr = texts('fr');
+    const v = view({ messages: [said('p', 0, 'Done: mail.send', { topic: 'Demande' })] }, { words: fr, detailed: true });
+    const row = v.rows.find((r) => r.from === 'system');
+    assert.equal(row.text, 'Done: mail.send');
+    assert.equal(row.topic, 'Demande');
+    assert.equal(lineText('Plain text', { words: fr }), 'Plain text');
+    assert.equal(lineText({ k: 'line-from-the-future', v: { verb: 'x' }, t: 'Something new: x' }, { words: fr }), 'Something new: x');
+    assert.equal(lineText({ k: 'line-done', v: { verb: 'x' }, t: 'Done: x' }), 'Done: x', 'no words at all: the English fallback');
+    assert.equal(lineText({ k: 'notice-mail-delayed' }, { words: fr }), 'Mail retardé');
+});
+
+test('the words of the lines are in both dictionaries', () => {
+    const fr = texts('fr');
+    for (const key of KEYS.filter((k) => k.startsWith('line-') || k.startsWith('notice-'))) {
+        assert.ok(Object.hasOwn(en, key), key); assert.ok(Object.hasOwn(fr, key), key);
+        if (!/^line-notice/.test(key)) assert.notEqual(fr[key], en[key], `${key} is said in French`);
+    }
 });

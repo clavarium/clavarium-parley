@@ -274,6 +274,18 @@ calls `act(id, line)`; the rest stays text. A line of
 the application takes no step and does not hide that the person's last
 message is not read yet.
 
+In the reader's language (0.17.71): a line's `text`, `topic` and `brief` may
+be `{k, v, t?}` as a request's texts are (below): a word of the screen's
+dictionary (`line-…`, `notice-…` in ui/texts) and its values, said by each
+screen in its own language; `t`, plain English, is said where the screen
+does not know the word (an application newer than it). A string stays as it
+is: an older line, another application. A value that is data (a verb, a
+name, a reason, another program's sentence) stays as it was given.
+
+    text:  {k: "line-failed", v: {verb: "mail.send", reason: "no such mailbox"}, t: "Failed: mail.send — no such mailbox"}
+    text:  {k: "line-notice", v: {head: {k: "notice-mail-bounced", t: "Mail came back"}, target: "Work mail", text: "…"}, t: "Mail came back (Work mail): …"}
+    topic: {k: "line-topic-request", t: "Request"}
+
 ### A request, as a card
 
 A line may carry `request`: an act of the application's that waits for the
@@ -315,7 +327,8 @@ what will happen rather than as a technical line. Plain data, never markup:
   "Thu 12 Nov · 15:00–16:00", the time as given), `{list}` (joined ", "),
   or a list of those. For one or several, the application picks the word
   (`req-lines-one`, `req-lines`). Plain text is shown as it is: an older
-  line, another application.
+  line, another application. A word the screen does not know: its `t`
+  (plain English) when given (0.17.71).
 
       title: {k: "req-mail-send-to", v: {subject: {k: "req-quoted", v: {text: "Quote"}}, to: "sales@example.com"}}
       facts: [[{k: "req-fact-to"}, [{text: "sales@example.com", ext: true}]]]

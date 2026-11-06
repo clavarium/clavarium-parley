@@ -266,7 +266,10 @@ export const KEYS = Object.freeze(['send', 'placeholder', 'empty', 'view', 'simp
     'req-risk-clash', 'req-risk-admin', 'req-risk-final', 'req-fact-from', 'req-fact-date', 'req-fact-to', 'req-fact-cc', 'req-fact-bcc', 'req-fact-joined', 'req-fact-leaves', 'req-fact-keeps',
     'req-fact-where', 'req-fact-guests', 'req-fact-online', 'req-fact-name', 'req-fact-email', 'req-fact-phone', 'req-fact-size', 'req-fact-path', 'req-yes-accept', 'req-yes-decline', 'req-yes-maybe',
     'req-yes-answer', 'req-yes-send', 'req-yes-schedule', 'req-yes-save-draft', 'req-yes-forward', 'req-yes-move', 'req-yes-mark', 'req-yes-delete', 'req-yes-create', 'req-yes-create-invite',
-    'req-yes-change', 'req-yes-add', 'req-yes-update', 'req-yes-run', 'req-yes-type', 'req-yes-open', 'req-yes-write', 'req-no', 'req-always', 'req-always-this']);
+    'req-yes-change', 'req-yes-add', 'req-yes-update', 'req-yes-run', 'req-yes-type', 'req-yes-open', 'req-yes-write', 'req-no', 'req-always', 'req-always-this',
+    'line-topic-request', 'line-topic-notice', 'line-accepted', 'line-done', 'line-failed', 'line-failed-plain', 'line-refused', 'line-timeout', 'line-withdrawn', 'line-stopped', 'line-handled',
+    'line-flash', 'line-flash-device', 'line-notice', 'line-notice-said', 'line-notice-at', 'notice-later', 'notice-mail-bounced', 'notice-mail-delayed', 'notice-mail-send-failed',
+    'notice-mail-later-failed', 'notice-mail-later-unsure', 'notice-mail-later-late', 'notice-mail-sent-late', 'notice-mail-later-draft-kept', 'notice-calendar-declined']);
 /* THE REACTIONS offered by default, each with its Lucide icon; their words
    are "react-<id>" (shown under the icon) and "react-<id>-hint" (on hover).
    The same ids as REACTIONS of parley-host.mjs, which says which wake. */
@@ -717,8 +720,8 @@ export function view(data, { words = {}, view: as = 'simple', now = Date.now(), 
         const t = stamp(m.at);
         if (m.from === 'system') {
             return { type: 'message', key: `y:${String(m.id ?? '')}`, id: String(m.id ?? ''), from: 'system', kind: 'system', level: levelOf(m.level), tone: ['warn', 'bad'].includes(m.tone) ? m.tone : ['warn', 'bad'].includes(m.level) ? m.level : '',
-                topic: cut(m.topic, 40), brief: cut(m.brief, 60),
-                text: String(m.text ?? ''), time: clock(t, locale), when: whole(t, locale), at: t, label: '', file: null, files: [], outside: '', choices: [], open: false, mark: '',
+                topic: cut(lineText(m.topic, { words, locale }), 40), brief: cut(lineText(m.brief, { words, locale }), 60),
+                text: lineText(m.text, { words, locale }), time: clock(t, locale), when: whole(t, locale), at: t, label: '', file: null, files: [], outside: '', choices: [], open: false, mark: '',
                 actions: (Array.isArray(m.actions) ? m.actions : []).filter((a) => a && typeof a.id === 'string' && typeof a.label === 'string' && a.label.trim()).slice(0, ACTIONS_MAX).map((a) => ({ id: a.id, label: a.label.trim().slice(0, LABEL_MAX) })),
                 links: (Array.isArray(m.links) ? m.links : []).filter((a) => a && typeof a.id === 'string' && typeof a.text === 'string' && a.text && a.text.length <= 80).slice(0, LINKS_MAX).map((a) => ({ id: a.id, text: a.text })),
                 /* A request the person decides (an act of the application's, shown as a card): null when there is none. */
@@ -2696,10 +2699,18 @@ function requestSaid(x, words, locale, depth = 0) {
     if (Array.isArray(x)) return x.map((y) => requestSaid(y, words, locale, depth + 1)).filter(Boolean).join(', ');
     if (typeof x.at === 'string') return requestWhen(x.at, x.end, locale);
     if (Array.isArray(x.list)) return requestSaid(x.list, words, locale, depth + 1);
-    if (typeof x.k !== 'string' || !/^[a-z0-9-]{1,60}$/.test(x.k)) return '';
+    /* A word this screen does not know (an application newer than it): its English `t`, when given. */
+    if (typeof x.k !== 'string' || !/^[a-z0-9-]{1,60}$/.test(x.k) || typeof words?.[x.k] !== 'string') {
+        if (typeof x.t === 'string') return x.t;
+        if (typeof x.k !== 'string' || !/^[a-z0-9-]{1,60}$/.test(x.k)) return '';
+    }
     const v = x.v && typeof x.v === 'object' && !Array.isArray(x.v) ? x.v : {};
     return said(words, x.k, Object.fromEntries(Object.entries(v).map(([n, y]) => [n, requestSaid(y, words, locale, depth + 1)])));
 }
+/* A LINE OF THE APPLICATION'S IN THE READER'S WORDS (0.17.71): a line's `text`, `topic` or `brief` may
+   be `{ k, v, t? }` as a request's texts are (above): said with this screen's words and locale; a word it
+   does not know, its English `t`. Plain text stays as it is. */
+export const lineText = (x, { words, locale } = {}) => requestSaid(x, words, locale ?? (typeof words?.lang === 'string' ? words.lang : undefined));
 /* A request as given, made safe: only what is known, each bounded; null when it is not one.
    `words` and `locale` say the texts given as `{ k, v }` (above). */
 export function requestOf(r, { words, locale } = {}) {
