@@ -2235,7 +2235,8 @@ function painter(ctx) {
             const top = el('div', 'parley-result-top');
             top.append(el('span', 'parley-result-title', one.title));
             if (one.state) { const b = el('span', 'parley-badge', said(words, `badge-${one.state}`)); b.dataset.kind = one.state; top.append(b); }
-            li.append(top, el('span', 'parley-result-value', one.value));
+            /* A value is a number or a word or two; a longer one (a sentence an AI put there) is set smaller, whole words kept (06-11). */
+            li.append(top, el('span', `parley-result-value${String(one.value).length > 14 ? ' parley-result-long' : ''}`, one.value));
             if (one.note) li.append(el('span', 'parley-result-note', one.note));
             grid.append(li);
         }

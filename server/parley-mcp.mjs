@@ -33,7 +33,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import { createInterface } from 'node:readline';
 
-export const VERSION = '0.17.75-next.1';
+export const VERSION = '0.17.76-next.1';
 /* A message may be long: the screen folds it, and shows its short version first. */
 export const TEXT_MAX = 16000;
 /* Its short version: a title of one or two lines. */
@@ -556,7 +556,7 @@ export const WRITING = 'The chat renders Markdown: write as you do in your termi
 /* Formulas, families, zones on pictures: drawn by the screen, and only when the topic calls for them. */
 export const RICH = 'Only when the topic calls for it, never as decoration: a formula as $x^2$, or $$...$$ on lines of its own; an algorithm as short pseudo-code and, if it helps, a mermaid flowchart; a family as a ```family block -- one line per person or couple "A + B", children indented two spaces under them, "(dates)", ", note", an optional first line "# Grandparents | Parents | Children", and at most a few "A ~ B : brothers" for another kind of link; zones on a picture as a ```picture block -- first line ![title](/work/photo.jpg), then one line per zone: a label or ?, x y w h as fractions of the picture from its top left, a short line. [Label](ref) links what the application can open. Ask about one ? at a time: the answer comes back with its zone.';
 /* Charts and result cards: drawn by the screen in its own colours, interactive. */
-export const CHARTS = 'Numbers to compare or follow: a ```chart block -- "type: bar|line|pie|donut|stacked", "title: ...", optional "unit: GB", then "data:" and one "Label: 12" a line; several series (line, stacked, grouped bars): a small table instead, its first row the x labels "| Mon | Tue | Wed", then one row a series "Visits | 12 | 15 | 9". Plain numbers, 60 points and 6 series at most; a block it cannot read is shown as written. Results at a glance: a ```cards block, one card a line "- Title | value | ok|todo|blocked|warn | short note" (state and note optional), an optional first line "# Results".';
+export const CHARTS = 'Numbers to compare or follow: a ```chart block -- "type: bar|line|pie|donut|stacked", "title: ...", optional "unit: GB", then "data:" and one "Label: 12" a line; several series (line, stacked, grouped bars): a small table instead, its first row the x labels "| Mon | Tue | Wed", then one row a series "Visits | 12 | 15 | 9". Plain numbers, 60 points and 6 series at most; a block it cannot read is shown as written. Results at a glance: a ```cards block, one card a line "- Title | value | ok|todo|blocked|warn | short note" (state and note optional), an optional first line "# Results". The value is short -- a number or a word or two, 12 characters at most ("974", "0 errors"); what explains it goes in the note.';
 export const GALLERY = 'Pictures that go together (before and after, several pages) are shown at once, as one gallery: give each a title that says what it is ("Home page, before"); the file name is not a title.';
 export const SHORTER = 'For anything longer than a few lines, give a short version too (short): a title of one or two lines, shown first, the rest one tap away. Whatever asks them for an action or a decision, or says you are blocked, MUST be in the short version.';
 /* Which form of question, when: one line an agent keeps. */

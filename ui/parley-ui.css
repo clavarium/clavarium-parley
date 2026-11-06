@@ -1034,6 +1034,7 @@ mark.parley-found[data-now="true"] { outline: 2px solid var(--parley-ask); }
 .parley-result .parley-badge { flex: none; font-size: .72em; }
 .parley-result-title { min-width: 0; font-size: .85em; font-weight: 600; color: var(--parley-dim); line-height: 1.3; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .parley-result-note { font-size: .8em; color: var(--parley-dim); line-height: 1.3; opacity: .9; }
+.parley-result-value.parley-result-long { font-size: 1em; font-weight: 600; overflow-wrap: normal; word-break: normal; hyphens: auto; }
 @container parley (max-width: 26rem) { .parley-cards-grid { grid-template-columns: 1fr 1fr; } .parley-result-value { font-size: 1.25em; } }
 .parley .parley-md .parley-chart-legend li, .parley .parley-md .parley-chart-legend li > *, .parley .parley-md .parley-result, .parley .parley-md .parley-result > * { margin-top: 0; }
 

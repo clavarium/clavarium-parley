@@ -178,6 +178,9 @@ test('result cards on the screen: a grid, each its value, title, state badge and
     assert.equal(cards[1].querySelector('.parley-badge').dataset.kind, 'warn');
     assert.equal(cards[1].querySelector('.parley-result-note').textContent, 'power cut');
     assert.equal(cards[2].querySelector('.parley-badge'), null);
+    assert.ok(cards.every((c) => !c.querySelector('.parley-result-long')), 'a short value keeps its large size');
+    const long = await shown(t, `${F}cards\n- Key | reads, talks, 403 elsewhere | ok\n${F}`);
+    assert.ok(long.querySelector('.parley-result-value.parley-result-long'), 'a long value is set smaller, whole (06-11)');
     assert.equal(elements(box).filter((e) => e.tagName === 'B').length, 0);
 });
 
