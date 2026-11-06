@@ -401,7 +401,8 @@ export class Parley {
         if ((kind === 'say' || kind === 'ask') && typeof m.suggest === 'string' && clean(m.suggest).trim()) entry.suggest = clean(m.suggest).slice(0, 1000).trim();
         /* Whom it is for (#215): the ids of those who speak here; shown by their names of the moment. */
         if ((kind === 'say' || kind === 'ask' || kind === 'doing') && Array.isArray(m.to)) {
-            const names = new Map(this.speakers().map((x) => [x.id, x.place ? `${x.name} \u00b7 ${x.place}` : x.name]));
+            /* A box by its name and place; an AI or a person of one of its rooms by its name (06-11: an id showed instead). */
+            const names = new Map([...this.rooms().flatMap((r) => r.members.map((x) => [x.id, x.name])), ...this.speakers().map((x) => [x.id, x.place ? `${x.name} \u00b7 ${x.place}` : x.name])]);
             const to = m.to.slice(0, SPEAKERS_MAX).map((x) => oneLine(x, 80)).filter(Boolean);
             if (to.length) { entry.to = to; entry.toNames = to.map((id) => names.get(id) ?? id); }
         }

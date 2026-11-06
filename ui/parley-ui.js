@@ -263,7 +263,7 @@ export const KEYS = Object.freeze(['send', 'placeholder', 'empty', 'view', 'simp
     'copy', 'copied', 'copy-md', 'copy-rich', 'see-details', 'see-more', 'see-less', 'note', 'tip', 'important', 'warning', 'caution', 'badge-ok', 'badge-todo', 'badge-blocked', 'badge-warn',
     'waits-you', 'waits-you-note', 'busy', 'pulse', 'state-sent', 'state-read', 'state-working', 'state-done', 'sent-at', 'read-at', 'done-at',
     'reply', 'to-card', 'other-answer', 'group-count', 'group-step', 'group-next', 'group-back', 'group-review', 'group-check', 'group-modify', 'group-send', 'group-several', 'group-own', 'group-missing',
-    'replying', 'not-a-reply', 'in-reply', 'closed', 'you', 'agent', 'drop', 'picture', 'diagram', 'not-shown', 'grouped', 'issue-machine', 'issue-fixed', 'issue-details', 'sent-after-retry', 'auto-wait', 'dictation-joining', 'room-fold', 'room-a', 'room-open',
+    'replying', 'not-a-reply', 'in-reply', 'closed', 'you', 'agent', 'drop', 'picture', 'diagram', 'not-shown', 'grouped', 'issue-machine', 'issue-fixed', 'issue-details', 'sent-after-retry', 'auto-wait', 'dictation-joining', 'room-fold', 'room-a', 'room-open', 'ai-fold',
     'zoom-in', 'zoom-out', 'zoom-actual', 'zoom-fit', 'zoom-actual-short', 'zoom-fit-short', 'close', 'previous', 'next', 'search', 'found', 'newest', 'dictation', 'auto-send-off',
     'react', 'react-remove', 'react-agree', 'react-go', 'react-disagree', 'react-unclear', 'react-stop', 'react-redo', 'react-later', 'react-love',
     'react-agree-hint', 'react-go-hint', 'react-disagree-hint', 'react-unclear-hint', 'react-stop-hint', 'react-redo-hint', 'react-later-hint', 'react-love-hint',
@@ -983,6 +983,24 @@ export function view(data, { words = {}, view: as = 'simple', now = Date.now(), 
             r.time = r.items.at(-1).time; r.when = r.items.at(-1).when;
         }
         rows.splice(0, rows.length, ...folded);
+        /* SIMPLE, in a room: what the AIs said to one another (a message sent to some of them only: « → Main MSM »)
+           folded under one line, opened by a tap -- the person reads the answers, not every hand-over (06-11). */
+        const ais = [];
+        for (const row of rows) {
+            if (row.type === 'message' && row.from === 'agent' && row.by && !row.byBox && row.toNames?.length && !row.room) {
+                const prev = ais.at(-1);
+                if (prev?.type === 'aifold') { prev.items.push(row); continue; }
+                ais.push({ type: 'aifold', key: `A:${row.id ?? row.key}`, items: [row] });
+                continue;
+            }
+            ais.push(row);
+        }
+        for (const r of ais) if (r.type === 'aifold') {
+            const names = [...new Set(r.items.flatMap((x) => x.toNames))].slice(0, 4).join(', ');
+            r.text = typeof words?.['ai-fold'] === 'string' ? said(words, 'ai-fold', { count: r.items.length, names }) : `${r.items.length} → ${names}`;
+            r.time = r.items.at(-1).time; r.when = r.items.at(-1).when;
+        }
+        rows.splice(0, rows.length, ...ais);
     }
     /* A REFUSAL RESOLVED LATER (04-11): "Not sent to next…" then, later, "Sent: … → next": in the simple view the
        refusal goes, and what was sent says it took another try. The detailed view keeps both. */
@@ -3886,13 +3904,14 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
         if (row.type === 'waits') { const p = el('p', 'parley-waits', row.text); p.title = row.when; p.setAttribute('role', 'status'); return p; }
         /* Done: said once, quietly, at the end. */
         if (row.type === 'done') { const p = el('p', 'parley-done', row.text); p.title = row.when; p.setAttribute('role', 'status'); return p; }
-        if (row.type === 'roomfold') {
+        if (row.type === 'roomfold' || row.type === 'aifold') {
             const holder = el('div', 'parley-roomfold');
+            if (row.type === 'aifold') holder.dataset.ais = 'true';
             const head = el('div', 'parley-roomfold-head');
             const more = button('', 'parley-roomfold-line', () => {});
             more.append(el('span', 'parley-roomfold-text', row.text), time(row.time, row.when)); more.title = row.text;
             head.append(more);
-            if (act) { const go = button(said(words, 'room-open'), 'parley-roomfold-open', () => { try { act(`salon:${row.roomId}`, {}); } catch { /* the application's business */ } }); head.append(go); }
+            if (act && row.type === 'roomfold') { const go = button(said(words, 'room-open'), 'parley-roomfold-open', () => { try { act(`salon:${row.roomId}`, {}); } catch { /* the application's business */ } }); head.append(go); }
             const list = el('div', 'parley-roomfold-items');
             for (const it of row.items) { const n = rowOf(it, v); if (n) list.append(n); }
             holder.append(head, list);

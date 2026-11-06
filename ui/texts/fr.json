@@ -198,6 +198,7 @@
   "issue-fixed": "{what} : réglé",
   "issue-details": "détails",
   "room-fold": "Dans le salon {room} · {count}",
+  "ai-fold": "Entre les IA · {count} → {names}",
   "room-a": "un salon",
   "room-open": "Ouvrir le salon",
   "room-fold-topic": "Dans le salon {room} · {count} — « {topic} »",

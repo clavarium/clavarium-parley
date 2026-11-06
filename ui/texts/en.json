@@ -198,6 +198,7 @@
   "issue-fixed": "{what}: fixed",
   "issue-details": "details",
   "room-fold": "In the room {room} · {count}",
+  "ai-fold": "Between the AIs · {count} → {names}",
   "room-a": "a room",
   "room-open": "Open the room",
   "room-fold-topic": "In the room {room} · {count} — « {topic} »",

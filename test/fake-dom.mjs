@@ -26,6 +26,7 @@ class FakeNode {
             node.parentNode = this; this.childNodes.push(node);
         }
     }
+    prepend(...nodes) { const made = nodes.map((n) => (typeof n === 'string' ? new FakeText(n) : n)); for (const n of made) { n.parentNode?.removeChild(n); n.parentNode = this; } this.childNodes.unshift(...made); }
     removeChild(node) { this.childNodes = this.childNodes.filter((n) => n !== node); node.parentNode = null; lose(node); }
     replaceWith(...nodes) { const parent = this.parentNode; if (!parent) return; const at = parent.childNodes.indexOf(this); const made = nodes.map((n) => (typeof n === 'string' ? new FakeText(n) : n)); for (const n of made) { n.parentNode?.removeChild(n); n.parentNode = parent; } parent.childNodes.splice(at, 1, ...made); this.parentNode = null; }
     replaceChildren(...nodes) { for (const n of this.childNodes) { n.parentNode = null; lose(n); } this.childNodes = []; this.append(...nodes); }
