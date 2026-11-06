@@ -1694,8 +1694,35 @@ export function sized(svg) {
 }
 
 /* THE FAMILY, LAID OUT: each couple over its children, the generations in bands. */
-const FW = 124, FH = 58, FGAP = 36, FSIB = 22, FROOT = 44, FBAND = FH + 32, FROW = FBAND + 40, FPAD = 12;
-const ownWidth = (n) => n.people.length * FW + (n.people.length - 1) * FGAP;
+/* A NAME ON ITS CARD (06-11: full names ran out of their 124 px cards and
+   over the rings): on one line when it fits, else on two at the space that
+   balances them (first names, then the surname); the cards of a family all
+   as wide as their longest line needs, between FW and FW_MAX, and taller
+   when a name takes two lines. A line still too long is drawn narrower
+   (textLength), never over the card's edge. */
+const FW = 124, FW_MAX = 172, FH_ONE = 58, FH_TWO = 74, FGAP = 36, FSIB = 22, FROOT = 44, FPAD = 12, FNAME_MAX = 40, FONE = FW - 18;
+let fw = FW;
+const FNAME_FONT = '600 17px Spectral, Georgia, "Noto Serif", "DejaVu Serif", serif';
+let measurer;
+/* The width of a name's line: measured where the page can, else a wide serif's guess. */
+export function nameWidth(text) {
+    if (measurer === undefined) { try { measurer = globalThis.document?.createElement('canvas')?.getContext?.('2d') ?? null; } catch { measurer = null; } }
+    if (measurer) { measurer.font = FNAME_FONT; const w = measurer.measureText(text).width; if (w > 0) return w; }
+    return text.length * 10.5;
+}
+export function nameLines(name) {
+    const whole = name.length > FNAME_MAX ? `${name.slice(0, FNAME_MAX - 1)}…` : name;
+    if (nameWidth(whole) <= FONE || !whole.includes(' ')) return [whole];
+    let best = null;
+    for (let k = whole.indexOf(' '); k > 0; k = whole.indexOf(' ', k + 1)) {
+        const two = [whole.slice(0, k), whole.slice(k + 1)];
+        const w = Math.max(...two.map(nameWidth));
+        if (!best || w < best.w) best = { two, w };
+    }
+    return best.two;
+}
+export const cardWidth = (lines) => Math.round(Math.min(FW_MAX, Math.max(FW, ...lines.flat().map((l) => nameWidth(l) + 18))));
+const ownWidth = (n) => n.people.length * fw + (n.people.length - 1) * FGAP;
 function widthOf(n) { const kids = n.children.reduce((s, c) => s + widthOf(c), 0) + FSIB * Math.max(0, n.children.length - 1); n.w = Math.max(ownWidth(n), kids); return n.w; }
 function placeAt(n, left) {
     n.x = left + (n.w - ownWidth(n)) / 2;
@@ -1889,13 +1916,20 @@ function painter(ctx) {
         let total = FPAD;
         let depth = 0;
         const walk = (n) => { depth = Math.max(depth, n.depth); n.people.forEach((p, k) => all.push({ p, n, k })); n.children.forEach(walk); };
+        const peopleOf = (n) => [...n.people, ...n.children.flatMap(peopleOf)];
+        const lined = new Map(roots.flatMap(peopleOf).map((p) => [p, nameLines(p.name)]));
+        fw = cardWidth([...lined.values()]);
+        const FW = fw;
+        const FH = [...lined.values()].some((l) => l.length > 1) ? FH_TWO : FH_ONE;
+        const FBAND = FH + 32; const FROW = FBAND + 40;
         for (const r of roots) { widthOf(r); placeAt(r, total); total += r.w + FROOT; walk(r); }
         const W = total - FROOT + FPAD;
         const byName = new Map();
         for (const o of all) if (!byName.has(o.p.name)) byName.set(o.p.name, o);
         const cx = (o) => o.n.x + o.k * (FW + FGAP) + FW / 2;
         const drawn = links.map((l) => ({ ...l, A: byName.get(l.a), B: byName.get(l.b) })).filter((l) => l.A && l.B && l.A !== l.B);
-        const lift = (l) => 22 + Math.min(58, Math.abs(cx(l.A) - cx(l.B)) * 0.09);
+        /* Its arc stays in the gap under the band above: its word never on that band's marriage year (06-11). */
+        const lift = (l) => 22 + Math.min(14, Math.abs(cx(l.A) - cx(l.B)) * 0.09);
         const TOP = Math.max(12, ...drawn.filter((l) => l.A.n.depth === 0 && l.B.n.depth === 0).map((l) => lift(l) - 6));
         const bandTop = (d) => TOP + d * FROW;
         const cardTop = (d) => bandTop(d) + 24;
@@ -1919,8 +1953,13 @@ function painter(ctx) {
                 if (p.inlaw) g.dataset.inlaw = 'true';
                 g.append(sv('rect', { x, y: top, width: FW, height: FH, rx: 12, class: 'parley-family-card' }));
                 g.append(sv('rect', { x: x + 10, y: top, width: FW - 20, height: 4, rx: 2, class: 'parley-family-bar' }));
-                g.append(sv('text', { x: x + FW / 2, y: top + (p.dates ? 27 : 35), class: 'parley-family-name' }, p.name.length > 16 ? `${p.name.slice(0, 15)}…` : p.name));
-                if (p.dates) g.append(sv('text', { x: x + FW / 2, y: top + 45, class: 'parley-family-dates' }, p.dates));
+                const two = lined.get(p);
+                const block = two.length * 19 + (p.dates ? 18 : 0); let y = top + 2 + (FH - block) / 2 + 15;
+                for (const line of two) {
+                    g.append(sv('text', { x: x + FW / 2, y, class: 'parley-family-name', ...(nameWidth(line) > FW - 14 ? { textLength: FW - 14, lengthAdjust: 'spacingAndGlyphs' } : {}) }, line));
+                    y += 19;
+                }
+                if (p.dates) g.append(sv('text', { x: x + FW / 2, y: y - 1, class: 'parley-family-dates' }, p.dates));
                 people.append(g);
                 const others = drawn.filter((l) => l.A.p === p || l.B.p === p).map((l) => `${l.word} : ${(l.A.p === p ? l.B : l.A).p.name}`);
                 const key = `${n.depth}:${x}`;
@@ -1933,7 +1972,7 @@ function painter(ctx) {
                 lines.append(sv('line', { x1, y1: mid, x2, y2: mid }));
                 people.append(sv('circle', { cx: c - 4, cy: mid, r: 6, class: 'parley-family-ring parley-family-ring-first' }), sv('circle', { cx: c + 4, cy: mid, r: 6, class: 'parley-family-ring' }));
                 const year = /\b(1[0-9]\d\d|20\d\d)\b/.exec(n.note)?.[1];
-                if (year) people.append(sv('text', { x: c, y: mid + 22, class: 'parley-family-word' }, year));
+                if (year) people.append(sv('text', { x: c, y: mid + 22, class: 'parley-family-word parley-family-year' }, year));
             }
             const from = n.people.length === 2 ? n.x + FW + FGAP / 2 : n.x + FW / 2;
             const start = n.people.length === 2 ? mid + (/\b(1[0-9]\d\d|20\d\d)\b/.test(n.note) ? 28 : 8) : top + FH;
@@ -4449,6 +4488,7 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
         try {
             const cursor = typeof latest?.cursor === 'string' && latest.cursor ? latest.cursor : null;
             const got = await load(cursor ? { ...span, since: cursor } : { ...span });
+            if (gone) return;   /* closed meanwhile: nothing painted into a screen that is gone */
             paint(cursor ? since(latest, got) : got);
         } catch { /* shown again at the next look */ }
     }

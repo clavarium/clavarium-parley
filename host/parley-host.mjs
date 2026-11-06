@@ -391,12 +391,13 @@ export class Parley {
     /* How the person opens a file, or null. */
     #open(path) { try { const r = this.#reach(path); return typeof r === 'string' && r ? r : null; } catch { return null; } }
 
+    /* A member of one of its rooms named in words (@{id}): by its name of the moment, either side (06-11: the id showed). */
+    #named(t) { return t.includes('@{') ? t.replace(/@\{([0-9a-f-]{36})\}/g, (whole, mid) => { for (const r of this.rooms()) { const x = r.members.find((y) => y.id === mid); if (x) return `@${x.name}`; } return whole; }) : t; }
     /* One line the agent wrote, as it is handed over. */
     #fromAgent(m) {
         const kind = KINDS.includes(m.kind) ? m.kind : 'say';
         /* A member of one of its rooms named in its words (@{id}): by its name of the moment (06-11: the id showed). */
-        const named = (t) => (t.includes('@{') ? t.replace(/@\{([0-9a-f-]{36})\}/g, (whole, mid) => { for (const r of this.rooms()) { const x = r.members.find((y) => y.id === mid); if (x) return `@${x.name}`; } return whole; }) : t);
-        const entry = { from: 'agent', id: String(m.id ?? ''), at: String(m.at ?? ''), kind, text: named(clean(m.text)), choices: kind === 'ask' && Array.isArray(m.choices) ? m.choices.slice(0, 8).map((x) => oneLine(x, 200)).filter(Boolean) : [] };
+        const entry = { from: 'agent', id: String(m.id ?? ''), at: String(m.at ?? ''), kind, text: this.#named(clean(m.text)), choices: kind === 'ask' && Array.isArray(m.choices) ? m.choices.slice(0, 8).map((x) => oneLine(x, 200)).filter(Boolean) : [] };
         if ((kind === 'say' || kind === 'ask') && typeof m.short === 'string' && oneLine(m.short, SHORT_KEPT)) entry.short = oneLine(m.short, SHORT_KEPT);
         /* Several of its choices may be ticked, sent together. */
         if (kind === 'ask' && m.many === true && entry.choices.length > 1) entry.many = true;
@@ -539,7 +540,7 @@ export class Parley {
         toRaw.forEach((m, i) => {
             if (!m || typeof m.reaction === 'string') return;
             const seen = i < toRaw.length - unread;
-            const e = { from: 'person', id: String(m.id ?? ''), at: String(m.at ?? ''), kind: 'say', text: clean(m.text), choices: [], seen, ...(seen && seenAt(i) ? { seenAt: seenAt(i) } : {}),
+            const e = { from: 'person', id: String(m.id ?? ''), at: String(m.at ?? ''), kind: 'say', text: this.#named(clean(m.text)), choices: [], seen, ...(seen && seenAt(i) ? { seenAt: seenAt(i) } : {}),
                 ...(m.answers ? { answers: String(m.answers), question: oneLine(m.question, 300) } : {}), ...(m.answers && Array.isArray(m.picked) ? { picked: m.picked.slice(0, 8).map((x) => oneLine(x, 200)).filter(Boolean) } : {}),
                 ...(m.answers && Array.isArray(m.replies) ? { replies: m.replies.slice(0, GROUP_MAX).filter((r) => r && typeof r === 'object' && typeof r.id === 'string').map((r) => ({ id: oneLine(r.id, 30), ...(oneLine(r.label, 40) ? { label: oneLine(r.label, 40) } : {}), ...(Array.isArray(r.picked) ? { picked: r.picked.slice(0, 8).map((x) => oneLine(x, 200)).filter(Boolean) } : { text: clean(r.text).slice(0, 2000) }) })) } : {}), ...(m.re ? { re: String(m.re), quote: oneLine(m.quote, 300) } : {}), ...(Array.isArray(m.files) && m.files.length ? { files: this.#files(m.files) } : {}), ...(m.via === 'voice' ? { via: 'voice' } : {}), ...(aboutOf(m.about) ? { about: aboutOf(m.about) } : {}), ...(byOf(m.by) ? { by: byOf(m.by) } : {}), ...(m.room && typeof m.room === 'object' && oneLine(m.room.id, 80) ? { room: { id: oneLine(m.room.id, 80), name: oneLine(m.room.name, 60), ...(oneLine(m.room.message, 80) ? { message: oneLine(m.room.message, 80) } : {}) } } : {}) };
             place.set(e, i);

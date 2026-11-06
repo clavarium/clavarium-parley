@@ -5,7 +5,7 @@ import { mkdtempSync, rmSync, readFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fakePage } from './fake-dom.mjs';
-import { mount, markdown, inline, plainOf, familyOf, zonesOf, askedZone, mathCopy, sized, MATH_OPTIONS, KATEX, FAMILY_LINKS_MAX } from '../ui/parley-ui.js';
+import { mount, markdown, inline, plainOf, familyOf, zonesOf, askedZone, mathCopy, sized, MATH_OPTIONS, KATEX, FAMILY_LINKS_MAX, nameWidth, nameLines } from '../ui/parley-ui.js';
 import { install, Parley, texts, aboutOf } from '../host/parley-host.mjs';
 import { bridge, RICH } from '../server/parley-mcp.mjs';
 import { run } from '../bin/parley.mjs';
@@ -136,7 +136,7 @@ test('a family on the screen: SVG made node by node, names as text, a card on a 
     const fig = root.querySelector('.parley-family');
     assert.ok(fig, 'drawn');
     assert.equal(elements(root.querySelector('.parley-said')).filter((e) => ['IMG', 'SCRIPT', 'A', 'FOREIGNOBJECT'].includes(e.tagName)).length, 0, 'no markup from a name');
-    assert.ok(fig.textContent.includes('<img src=x oner'), 'the name, as text (cut to its width)');
+    assert.ok(fig.querySelectorAll('.parley-family-name').map((n) => n.textContent).join(' ').includes('<img src=x oner'), 'the name, as text (on its lines)');
     assert.ok(fig.textContent.includes('Grandparents') && fig.textContent.includes('friends') && fig.textContent.includes('1952'));
     const paul = root.querySelectorAll('.parley-family-person').find((g) => g.getAttribute('aria-label') === 'Paul, 1925');
     paul.click();
@@ -209,4 +209,23 @@ test('what they tapped goes to the agent: kept by the host, bounded; parley read
     assert.match(RICH, /```family/); assert.match(RICH, /```picture/);
     assert.match(run(['--help'], { cwd: home, env: {} }).out, /```picture/);
     assert.match(run(['guide'], { cwd: home, env: {} }).out, /only when\s+the topic calls for it/);
+});
+
+test('a family of full names: each name inside its card, on two lines when long; a link word stays out of the band above (06-11)', async (t) => {
+    const { root } = await shown(t, `${F}family\n# Grandparents | Parents\nHenri Valmont (1921–1998) + Odile Marchais (1924–2010), married in 1946\n  Jacques Valmont (1948) + Claire Dufresne (1950)\n  Monique Valmont (1951) + Paul Garnier (1949)\nJacques Valmont ~ Paul Garnier : best friends\n${F}`);
+    const people = root.querySelectorAll('.parley-family-person');
+    assert.equal(people.length, 6);
+    for (const g of people) {
+        const width = Number(g.querySelector('.parley-family-card').getAttribute('width'));
+        const names = g.querySelectorAll('.parley-family-name');
+        assert.ok(names.length >= 1 && names.length <= 2);
+        for (const n of names) assert.ok(n.getAttribute('textLength') ? Number(n.getAttribute('textLength')) <= width - 14 : nameWidth(n.textContent) <= width - 14, `${n.textContent} fits its card of ${width}`);
+        assert.equal(names.map((n) => n.textContent).join(' '), g.getAttribute('aria-label').split(',')[0], 'the whole name, its lines in order');
+    }
+    assert.deepEqual(nameLines('Monique Valmont'), ['Monique', 'Valmont'], 'a long name: first name, then surname');
+    assert.deepEqual(nameLines('Ana'), ['Ana']);
+    const bands = root.querySelectorAll('.parley-family-band').map((b) => ({ top: Number(b.getAttribute('y')), bottom: Number(b.getAttribute('y')) + Number(b.getAttribute('height')) }));
+    const word = root.querySelectorAll('.parley-family-word').find((w) => w.textContent === 'best friends');
+    assert.ok(Number(word.getAttribute('y')) > bands[0].bottom, 'its word under the grandparents\' band, not on their year');
+    assert.ok(root.querySelectorAll('.parley-family-year').some((y) => y.textContent === '1946'), 'the marriage year, haloed in its band');
 });

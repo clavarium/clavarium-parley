@@ -60,6 +60,8 @@ test('a message to an AI of a room names it, never by its id (06-11: « → 4d9f
         assert.deepEqual(own.read().messages.at(-1).toNames, ['Main Sales']);
         agent.tell(`J’ai demandé à @{${msm}}.`, { room: 'room-1' });
         assert.equal(own.read().messages.at(-1).text, 'J’ai demandé à @Main Sales.', 'a member named in the words: by its name');
+        own.say(`@{${msm}} : une question.`, undefined, [], { room: { id: 'room-1', name: 'Assistants', message: 'abcdef1299' } });
+        assert.equal(own.read().messages.at(-1).text, '@Main Sales : une question.', 'what came from the room too');
     } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
