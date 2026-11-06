@@ -54,3 +54,13 @@ test('the command: tell --to', (t) => {
     assert.notEqual(bad.code, 0);
     assert.match(bad.err + bad.out, /no one here has the id box-7/);
 });
+
+test('a message signed by an AI or a program outside a room (an API key) is not a voice box: answered in the thread', (t) => {
+    const { dir } = folder(t);
+    const host = new Parley(dir);
+    host.setSpeakers([{ id: 'box-1', name: 'Kitchen' }]);
+    host.say('Lights are off.', undefined, [], { by: { id: 'apikey:k1', name: 'Home automation', kind: 'ai', place: 'API key' } });
+    const read = bridge(dir).read();
+    assert.match(read, /Message from Home automation \(API key\), an AI or a program writing here \(answer it here, with tell and no to: it reads this thread back\): Lights are off\./);
+    assert.doesNotMatch(read, /a voice box|Voice boxes here|apikey:k1/);
+});

@@ -33,7 +33,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import { createInterface } from 'node:readline';
 
-export const VERSION = '0.17.73-next.1';
+export const VERSION = '0.17.74-next.1';
 /* A message may be long: the screen folds it, and shows its short version first. */
 export const TEXT_MAX = 16000;
 /* Its short version: a title of one or two lines. */
@@ -538,11 +538,14 @@ export function bridge(dir, { how = 'run `parley read`', back = (id) => `parley 
             /* Said in a room (#215): which room, who, and how to answer there -- never in its own thread by default. */
             const inRoomLine = (m) => (m.room && typeof m.room.id === 'string' ? `In the room "${plain(m.room.name, 60)}"${m.room.message ? ` [its message there: ${plain(m.room.message, 80).slice(0, ID_SHOWN)}]` : ''}, from ${m.by && typeof m.by.name === 'string' ? `${plain(m.by.name, 40)}${m.by.kind === 'box' ? ' (a voice box)' : m.by.kind === 'ai' ? ' (an AI)' : ''}` : 'the person'}: ` : null);
             const roomsHint = () => { const list = rooms(); return list.length ? `\nTo answer in a room: tell (or ask, doing) with room: its id and re: its message there -- without room, your words stay in your own thread and nobody in the room sees them. A box says aloud only what is sent to it (to: its id). Another AI of the room gets a message only when it is sent to it (to: its id): to hand a message on as it is, tell with room, to and forward: its id (no text); to split a question, one tell per AI with to: that AI, then answer the person yourself in one message once they have answered. To name a member in your text, write @{its id}: the screen shows its name. Your rooms: ${list.map((r) => `${r.name} (${r.id}): ${(Array.isArray(r.members) ? r.members : []).map((x) => `${x.name}${x.kind ? ` [${x.kind}]` : ''} (${x.id})`).join(', ')}`).join('; ')}.` : ''; };
-            const from = (m) => inRoomLine(m) ?? (m.by && typeof m.by.name === 'string' ? `Message from ${plain(m.by.name, 40)}${m.by.place ? ` (${plain(m.by.place, 40)})` : ''}, a voice box${m.by.why ? ` [${plain(m.by.why, 120)}]` : ''} (first, at once, say in a few words what you are about to do with doing to: ["${plain(m.by.id, 80)}"]; then answer it aloud with tell to: the same -- or with ask to: the same when your answer calls for theirs: the box listens after) (${DICTATED}): ` : null);
+            const isBox = (m) => m.by && typeof m.by.name === 'string' && (!m.by.kind || m.by.kind === 'box');
+            /* Signed by an AI or a program outside a room (Clavarium: an API key): not a box -- answered in this thread, never aloud. */
+            const byOther = (m) => (m.by && typeof m.by.name === 'string' && !isBox(m) ? `Message from ${plain(m.by.name, 40)}${m.by.place ? ` (${plain(m.by.place, 40)})` : ''}, ${m.by.kind === 'ai' ? 'an AI or a program' : 'a person'} writing here (answer it here, with tell and no to: it reads this thread back): ` : null);
+            const from = (m) => inRoomLine(m) ?? byOther(m) ?? (m.by && typeof m.by.name === 'string' ? `Message from ${plain(m.by.name, 40)}${m.by.place ? ` (${plain(m.by.place, 40)})` : ''}, a voice box${m.by.why ? ` [${plain(m.by.why, 120)}]` : ''} (first, at once, say in a few words what you are about to do with doing to: ["${plain(m.by.id, 80)}"]; then answer it aloud with tell to: the same -- or with ask to: the same when your answer calls for theirs: the box listens after) (${DICTATED}): ` : null);
             /* Who may hear an answer, when a voice box spoke: each by its room, its place and its id. */
             const boxes = () => { const list = speakers(); return list.length ? `\nVoice boxes here (tell with to: their ids; "the kitchen" said from one place means the one there, unless told otherwise): ${list.map((x) => `${x.name}${x.place ? ` · ${x.place}` : ''} (${x.id})`).join(', ')}.` : ''; };
             const said = (m) => (m.reaction ? reacted(m) : `${from(m) ?? (m.answers ? `Answer to your question "${plain(m.question, 200)}": ` : m.re ? `Reply to your message "${plain(m.quote, 200)}"${m.via === 'voice' ? ` (${DICTATED})` : ''}: ` : m.via === 'voice' ? `Message (${DICTATED}): ` : 'Message: ')}${m.answers ? answerText(m) : plain(m.text)}${aboutText(m)}${attached(m)}`);
-            return `${fresh.map((m) => `${shownId(m.id) ? `[${shownId(m.id)}] ` : ''}${said(m)}`).join('\n')}${fresh.some((m) => m.room) ? roomsHint() : fresh.some((m) => m.by) ? boxes() : ''}${pending}${next}`;
+            return `${fresh.map((m) => `${shownId(m.id) ? `[${shownId(m.id)}] ` : ''}${said(m)}`).join('\n')}${fresh.some((m) => m.room) ? roomsHint() : fresh.some(isBox) ? boxes() : ''}${pending}${next}`;
         },
     };
 }
