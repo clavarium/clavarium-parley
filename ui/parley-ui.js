@@ -2257,7 +2257,7 @@ function painter(ctx) {
         for (const one of set.cards) {
             const li = el('li', 'parley-result'); if (one.state) li.dataset.state = one.state;
             const top = el('div', 'parley-result-top');
-            top.append(el('span', 'parley-result-title', one.title));
+            { const tt = el('span', 'parley-result-title', one.title); tt.title = one.title; top.append(tt); }
             if (one.state) { const b = el('span', 'parley-badge', said(words, `badge-${one.state}`)); b.dataset.kind = one.state; top.append(b); }
             /* A value is a number or a word or two; a longer one (a sentence an AI put there) is set smaller, whole words kept (06-11). */
             li.append(top, el('span', `parley-result-value${String(one.value).length > 14 ? ' parley-result-long' : ''}`, one.value));
