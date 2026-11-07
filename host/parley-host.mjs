@@ -405,7 +405,7 @@ export class Parley {
         if (kind === 'ask' && Array.isArray(m.recommended)) { const r = m.recommended.map((x) => oneLine(x, 200)).filter((x) => entry.choices.includes(x)); if (r.length) entry.recommended = r; }
         if ((kind === 'say' || kind === 'ask') && typeof m.suggest === 'string' && clean(m.suggest).trim()) entry.suggest = clean(m.suggest).slice(0, 1000).trim();
         /* Whom it is for (#215): the ids of those who speak here; shown by their names of the moment. */
-        if ((kind === 'say' || kind === 'ask' || kind === 'doing') && Array.isArray(m.to)) {
+        if ((kind === 'say' || kind === 'ask' || kind === 'doing' || kind === 'show') && Array.isArray(m.to)) {
             /* A box by its name and place; an AI or a person of one of its rooms by its name (06-11: an id showed instead). */
             const names = new Map([...this.rooms().flatMap((r) => r.members.map((x) => [x.id, x.name])), ...this.speakers().map((x) => [x.id, x.place ? `${x.name} \u00b7 ${x.place}` : x.name])]);
             const to = m.to.slice(0, SPEAKERS_MAX).map((x) => oneLine(x, 80)).filter(Boolean);
@@ -417,7 +417,8 @@ export class Parley {
         if (this.#room && byOf(m.by)) entry.by = byOf(m.by);
         if (typeof m.re === 'string' && oneLine(m.re, 80)) entry.re = oneLine(m.re, 80);
         /* Where it is to go (an agent answering in a room): a request the application checks, never a signature. */
-        if (!this.#room && (kind === 'say' || kind === 'ask' || kind === 'doing') && typeof m.room === 'string' && oneLine(m.room, 80)) entry.room = oneLine(m.room, 80);
+        /* Shown in a room too (07-11): a file it made, opened there through its own conversation. */
+        if (!this.#room && (kind === 'say' || kind === 'ask' || kind === 'doing' || kind === 'show') && typeof m.room === 'string' && oneLine(m.room, 80)) entry.room = oneLine(m.room, 80);
         if (entry.room && typeof m.forward === 'string' && oneLine(m.forward, 80)) entry.forward = oneLine(m.forward, 80);
         /* Several questions at once, one card: each well formed, ids unique; fewer than two, none (the text says them). */
         if (kind === 'ask' && Array.isArray(m.questions)) {
@@ -710,13 +711,21 @@ export class Parley {
 
     /* A ROOM'S THREAD (#215): the application writes both sides. What an AI said is put on the agent's side, signed
        by it (by: { id, name, kind: 'ai' }), for whom (to), and the message it answers (re). Never by an agent. */
-    relay({ text, by, to, re, kind = 'say' } = {}) {
+    relay({ text, by, to, re, kind = 'say', path, files } = {}) {
         if (!this.#room) throw new RangeError('Only a room\'s thread is written by relay.');
         const who = byOf(by);
         const said = clean(text).trim();
         if (!who) throw new RangeError('Say who wrote it (by: id and name).');
         if (!said) throw new RangeError('Write something.');
-        const entry = { id: randomUUID(), at: this.#now().toISOString(), kind: kind === 'doing' ? 'doing' : 'say', text: kind === 'doing' ? oneLine(said, 200) : said, by: who };
+        const entry = { id: randomUUID(), at: this.#now().toISOString(), kind: kind === 'doing' ? 'doing' : kind === 'show' ? 'show' : 'say', text: kind === 'doing' ? oneLine(said, 200) : said, by: who };
+        /* A file an AI showed in the room (07-11): its paths as it gave them; the application opens them through its conversation. */
+        if (entry.kind === 'show') {
+            const p = oneLine(path, 1000);
+            const list = Array.isArray(files) ? files.slice(0, SHOW_MAX).filter((f) => f && typeof f === 'object').map((f) => ({ path: oneLine(f.path, 1000), title: oneLine(f.title, 120) })).filter((f) => f.path) : [];
+            if (!p && !list.length) throw new RangeError('Show a file (path or files).');
+            entry.path = p || list[0].path;
+            if (list.length) entry.files = list;
+        }
         const ids = Array.isArray(to) ? to.map((x) => oneLine(x, 80)).filter(Boolean).slice(0, SPEAKERS_MAX) : [];
         if (ids.length) entry.to = ids;
         if (typeof re === 'string' && oneLine(re, 80)) entry.re = oneLine(re, 80);

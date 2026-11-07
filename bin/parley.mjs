@@ -80,7 +80,7 @@ export const HELP = `parley: talk with the person you work for. They read and an
                                        "label", "question", "choices"?, "many"?}]}, ${GROUP_MAX} at most
   parley close ID "answer"             close a question of yours they answered another way (a message
                                        typed later), saying the answer you understood; ID as read shows it
-  parley show path ["note"]            point them to a file you made, so that they can open it
+  parley show [--room ID [--to ID] [--re MSG]] path ["note"]  point them to a file you made (--room: in a room you are in)
   parley show a.png="title" b.png="title" ["note"]
                                        several files at once, one gallery, each with its title
   parley doing "text"                  say in one short line what you are doing now, each time you
@@ -176,7 +176,7 @@ export function showing(words, cwd = process.cwd()) {
 /* The options of each verb ("=": it takes a value). */
 const OPTIONS = {
     read: ['--last=', '--days=', '--before=', '--all'], tell: ['--short=', '--suggest=', '--to=', '--room=', '--re='], ask: ['--short=', '--pick-many', '--group', '--choice=', '--recommend=', '--suggest=', '--room=', '--re='],
-    show: [], close: [], doing: [], status: [], forget: [],
+    show: ['--room=', '--to=', '--re='], close: [], doing: [], status: [], forget: [],
 };
 
 /* Runs one command line. Resolves with { code, out, err }: nothing is printed
@@ -302,7 +302,7 @@ export function run(argv, { env = process.env, cwd = process.cwd(), stdin = () =
         else if (verb === 'close') said = verbs.close(rest[0], text(rest.slice(1).join(' ')));
         else if (verb === 'doing') { let to; let room; const i = rest.indexOf('--to'); if (i >= 0) { to = rest[i + 1]; rest.splice(i, 2); } const j = rest.indexOf('--room'); if (j >= 0) { room = rest[j + 1]; rest.splice(j, 2); } said = verbs.doing(text(rest.join(' ')), { to, room }); }
         else if (verb === 'forget') said = verbs.forget(rest[0]);
-        else if (verb === 'show') { const { files, note } = showing(rest, cwd); said = verbs.show(files.length === 1 && !files[0].title ? files[0].path : files, note, { from: cwd }); }
+        else if (verb === 'show') { let room; let to; let re; for (const [k, set] of [['--room', (v) => { room = v; }], ['--to', (v) => { to = v; }], ['--re', (v) => { re = v; }]]) { const i = rest.indexOf(k); if (i >= 0) { set(rest[i + 1]); rest.splice(i, 2); } } const { files, note } = showing(rest, cwd); said = verbs.show(files.length === 1 && !files[0].title ? files[0].path : files, note, { from: cwd, room, to, re }); }
         else said = verbs.status(rest[0], rest.slice(1).join(' '));
         return { code: 0, out: `${said}\n`, err: '' };
     } catch (error) {

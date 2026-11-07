@@ -121,3 +121,26 @@ test('in a room, a message for the person is marked, not tabbed « → Toi »; f
         assert.ok(v.rows.some((r) => r.text === 'Pour toi.' && r.toYou), 'for the person: in sight, marked');
     } finally { rmSync(dir, { recursive: true, force: true }); }
 });
+
+test('an AI shows a file in a room it is in (07-11): the line keeps the room; the room\'s relay keeps the file', async () => {
+    const { bridge } = await import('../server/parley-mcp.mjs');
+    const { writeFileSync } = await import('node:fs');
+    const dir = mkdtempSync(join(tmpdir(), 'parley-show-'));
+    try {
+        const d = join(dir, '.parley'); mkdirSync(d);
+        const own = new Parley(d);
+        own.setRooms([{ id: 'room-1', name: 'Assistants', members: [{ id: 'm1', name: 'Main Sales', kind: 'ai' }] }]);
+        own.say('Regarde.', undefined, [], { room: { id: 'room-1', name: 'Assistants', message: 'abcdef1234567890' } });
+        const file = join(dir, 'report.html'); writeFileSync(file, '<p>ok</p>');
+        const agent = bridge(d); agent.read();
+        assert.match(agent.show(file, 'Le rapport', { from: dir, room: 'room-1' }), /Posted in the room Assistants/);
+        const last = own.read().messages.at(-1);
+        assert.equal(last.kind, 'show'); assert.equal(last.room, 'room-1'); assert.equal(last.path, file);
+        const roomDir = join(dir, 'room'); mkdirSync(roomDir);
+        const room = new Parley(roomDir, { room: true });
+        room.relay({ text: 'Le rapport', by: { id: 'm1', name: 'Main Sales', kind: 'ai' }, kind: 'show', path: '/work/report.html', files: [{ path: '/work/report.html', title: 'Rapport' }] });
+        const shown = room.read().messages.at(-1);
+        assert.equal(shown.kind, 'show'); assert.equal(shown.path, '/work/report.html'); assert.equal(shown.files[0].title, 'Rapport');
+        assert.throws(() => room.relay({ text: 'x', by: { id: 'm1', name: 'Main Sales', kind: 'ai' }, kind: 'show' }), /Show a file/);
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+});
