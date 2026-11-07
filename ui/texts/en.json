@@ -16,6 +16,8 @@
   "read": "Read",
   "remind": "Remind it",
   "reminded": "Reminded",
+  "urgent": "Read it now",
+  "urgent-told": "Told: urgent",
   "steps": "Steps",
   "no-steps": "No step yet.",
   "files": "Files",

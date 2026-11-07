@@ -16,6 +16,8 @@
   "read": "Lu",
   "remind": "Le lui rappeler",
   "reminded": "Rappelé",
+  "urgent": "Lire tout de suite",
+  "urgent-told": "Signalé urgent",
   "steps": "Étapes",
   "no-steps": "Aucune étape pour l'instant.",
   "files": "Fichiers",

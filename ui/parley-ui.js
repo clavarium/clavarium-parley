@@ -47,7 +47,7 @@
  *                          application's own reference, null when it cannot
  *                          be opened)
  *   terminal()             optional: shows the agent's terminal
- *   remind()               optional: tells the agent again that a message waits
+ *   remind(opts?)          optional: tells the agent again that a message waits; { urgent: true } while it works (#322)
  *   view                   'simple' or 'detailed'; onView(view) when changed
  *   back                   what Back does to what Parley opens over the
  *                          thread (the large picture, the media, the
@@ -256,7 +256,7 @@ import { icon, fileIcon, ICONS } from './parley-icons.js';
 export const VIEWS = Object.freeze(['simple', 'detailed']);
 /* The words this screen uses: a dictionary needs these keys. */
 export const KEYS = Object.freeze(['send', 'placeholder', 'empty', 'view', 'simple', 'detailed', 'working', 'waiting', 'done', 'no-status', 'asks', 'open', 'outside',
-    'not-read', 'read', 'remind', 'reminded', 'steps', 'no-steps', 'files', 'no-files', 'terminal', 'not-sent', 'step-one', 'steps-many', 'today', 'yesterday', 'quiet', 'stopped',
+    'not-read', 'read', 'remind', 'reminded', 'urgent', 'urgent-told', 'steps', 'no-steps', 'files', 'no-files', 'terminal', 'not-sent', 'step-one', 'steps-many', 'today', 'yesterday', 'quiet', 'stopped',
     'mic', 'mic-stop', 'auto-send', 'auto-on', 'settings', 'voice-placeholder', 'voice-calibrating', 'voice-listening', 'voice-hearing', 'voice-transcribing', 'voice-wait', 'voice-off', 'replies', 'replies-more', 'replies-less',
     'recommended', 'recommended-value', 'recommended-order', 'suggestion', 'suggest-take',
     'attach', 'remove-file', 'sending-files', 'attach-where', 'draw-open', 'draw-again', 'drawn-from', 'draw-marked', 'draw-colour', 'draw-undo', 'draw-clear', 'draw-cancel', 'draw-done', 'draw-note', 'draw-hint',
@@ -871,6 +871,8 @@ export function view(data, { words = {}, view: as = 'simple', now = Date.now(), 
             item.signText = [said(words, `state-${item.state}`), said(words, 'sent-at', { time: item.time }), seenAt !== null ? said(words, 'read-at', { time: clock(seenAt, locale) }) : '', handled !== null ? said(words, 'done-at', { time: clock(handled, locale) }) : ''].filter(Boolean).join(' · ');
             /* "Remind it": only for the newest message not read, long unread, while the agent seems idle. */
             item.remind = m.id === lastUnread && t !== null && now - t >= IDLE_MS && (lastAgent === null || now - lastAgent >= IDLE_MS);
+            /* "Read it now" (#322, 07-11): the newest message not read while the agent works -- it is told it is urgent, at once. */
+            item.urgent = !item.remind && m.id === lastUnread && status?.state === 'working';
         }
         return item;
     });
@@ -4156,6 +4158,9 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
         }
         if (item.remind && remind) {
             bubble.append(button(said(words, 'remind'), 'parley-remind', async (event) => { event.target.disabled = true; try { await remind(); event.target.textContent = said(words, 'reminded'); } catch { event.target.disabled = false; } }));
+        }
+        if (item.urgent && remind) {
+            bubble.append(button(said(words, 'urgent'), 'parley-remind parley-urgent', async (event) => { event.target.disabled = true; try { await remind({ urgent: true }); event.target.textContent = said(words, 'urgent-told'); } catch { event.target.disabled = false; } }));
         }
         /* Its reaction: an icon and its word, under it; a click opens the choice again. */
         if (item.reaction) {

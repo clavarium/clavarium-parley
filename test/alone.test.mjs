@@ -72,10 +72,13 @@ test('alone: what it does now stays while the person writes; busy, said; "Remind
     assert.equal(v.rows.at(-1).type, 'now', 'a message of the person does not take it away');
     assert.equal(v.rows.at(-1).text, 'Busy: running the tests - your messages wait for it');
     assert.equal(v.items.at(-1).remind, false, 'it works: no "Remind it"');
+    assert.equal(v.items.at(-1).urgent, true, '#322: it works, the message waits -- "Read it now" offered');
+    assert.equal(view({ ...data, status: { state: 'done', at: at(1) } }, { words, now: Date.parse(at(4)) }).items.at(-1).urgent, false, 'not working: not offered');
     v = view({ ...data, steps: [{ ...data.steps[0], at: at(4) }] }, { words, now: Date.parse(at(3)) + IDLE_MS + 1000 });
     assert.equal(v.items.at(-1).remind, false, 'it did something less than two minutes before');
     v = view({ ...data, steps: [] }, { words, now: Date.parse(at(3)) + IDLE_MS + 1000 });
     assert.equal(v.items.at(-1).remind, true, 'unread, and it seems idle');
+    assert.equal(v.items.at(-1).urgent, false, 'Remind it instead, never both');
     /* Its next message takes the line away. */
     v = view({ ...data, messages: [...data.messages, { from: 'agent', id: 'b', at: at(5), kind: 'say', text: 'Tests pass.' }] }, { words, now: Date.parse(at(6)) });
     assert.equal(v.rows.some((r) => r.type === 'now'), false);

@@ -88,6 +88,8 @@ const TEXTS = fileURLToPath(new URL('../ui/texts/', import.meta.url));
    a terminal, where a shell may be listening instead of an agent: no
    backquote, no single quote, nothing a shell would run or wait on. */
 export const WAKE = 'You have a new message: run "parley read".';
+/* The person marked it urgent while the agent works (#322): read now, before going on. */
+export const URGENT = 'You have an URGENT message: run "parley read" now, before going on with your work.';
 /* What an application may type after the agent lost its memory (its machine
    restarted, a new session): the exchange is still there to be read whole. */
 /* It reads THE END of the thread (the newest messages, or those of the last days), and is told
