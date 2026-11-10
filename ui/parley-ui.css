@@ -1177,6 +1177,8 @@ mark.parley-found[data-now="true"] { outline: 2px solid var(--parley-ask); }
 .parley .parley-pins-unpin:hover { background: var(--parley-agent); color: var(--parley-text); }
 .parley-pins button:focus-visible { outline: 2px solid var(--parley-action); outline-offset: 1px; }
 @media (pointer: coarse) { .parley .parley-pins-newest, .parley .parley-pins-more, .parley .parley-pins-go, .parley .parley-pins-unpin { min-height: 44px; } }
+/* The simple view's top row (its settings) floats over the column: the bar stops short of it, never covers it. */
+.parley[data-view="simple"] .parley-pins { margin-right: 3em; }
 .parley-pinned-mark { display: inline-flex; align-items: center; color: var(--parley-pinned); }
 .parley-pinned-mark .parley-sign { width: .95em; height: .95em; }
 .parley-pinned-person { margin: 0 0 .1em; font-size: .8em; text-align: right; line-height: 1; }
