@@ -3,7 +3,7 @@
  *   import { mount } from './parley-ui.js';
  *   mount(element, { load, send, words, open, terminal, remind, view, onView, locale,
  *                    voice, autoSend, onAutoSend, replies, enter, touch, attach, act,
- *                    markdown, picture, diagram, highlight, math, refs, agentName, agentTool, react, reactions, back,
+ *                    markdown, picture, diagram, highlight, math, refs, agentName, agentTool, react, reactions, pin, back,
  *                    window, search, side, schemes });
  *
  *   load(options)          resolves with what parley-host.mjs read(options) gives;
@@ -69,6 +69,13 @@
  *   card(message)          optional: the host's own way to attach a message to
  *                          something of its own (a card of its binders): offered
  *                          in the message's menu, beside Reply ({ id, text, short })
+ *   pin(to, on)            optional: pins a message of either side (on: true)
+ *                          or unpins it (false), as the host's pin() does;
+ *                          resolves once done. Given, each message's menu
+ *                          offers Pin or Unpin. What is pinned comes with the
+ *                          data (`pins`, from read()): the newest on a bar
+ *                          above the thread (.parley-pins), all of them one
+ *                          tap away, each marked in the thread
  *   react(to, reaction)    optional: puts a reaction of the set on a message
  *                          of the agent (null: takes it back); `reactions`
  *                          replaces the set, [{ id, icon }] (REACTIONS)
@@ -262,7 +269,7 @@ export const KEYS = Object.freeze(['send', 'placeholder', 'empty', 'view', 'simp
     'attach', 'remove-file', 'sending-files', 'attach-where', 'draw-open', 'draw-again', 'drawn-from', 'draw-marked', 'draw-colour', 'draw-undo', 'draw-clear', 'draw-cancel', 'draw-done', 'draw-note', 'draw-hint',
     'copy', 'copied', 'copy-md', 'copy-rich', 'see-details', 'see-more', 'see-less', 'note', 'tip', 'important', 'warning', 'caution', 'badge-ok', 'badge-todo', 'badge-blocked', 'badge-warn',
     'waits-you', 'waits-you-note', 'busy', 'pulse', 'state-sent', 'state-read', 'state-working', 'state-done', 'sent-at', 'read-at', 'done-at',
-    'reply', 'to-card', 'other-answer', 'group-count', 'group-step', 'group-next', 'group-back', 'group-review', 'group-check', 'group-modify', 'group-send', 'group-several', 'group-own', 'group-missing',
+    'reply', 'to-card', 'pin', 'unpin', 'pinned', 'pinned-count', 'pinned-mark', 'other-answer', 'group-count', 'group-step', 'group-next', 'group-back', 'group-review', 'group-check', 'group-modify', 'group-send', 'group-several', 'group-own', 'group-missing',
     'replying', 'not-a-reply', 'in-reply', 'closed', 'you', 'agent', 'drop', 'picture', 'diagram', 'not-shown', 'grouped', 'issue-machine', 'issue-fixed', 'issue-details', 'sent-after-retry', 'auto-wait', 'dictation-joining', 'room-fold', 'room-a', 'room-open', 'ai-fold', 'replying-go',
     'zoom-in', 'zoom-out', 'zoom-actual', 'zoom-fit', 'zoom-actual-short', 'zoom-fit-short', 'close', 'previous', 'next', 'search', 'found', 'newest', 'dictation', 'auto-send-off',
     'react', 'react-remove', 'react-agree', 'react-go', 'react-disagree', 'react-unclear', 'react-stop', 'react-redo', 'react-later', 'react-love',
@@ -755,6 +762,10 @@ export function view(data, { words = {}, view: as = 'simple', now = Date.now(), 
         if (messages[i - 1]?.altered || messages[i]?.altered) continue;
         messages.splice(i, 0, { from: 'system', kind: 'system', altered: true, id: `altered:${String(a.side ?? '')}:${String(a.line ?? a.was ?? '')}`, at: new Date(t).toISOString(), text: said(words, 'history-changed'), level: 'news', tone: 'warn', actions: [] });
     }
+    /* What is pinned (read().pins, oldest first): newest first here, as the bar shows them. */
+    const pins = (Array.isArray(data?.pins) ? data.pins : []).filter((p) => p && typeof p.id === 'string' && p.id).slice(-5).reverse()
+        .map((p) => { const t2 = stamp(p.toAt) ?? stamp(p.at); return { id: p.id, by: p.by === 'agent' ? 'agent' : 'person', from: p.from === 'agent' ? 'agent' : 'person', text: cut(String(p.text ?? ''), 200), time: t2 === null ? '' : clock(t2, locale), when: t2 === null ? '' : whole(t2, locale) }; });
+    const pinned = new Set(pins.map((p) => p.id));
     const status = data?.status ?? null;
     const state = (s) => said(words, ['working', 'waiting', 'done'].includes(s) ? s : 'working');
     /* A state of waiting, or done, is not a step: it is said once, at the end. */
@@ -811,6 +822,7 @@ export function view(data, { words = {}, view: as = 'simple', now = Date.now(), 
             /* Several files shown at once (or one with a title): one gallery, each with its title; simple shows those that open. */
             gallery: show && Array.isArray(m.files) ? m.files.slice(0, 12).filter((f) => f && typeof f.path === 'string' && (detailed || typeof f.open === 'string')).map((f) => ({ path: f.path, open: typeof f.open === 'string' ? f.open : null, name: nameOf(f.path), title: String(f.title || '') || titleOf(f.path), picture: PICTURE.test(f.path), shown: detailed ? f.path : '' })) : [],
             reaction: !person && m.reaction && typeof m.reaction.id === 'string' ? m.reaction.id : '',
+            pinned: pinned.has(String(m.id ?? '')),
             last: !person && m.id === newestAgent,
             decide: false,
             dictated: person && m.via === 'voice',
@@ -1102,6 +1114,7 @@ export function view(data, { words = {}, view: as = 'simple', now = Date.now(), 
         rows: shown.map(({ at, end, ...row }) => row),
         items: items.map(({ at, type, key, ...item }) => item),
         unread: Number(data?.unread) || 0,
+        pins,
         /* The one question that waits, for what is typed to answer by default. */
         /* The one question still open, that the box answers by itself -- not a card (several questions,
            or a selector): it has its own fields and its own Send, and a message typed beside it is a message. */
@@ -1155,7 +1168,7 @@ export function since(base, delta) {
     const known = new Set((Array.isArray(base.messages) ? base.messages : []).map(keyOf));
     const fresh = (Array.isArray(delta.messages) ? delta.messages : []).filter((m) => m && (known.has(keyOf(m)) || oldest === null || String(m.at ?? '') >= oldest));
     const out = { ...base, messages: union(base.messages, fresh), steps: union(base.steps, delta.steps) };
-    for (const k of ['waiting', 'status', 'unread', 'pulse', 'files', 'altered', 'about', 'cursor']) if (Object.hasOwn(delta, k)) out[k] = delta[k];
+    for (const k of ['waiting', 'status', 'unread', 'pulse', 'files', 'altered', 'about', 'pins', 'cursor']) if (Object.hasOwn(delta, k)) out[k] = delta[k];
     return out;
 }
 /* An earlier part of the thread, put before what is shown: what is shown stays as it is
@@ -3145,7 +3158,7 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
     markdown: rich = false, picture, diagram, highlight, agentName, agentTool, react, reactions: offered = REACTIONS,
     secrets: liveSecrets = {}, forget,
     receivedAfter = RECEIVED_MS, noAnswerAfter = NO_ANSWER_MS, back = true, draft: draftKey = '', math: mathGiven, refs: zoneRefs,
-    window: shownAtFirst, search: searchAll, side: sideGiven, card: toCard, schemes: schemesGiven } = {}) {
+    window: shownAtFirst, search: searchAll, side: sideGiven, card: toCard, pin: pinHook, schemes: schemesGiven } = {}) {
     const steps = stepper(back);
     /* The application's own kinds of link (mail:...), each a chip that it opens. */
     const schemes = schemesOf(schemesGiven);
@@ -3375,7 +3388,16 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
     /* Back to the newest, when the reader scrolled up: with how many came meanwhile. */
     const jump = el('button', 'parley-jump'); jump.type = 'button'; jump.hidden = true; jump.title = said(words, 'newest'); jump.setAttribute('aria-label', jump.title);
     const jumpCount = el('span', 'parley-jump-count'); jump.append(sign('down'), jumpCount);
-    const column = el('div', 'parley-column'); column.append(thread, jump);
+    /* PINNED MESSAGES: the newest on a bar above the thread, so it stays in sight however far the
+       reader scrolls; with more, "N pinned" opens them all, newest first. A tap brings one into sight. */
+    const pinsBar = el('div', 'parley-pins'); pinsBar.hidden = true; pinsBar.setAttribute('role', 'region'); pinsBar.setAttribute('aria-label', said(words, 'pinned'));
+    const pinsNewest = el('button', 'parley-pins-newest'); pinsNewest.type = 'button';
+    const pinsText = el('span', 'parley-pins-text');
+    pinsNewest.append(icon('pin', 'parley-sign'), pinsText);
+    const pinsMore = el('button', 'parley-pins-more'); pinsMore.type = 'button'; pinsMore.hidden = true; pinsMore.setAttribute('aria-expanded', 'false'); pinsMore.setAttribute('aria-haspopup', 'true');
+    const pinsList = el('div', 'parley-pins-list'); pinsList.hidden = true; pinsList.setAttribute('role', 'list'); pinsList.setAttribute('aria-label', said(words, 'pinned'));
+    pinsBar.append(pinsNewest, pinsMore, pinsList);
+    const column = el('div', 'parley-column'); column.append(pinsBar, thread, jump);
     main.append(column, aside);
     /* Quick answers, above the box: one line, the rest one tap away. */
     const quickRow = el('div', 'parley-quick'); quickRow.hidden = true; quickRow.dataset.open = 'false';
@@ -4014,9 +4036,10 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
         const item = row;
         const bubble = el('div', 'parley-said'); bubble.dataset.from = item.from; bubble.dataset.kind = item.kind; bubble.dataset.id = item.id; if (item.open) bubble.dataset.asking = 'true'; if (item.closed) bubble.dataset.closed = 'true';
         if (item.id && item.id === revealed) bubble.dataset.reveal = 'true';
+        if (item.pinned) bubble.dataset.pinned = 'true';
         if (item.when) bubble.title = item.when;
         /* The person's own message: only the host's action (attach it to a card), by a clip in its corner. */
-        if (item.from === 'person' && item.id && (toCard || (item.text ?? '').trim())) {
+        if (item.from === 'person' && item.id && (toCard || pinHook || (item.text ?? '').trim())) {
             const r = el('button', 'parley-react-open'); r.type = 'button'; r.title = said(words, toCard ? 'to-card' : 'copy'); r.setAttribute('aria-label', r.title); r.setAttribute('aria-haspopup', 'true');
             r.append(toCard ? icon('paperclip', 'parley-sign') : sign('copy'));
             r.addEventListener('click', (event) => { event.stopPropagation(); reacting.open(item, bubble); });
@@ -4030,13 +4053,18 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
             if (item.time) head.append(time(item.trail ? `${item.time} - ${item.trail.label}` : item.time, item.when));
             bubble.append(head);
             /* React to it: a button that shows on hover (a right click too); on a touch screen, a short tap on the message shows it a few seconds, in its corner. */
-            if (['say', 'ask', 'show'].includes(item.kind) && ((react && reactions.length) || (item.text ?? '').trim())) {
+            if (item.pinned) head.append(pinMark());
+            if (['say', 'ask', 'show'].includes(item.kind) && ((react && reactions.length) || pinHook || (item.text ?? '').trim())) {
                 const r = el('button', 'parley-react-open'); r.type = 'button'; r.title = said(words, 'react'); r.setAttribute('aria-label', r.title); r.setAttribute('aria-haspopup', 'true');
                 r.append(icon('smile-plus', 'parley-sign'));
                 r.addEventListener('click', (event) => { event.stopPropagation(); reacting.open(item, bubble); });
                 bubble.append(r);
             }
-        } else if (item.name) { const who = el('p', 'parley-who-person'); if (item.look) who.append(lookSign(item.look)); who.append(item.name); bubble.append(who); }
+        } else {
+            if (item.name) { const who = el('p', 'parley-who-person'); if (item.look) who.append(lookSign(item.look)); who.append(item.name); bubble.append(who); }
+            /* Its pin, on a line of its own: the name above may be left out when the same one speaks again. */
+            if (item.pinned) { const line = el('p', 'parley-pinned-person'); line.append(pinMark()); bubble.append(line); }
+        }
         /* Why a voice box listened, and what it cut short: small, beside the words (01-11). */
         if (item.byWhy) bubble.append(el('p', 'parley-by-why', item.byWhy));
         if (item.label) bubble.append(el('p', 'parley-label', item.label));
@@ -4223,7 +4251,10 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
         const copyMdWord = el('span', '', said(words, 'copy-md'));
         const copyMd = el('button', 'parley-react-reply parley-react-copy'); copyMd.type = 'button'; copyMd.append(sign('copy'), copyMdWord);
         const copyRich = el('button', 'parley-react-reply parley-react-copy'); copyRich.type = 'button'; copyRich.append(sign('copy'), el('span', '', said(words, 'copy-rich')));
-        box.append(grid, replyB, cardB, copyRich, copyMd);
+        /* Pin it, or unpin it (pin(to, on), optional): any message, either side. */
+        const pinWord = el('span', '', said(words, 'pin'));
+        const pinB = el('button', 'parley-react-reply parley-react-pin'); pinB.type = 'button'; pinB.append(icon('pin', 'parley-sign'), pinWord);
+        box.append(grid, replyB, cardB, pinB, copyRich, copyMd);
         let target = null;
         let marked = null;
         const close = () => {
@@ -4239,6 +4270,7 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
             try { await react(t.id, id); await refresh(); } catch (error) { problem.textContent = said(words, 'not-sent', { error: String(error?.message ?? error) }); problem.hidden = false; }
         };
         cardB.addEventListener('click', () => { const t = target; close(); if (t && toCard) void toCard({ id: t.id, text: t.text, short: t.short }); });
+        pinB.addEventListener('click', () => { const t = target; close(); if (t) void pinning(t.id, !t.pinned); });
         const later = () => setTimeout(close, 900);
         copyMd.addEventListener('click', () => { const t = target; if (!t) return; copying(copyMd, maskSecrets(t.text ?? ''), words, marked ?? copyMd); later(); });
         copyRich.addEventListener('click', () => {
@@ -4256,7 +4288,8 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
             open(item, bubble) {
                 const reacts = Boolean(react && reactions.length && item.from !== 'person');
                 const copies = typeof item.text === 'string' && item.text.trim() !== '';
-                if (!reacts && !toCard && !copies) return;
+                const pins2 = pinnable(item);
+                if (!reacts && !toCard && !copies && !pins2) return;
                 if (marked) delete marked.dataset.reacting;
                 target = item; marked = bubble; bubble.dataset.reacting = 'true';
                 /* "Go ahead" first, "Stop" last: the two never side by side. */
@@ -4274,6 +4307,8 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
                 }));
                 replyB.hidden = !send;
                 cardB.hidden = !toCard;
+                pinB.hidden = !pins2;
+                if (pins2) { pinWord.textContent = said(words, item.pinned ? 'unpin' : 'pin'); pinB.title = pinWord.textContent; pinB.replaceChildren(icon(item.pinned ? 'pin-off' : 'pin', 'parley-sign'), pinWord); }
                 copyMd.hidden = !copies; copyRich.hidden = !copies || item.from === 'person';
                 copyMdWord.textContent = said(words, item.from === 'person' ? 'copy' : 'copy-md');
                 box.style.left = ''; box.style.top = '';
@@ -4420,6 +4455,7 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
         paintSuggest();
         const v = view(data, { words, view: as, locale, agentName, agentTool, receivedAfter, noAnswerAfter });
         paintReply(v);
+        paintPins(v.pins);
         const small = narrow();
         const older = Number(data?.window?.more) > 0 && typeof data?.window?.before === 'string' ? Number(data.window.more) : 0;
         const mark = JSON.stringify([v, small, [...expanded], searching ? query.value : '', older]);
@@ -4480,6 +4516,61 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
         if (searching) { mark2(moveToLast); moveToLast = false; }
         if (paging) { /* kept where it was, above */ } else if (atBottom && !searching) { bottom(); sticky = true; awayCount = 0; paintJump(); requestAnimationFrame(bottom); } else if (!searching) thread.scrollTop = keep;
     }
+    /* THE PINNED BAR, drawn again only when what is pinned changed. */
+    let pinsShown = '';
+    function paintPins(list) {
+        const mark = JSON.stringify([list, Boolean(pinHook)]);
+        if (mark === pinsShown) return;
+        pinsShown = mark;
+        pinsBar.hidden = list.length === 0;
+        if (!list.length) { showPins(false); pinsList.replaceChildren(); return; }
+        pinsNewest.dataset.id = list[0].id;
+        pinsText.textContent = list[0].text;
+        pinsNewest.title = [list[0].text, list[0].when].filter(Boolean).join(' - ');
+        pinsMore.hidden = list.length < 2;
+        const caret = el('span', 'parley-pins-caret', '\u25be'); caret.setAttribute('aria-hidden', 'true');
+        pinsMore.replaceChildren(el('span', 'parley-pins-count', said(words, 'pinned-count', { count: list.length })), caret);
+        pinsList.replaceChildren(...list.map((p) => {
+            const row2 = el('div', 'parley-pins-item'); row2.setAttribute('role', 'listitem'); row2.dataset.id = p.id; row2.dataset.from = p.from;
+            const go2 = el('button', 'parley-pins-go'); go2.type = 'button'; go2.title = [p.text, p.when].filter(Boolean).join(' - ');
+            go2.append(el('span', 'parley-pins-item-text', p.text));
+            if (p.time) go2.append(el('span', 'parley-pins-item-when', p.time));
+            go2.addEventListener('click', () => goPin(p.id));
+            row2.append(go2);
+            if (pinHook) { const off = button(said(words, 'unpin'), 'parley-pins-unpin', () => { void pinning(p.id, false); }); row2.append(off); }
+            return row2;
+        }));
+        if (!pinsList.hidden) markLoaded();
+    }
+    const bubbleOf = (id) => thread.querySelector(`.parley-said[data-id="${(typeof CSS !== 'undefined' && CSS.escape) ? CSS.escape(id) : id}"]`);
+    /* In the list, those not in the thread as shown (an older page) are said so: no jump for them. */
+    const markLoaded = () => { for (const r of pinsList.querySelectorAll('.parley-pins-item')) r.dataset.loaded = String(Boolean(bubbleOf(r.dataset.id))); };
+    function showPins(on) {
+        if (on && pinsList.hidden) { markLoaded(); steps.opened('pins', () => showPins(false)); } else if (!on && !pinsList.hidden) steps.closed('pins');
+        pinsList.hidden = !on; pinsMore.setAttribute('aria-expanded', String(on));
+    }
+    /* A pin tapped: its message brought into sight and marked a moment; not shown in the thread, the list says it. */
+    function goPin(id) {
+        const target = bubbleOf(id);
+        if (!target) { showPins(true); return; }
+        showPins(false);
+        target.scrollIntoView?.({ block: 'center', behavior: reduceMotion() ? 'auto' : 'smooth' });
+        target.classList.add('parley-flash'); setTimeout(() => target.classList.remove('parley-flash'), 1600);
+    }
+    pinsNewest.addEventListener('click', () => { if (pinsNewest.dataset.id) goPin(pinsNewest.dataset.id); });
+    pinsMore.addEventListener('click', () => showPins(pinsList.hidden));
+    pinsBar.addEventListener('keydown', (event) => { if (event.key === 'Escape' && !pinsList.hidden) { event.preventDefault(); showPins(false); pinsMore.focus?.(); } });
+    document.addEventListener('pointerdown', (event) => { if (!pinsList.hidden && !(event.target instanceof Node && pinsBar.contains(event.target))) showPins(false); });
+    /* Pin or unpin, through the application; the bar and the marks follow the next look. */
+    async function pinning(id, on) {
+        if (!pinHook || !id) return;
+        problem.hidden = true;
+        try { await pinHook(id, on); await refresh(); } catch (error) { problem.textContent = said(words, 'not-sent', { error: String(error?.message ?? error) }); problem.hidden = false; }
+    }
+    /* Which messages take a pin: the person's, and what the agent said, asked or showed. */
+    function pinnable(item) { return Boolean(pinHook && item?.id && (item.from === 'person' || ['say', 'ask', 'show'].includes(item.kind))); }
+    /* A pinned message's small mark, beside its name and time. */
+    function pinMark() { const m = el('span', 'parley-pinned-mark'); m.title = said(words, 'pinned-mark'); m.setAttribute('role', 'img'); m.setAttribute('aria-label', m.title); m.append(icon('pin', 'parley-sign')); return m; }
     const paintJump = () => { jump.hidden = sticky; jumpCount.textContent = awayCount > 0 ? String(awayCount) : ''; jumpCount.hidden = awayCount === 0; };
     jump.addEventListener('click', () => { sticky = true; awayCount = 0; bottom(); paintJump(); });
     thread.addEventListener('scroll', () => { const was = sticky; sticky = thread.scrollHeight - thread.scrollTop - thread.clientHeight < 40; if (sticky) awayCount = 0; if (was !== sticky || sticky) paintJump(); }, { passive: true });
