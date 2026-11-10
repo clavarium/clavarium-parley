@@ -20,6 +20,7 @@ application, any agent that can run a command.
 | `parley doing "text"` | say in one line what it is doing now, at each new step |
 | `parley read` | read what was written to it, answers and attached files included, each message with its id (what a card or a reply points to), and its questions still open |
 | `parley close ID "answer"` | close a question the person answered another way |
+| `parley pin ID [--off]` | pin a message of either side (a decision, a rule, a link): kept at the top of the chat, read again first with `--last`; 5 at most |
 | `parley read --last 100` | the end of the exchange, both sides (or `--days 2`): to pick up the thread after a restart; older: `parley read --before ID`, page after page |
 | `parley status working\|waiting\|done ["note"]` | say where it is |
 | `parley guide` | how to work with the person, in a few lines, for an agent that forgot |
@@ -53,6 +54,8 @@ arrived. See [docs/protocol.md](docs/protocol.md).
 | `agent-showed` | the path, and how to open it (`open`, or `null`) | show a link, or say it is not in a shared folder |
 | `agent-status` | `working`, `waiting` or `done`, and a note | show it; ring a phone on `waiting` |
 | `agent-doing` | one line: what it is doing now | show it while it works; nothing more |
+| `person-pinned` | a message pinned (`on`), or unpinned | show it at the top; tell the agent with the next message |
+| `agent-pinned` | a message the agent pinned, or unpinned (`removed`) | show it at the top |
 | `person-reacted` | the reaction, and whether the set says it wakes (`false`, `true`, `'now'`) | tell the agent now, later, or with the next message |
 | `history-changed` | with a keep folder: the lines kept that changed or went in the bridge folder, or were slipped in | nothing: the screen says it; alert someone, or log it |
 
@@ -60,6 +63,7 @@ arrived. See [docs/protocol.md](docs/protocol.md).
 |---|---|
 | `say(text, answers, files, {via, picked})` | writes what the person said (`answers`: the message it answers or replies to; `via: 'voice'`: dictated; `picked`: the choices ticked; `replies`: the answers to questions asked together; `about`: the person or zone they tapped) |
 | `react(to, reaction)` | puts a reaction of the set on a message of the agent, or takes it back (`null`) |
+| `pin(to, on)` | pins a message of either side (5 at most, the oldest leaving), or unpins it (`false`); `read().pins` gives them |
 | `read()` | the exchange: messages, open questions, status, steps (states and what it did, in order), files, unread |
 | `read({ last \| days \| before \| since })` | a part of it: the end, the page before, or only what changed since a cursor; the questions open, the status and the counts stay the whole thread's (see [the protocol](docs/protocol.md#a-part-of-the-thread)) |
 | `search(text)` | the whole thread searched, newest first |

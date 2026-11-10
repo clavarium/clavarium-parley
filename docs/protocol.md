@@ -28,12 +28,13 @@ The command finds the folder as git finds a repository: `--dir`, else
 | `parley ask [--short TITLE] [--pick-many] QUESTION [CHOICE ...]` | `ask(question, choices?, many?, short?)` | `{kind:"ask", text, choices, many?, short?}` (`many: true` only when given, with two choices or more) | at once: it never waits for the answer |
 | `parley ask [--short TITLE] --group -`, the questions as JSON on standard input | `ask({short?, question?, questions: [{id?, label?, question, choices?, many?}]})` | `{kind:"ask", text, choices: [], questions, intro?, short?}` | at once: 2 to 5 questions, one card, one Send |
 | `parley close ID ANSWER` | `close(id, answer)` | `{kind:"close", answers, text}` | at once; ID is the question's, or its first 8 characters or more |
+| `parley pin ID [--off]` | `pin(id, off?)` | `{kind:"pin", text: "", pin, quote, toAt, removed?}` | at once; ID is any message's, either side, or its first 8 characters or more; refused if there is none; 5 stand at most, the oldest leaving |
 | `parley show PATH [NOTE]` | `show(path, note?)` | `{kind:"show", path, text}`, the path made whole | at once; refused if there is no such file |
 | `parley show A="title" B="title" [NOTE]` | `show({files: [{path, title}], note?})` (or `paths`) | `{kind:"show", path, text, files: [{path, title?}]}`, twelve at most, `path` the first | at once: one gallery, each with its title |
 | `parley status STATE [NOTE]` | `status(state, note?)` | `{kind:"status", state, text}` | at once |
 | `parley doing TEXT` | `doing(text)` | `{kind:"doing", text}`, one line of 200 characters at most | at once |
 | `parley read` | `read()` | nothing | what was written since the last read, answers and attached files included, then the questions still open with their ids |
-| `parley read --last N` (or `--days D`) | `read({last})` (or `{days}`) | nothing | the END of the exchange, both sides, oldest first: the newest N entries (1,000 at most), or those of the last D days (20 at least); 100,000 characters at most; it ends with how to read what came before: to pick up the thread after a restart |
+| `parley read --last N` (or `--days D`) | `read({last})` (or `{days}`) | nothing | the END of the exchange, both sides, oldest first: the newest N entries (1,000 at most), or those of the last D days (20 at least), after the messages pinned ("Pinned (N):"); 100,000 characters at most; it ends with how to read what came before: to pick up the thread after a restart |
 | `parley read --before ID [--last N]` | `read({before, last?})` | nothing | the part before that entry (its id, or its first 8 characters or more), the same way: page after page, as far back as needed |
 | `parley read --all` | `read({all: true})` | nothing | the newest 200 entries, the same way (kept for an agent told so before) |
 | `parley guide` | none | nothing | how to work with the person, in a few lines: for an agent that forgot |
@@ -149,6 +150,16 @@ a question about one `?` zone (a choice, or what is typed in reply) carries
 that zone. `parley read` adds `(about "Anna" [app:people/12], the zone 0.2 0.3
 0.18 0.36 of /work/wedding.jpg)`. An older agent reads the text alone.
 
+A PIN of the person, on any message of the exchange (the agent's or its
+own), is a line of its own too: `{id, at, text: "", pin, quote, toAt}`
+(`pin`: the message; `removed: true` when unpinned). The agent pins with a
+line of its own: `{id, at, kind: "pin", text: "", pin, quote, toAt}` (the
+same `removed`). Neither is a message of the thread. Replayed in the order
+they were put, 5 stand at most (a new one makes the oldest leave; one put
+again while it stands keeps its place; a message not there any more is
+skipped). `parley read --last` and `--days` give them first, as
+"Pinned (N):".
+
 A REACTION of the person to a message of the agent is a line of its own:
 `{id, at, text: "", reaction, to, quote, toAt}` (`to`: the message, `quote`
 and `toAt`: its words and its time, so that the agent knows which one;
@@ -195,6 +206,8 @@ back as far as it needs. The agent runs `parley read` and finds it. An answer ma
 | `agent-status` | the agent ran `status` | `message` (with `state`) |
 | `agent-doing` | the agent ran `doing` | `message` (its `text`: one line) |
 | `agent-closed` | the agent ran `close` | `message` (`answers`: the question; `text`: the answer it understood) |
+| `agent-pinned` | the agent ran `pin` | `message` (`pin`: the message; `removed: true` when unpinned) |
+| `person-pinned` | `pin()` wrote a pin | `message` (the line), `on` (false: unpinned), `unread` |
 | `person-reacted` | `react()` wrote a reaction | `message` (the line), `reaction` (null: taken back), `wakes` (`false`, `true` or `'now'`: the set's hint), `unread` |
 | `history-changed` | with a keep folder: a line kept changed or went in the bridge folder, or one was slipped in | `altered`: what was noted, as in `read()` |
 
@@ -206,6 +219,8 @@ whole, from the moment it was started: what was posted before is in
 |---|---|
 | `say(text, answers?, files?, {via?, picked?})` | what `read()` gives, after writing; `answers` may be any message of the agent (a question is answered, another replied to); `picked`: the choices ticked of a question with `many`; `replies`: the answers to questions asked together (the text may then be empty: it is made of them); `about`: what they tapped to say it (a person of a family, a zone of a picture) |
 | `react(to, reaction)` | a reaction of the set (`REACTIONS`) on a message of the agent, or `null` to take it back; what `read()` gives |
+| `pin(to, on = true)` | pins any message of the exchange, either side's (`false`: unpins it); what `read()` gives |
+| `read().pins` | the messages pinned, oldest pin first, 5 at most: `[{id, at, by, from, text, toAt}]` (`at`: when pinned; `by`: `'person'` or `'agent'`, who pinned it; `from`: whose message; `text`: its words on one line, 200 at most; `toAt`: its time); in every part of the thread |
 | `read()` | `messages` (each of the person's says `seen`, and `seenAt` when known, `via` when dictated; each of the agent's may carry `short`, `reaction` (`{id, at, seen}`, the one standing), `files` for a gallery (`[{path, title, open}]`), and `refs`: the paths it cites that `reach` opens; a question it closed, `closed: {text, at}`), `waiting` (questions neither answered nor closed), `status`, `steps` (every `status` and `doing`, in order: `{id, kind, state, note, at}`), `files` (every file shown, and every one cited that can be opened, `cited: true`), `unread`, `pulse` |
 | `invite(lang, {install?, shared?})` | the invitation, a text |
 | `read().altered` | with a keep folder only: what changed in the bridge folder after it was kept, oldest first (see below) |

@@ -18,6 +18,8 @@
  *   agent-doing   {message}
  *   agent-closed  {message}         (a question it closed, answered another way)
  *   person-reacted {message, reaction, wakes, unread}   react(to, reaction)
+ *   person-pinned {message, on, unread}                 pin(to, on)
+ *   agent-pinned  {message}         (it pinned a message, or unpinned it: removed)
  *   history-changed {altered}       (with a keep folder: a line kept changed or went)
  *
  * The pulse of the agent's tool (pulse.json) is not announced: read() gives it.
@@ -75,7 +77,11 @@ export const REACTIONS = Object.freeze([
     { id: 'stop', wakes: 'now' }, { id: 'redo', wakes: true }, { id: 'later', wakes: false }, { id: 'love', wakes: false },
 ].map(Object.freeze));
 const REACTION_ID = /^[a-z][a-z0-9-]{0,29}$/;
-const KINDS = ['say', 'ask', 'show', 'status', 'doing', 'close'];
+const KINDS = ['say', 'ask', 'show', 'status', 'doing', 'close', 'pin'];
+/* PINNED MESSAGES: a decision, a rule, a link, kept at the top of the chat and read again by the
+   agent after a restart. Either side pins any message of the exchange; so many stand at most, the
+   oldest leaving for a new one. */
+export const PINS_MAX = 5;
 /* Questions asked together: so many at most, each named by an id of this shape. */
 const GROUP_MAX = 5;
 const GROUP_ID = /^[A-Za-z0-9_-]{1,30}$/;
@@ -447,6 +453,7 @@ export class Parley {
         if (kind === 'status') entry.state = STATES.includes(m.state) ? m.state : 'working';
         if (kind === 'doing') { entry.text = oneLine(m.text, 200); entry.state = 'working'; }
         if (kind === 'close') { entry.text = oneLine(m.text, 500); entry.answers = oneLine(m.answers, 100); }
+        if (kind === 'pin') { entry.text = ''; entry.pin = oneLine(m.pin, 100); if (m.removed === true) entry.removed = true; }
         return entry;
     }
 
@@ -525,7 +532,7 @@ export class Parley {
         const place = new WeakMap();
         const all = [];
         fromRaw.forEach((m, i) => { if (!m) return; const e = this.#fromAgent(m); place.set(e, i); all.push(e); });
-        const agent = all.filter((m) => m.kind !== 'close');
+        const agent = all.filter((m) => m.kind !== 'close' && m.kind !== 'pin');
         const closes = new Map(all.filter((m) => m.kind === 'close').map((m) => [m.answers, { text: m.text, at: m.at }]));
         const read = Math.min(readCount(this.#dir), toRaw.length);
         const unread = Math.max(0, toRaw.length - readCount(this.#dir));
@@ -541,7 +548,7 @@ export class Parley {
         });
         const person = [];
         toRaw.forEach((m, i) => {
-            if (!m || typeof m.reaction === 'string') return;
+            if (!m || typeof m.reaction === 'string' || typeof m.pin === 'string') return;
             const seen = i < toRaw.length - unread;
             const e = { from: 'person', id: String(m.id ?? ''), at: String(m.at ?? ''), kind: 'say', text: this.#named(clean(m.text)), choices: [], seen, ...(seen && seenAt(i) ? { seenAt: seenAt(i) } : {}),
                 ...(m.answers ? { answers: String(m.answers), question: oneLine(m.question, 300) } : {}), ...(m.answers && Array.isArray(m.picked) ? { picked: m.picked.slice(0, 8).map((x) => oneLine(x, 200)).filter(Boolean) } : {}),
@@ -555,6 +562,21 @@ export class Parley {
         for (const m of agent) if (m.kind === 'ask' && closes.has(m.id)) m.closed = closes.get(m.id);
         const messages = [...agent.filter((m) => !STEP.has(m.kind)), ...person].sort((a, b) => a.at.localeCompare(b.at));
         const steps = agent.filter((m) => STEP.has(m.kind));
+        /* A pin is no message either: both sides' pins, replayed in the order they were put. One put
+           again while it stands keeps its place; a message that is not there any more is skipped. */
+        const byId = new Map(messages.map((m) => [m.id, m]));
+        const puts = [
+            ...toRaw.flatMap((m) => (m && typeof m.pin === 'string' && typeof m.reaction !== 'string' ? [{ by: 'person', to: m.pin, at: String(m.at ?? ''), removed: m.removed === true }] : [])),
+            ...all.filter((m) => m.kind === 'pin').map((m) => ({ by: 'agent', to: m.pin, at: m.at, removed: m.removed === true })),
+        ].sort((a, b) => a.at.localeCompare(b.at));
+        let pins = [];
+        for (const p of puts) {
+            if (p.removed) { pins = pins.filter((x) => x.id !== p.to); continue; }
+            const m = byId.get(p.to);
+            if (!m || pins.some((x) => x.id === m.id)) continue;
+            pins.push({ id: m.id, at: p.at, by: p.by, from: m.from, text: oneLine(m.text || m.path || '', 200), toAt: m.at });
+            if (pins.length > PINS_MAX) pins.shift();
+        }
         const last = steps.filter((m) => m.kind === 'status').at(-1);
         const after = steps.at(-1)?.kind === 'doing' && last?.state !== 'working';
         /* Every file it showed, and every one it cited that can be opened. */
@@ -562,7 +584,7 @@ export class Parley {
         const named = new Set(shown.map((f) => f.path));
         const cites = agent.flatMap((m) => (m.refs ?? []).map((r) => ({ path: r.path, note: '', at: m.at, open: r.open, cited: true }))).filter((f) => !named.has(f.path) && named.add(f.path));
         return {
-            all, messages, steps, place, read, unread, fromN: fromRaw.length, toN: toRaw.length, toRaw,
+            all, messages, steps, pins, place, read, unread, fromN: fromRaw.length, toN: toRaw.length, toRaw,
             open: agent.filter((m) => m.kind === 'ask' && !answered.has(m.id) && !closes.has(m.id)),
             status: after ? { state: 'working', note: '', at: steps.at(-1).at } : last ? { state: last.state, note: last.text, at: last.at } : null,
             files: [...shown, ...cites].sort((a, b) => String(a.at).localeCompare(String(b.at))).slice(-LISTED_MAX),
@@ -571,7 +593,7 @@ export class Parley {
     /* A step, as handed over. */
     static #step(m) { return { id: m.id, kind: m.kind, state: m.state, note: m.text, at: m.at }; }
     /* What is the same whatever part of the thread is asked for. */
-    #state(t) { return { waiting: t.open.length, status: t.status }; }
+    #state(t) { return { waiting: t.open.length, status: t.status, pins: t.pins }; }
 
     /* Both sides, in the order they were written; how many questions wait;
        where the agent says it is; its steps -- every state it said and every
@@ -835,12 +857,30 @@ export class Parley {
         return now;
     }
 
+    /* THE PERSON PINS a message of the exchange, either side's (`on`: true), or
+       unpins it (false): written to the agent like a reaction, with the words
+       and the time of that message, so that it knows which one. PINS_MAX stand
+       at most: a new one makes the oldest leave. The application is told
+       (person-pinned). Resolves with read(). */
+    pin(to, on = true) {
+        const t = this.#model();
+        const target = t.messages.find((m) => m.id === to);
+        if (!target) throw new RangeError('No such message.');
+        const put = on !== false;
+        if (put === t.pins.some((p) => p.id === target.id)) return this.read();
+        const line = { id: randomUUID(), at: this.#now().toISOString(), text: '', pin: target.id, ...(put ? {} : { removed: true }), quote: oneLine(target.text || target.path || '', 200), toAt: target.at };
+        this.#write([line]);
+        const now = this.read();
+        this.#tell({ type: 'person-pinned', message: line, on: put, unread: now.unread });
+        return now;
+    }
+
     /* The text that asks an agent to use Parley: English, in the person's
        language `lang`. The application types it, changes it, or does not. */
     invite(lang, options = {}) { return invitation({ ...options, lang }); }
 
     /* Starts announcing each thing the agent posts FROM NOW ON: agent-said,
-       agent-asked, agent-showed, agent-status, agent-doing. Resolves with a function that
+       agent-asked, agent-showed, agent-status, agent-doing, agent-pinned. Resolves with a function that
        stops it. The file is looked at, nothing is pushed: what was posted
        while nobody listened is still in `read()`. Each line is announced
        once, by where it sits in the file, and only once it is whole. */
@@ -849,7 +889,7 @@ export class Parley {
         const size = () => { try { return lstatSync(file).isSymbolicLink() ? 0 : statSync(file).size; } catch { return 0; } };
         let offset = size();
         let rest = Buffer.alloc(0);
-        const TYPES = { say: 'agent-said', ask: 'agent-asked', show: 'agent-showed', status: 'agent-status', doing: 'agent-doing', close: 'agent-closed' };
+        const TYPES = { say: 'agent-said', ask: 'agent-asked', show: 'agent-showed', status: 'agent-status', doing: 'agent-doing', close: 'agent-closed', pin: 'agent-pinned' };
         const tell = (m) => { const message = this.#fromAgent(m); this.#tell({ type: TYPES[message.kind], message }); };
         if (this.#keep) {
             /* Kept: each line once it is kept, by its place in the copy, which only grows -- whatever the agent does to its file. */

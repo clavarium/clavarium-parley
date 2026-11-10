@@ -36,11 +36,11 @@ const said = (reply) => reply.result.content[0].text;
 /* The command, as an agent runs it: in a folder of its own, a new process each time. */
 const parley = (cwd, args, input) => { const r = spawnSync(process.execPath, [COMMAND, ...args], { cwd, input, encoding: 'utf8', env: { ...process.env, PARLEY_DIR: '' } }); return { code: r.status, out: r.stdout, err: r.stderr }; };
 
-test('the agent\'s side speaks MCP and has eight verbs, no more', async (t) => {
+test('the agent\'s side speaks MCP and has nine verbs, no more', async (t) => {
     const dir = folder(t);
     const replies = await agent(dir, [{ method: 'tools/list' }, { method: 'ping' }, { method: 'resources/list' }, tool('launch')]);
     assert.equal(replies[0].result.serverInfo.name, 'parley'); assert.deepEqual(replies[0].result.capabilities, { tools: {} });
-    assert.deepEqual(replies[1].result.tools.map((x) => x.name), ['tell', 'ask', 'show', 'read', 'close', 'doing', 'status', 'forget']);
+    assert.deepEqual(replies[1].result.tools.map((x) => x.name), ['tell', 'ask', 'show', 'read', 'close', 'doing', 'status', 'forget', 'pin']);
     assert.ok(replies[1].result.tools.every((x) => x.inputSchema.type === 'object' && x.description.length > 20));
     assert.deepEqual(replies[2].result, {});
     assert.equal(replies[3].error.code, -32601);

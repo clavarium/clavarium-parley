@@ -2,14 +2,14 @@
 /* THE COMMAND: the verbs for any agent that can run a command. It writes
  * the same files as the MCP server, through the same code (server/).
  *
- *   parley read [--last N | --days D] [--before ID] | tell | ask | show | close | doing | status | guide | --help
+ *   parley read [--last N | --days D] [--before ID] | tell | ask | show | close | doing | status | pin | guide | --help
  *
  * Exit codes: 0 done; 1 refused (said on standard error); 2 no folder found;
  * 64 not understood. */
 import { readFileSync, realpathSync, existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { bridge, findFolder, STATES, VERSION, FOLDER, WRITING, SHORTER, GALLERY, ASKING, GROUPING, GROUP_MAX, RICH, CHARTS } from '../server/parley-mcp.mjs';
+import { bridge, findFolder, STATES, VERSION, FOLDER, WRITING, SHORTER, GALLERY, ASKING, GROUPING, GROUP_MAX, RICH, CHARTS, PINS_MAX } from '../server/parley-mcp.mjs';
 
 /* How to work with the person, in a few lines: what an agent comes back to
    when it forgot. Its words are accepted as they are. */
@@ -59,7 +59,8 @@ export const HELP = `parley: talk with the person you work for. They read and an
                                        files they attached included), and your questions still open
   parley read --last 100               the end of the exchange, both sides, oldest first (or --days 2):
                                        to pick up the thread after a restart; it ends with how to read
-                                       what came before: parley read --before ID (as far back as needed)
+                                       what came before: parley read --before ID (as far back as needed);
+                                       the messages pinned come first
   parley tell [--short "title"] [--to ID,ID] [--room ID [--re MSG]] "text" tell them something; --to: voice boxes that say it aloud; --room: in a room you are in
   parley ask [--short "title"] [--pick-many] "question" [--choice "answer" ...]
                                        ask them something; give the answers they can pick when you can,
@@ -90,6 +91,10 @@ export const HELP = `parley: talk with the person you work for. They read and an
                                        in the background (it will call you back; say what runs with
                                        doing); done when you stop, nothing still runs and they have
                                        nothing to do; waiting only when you need their answer or action
+  parley pin ID [--off]                pin a message of the exchange (yours or theirs), ID as read shows
+                                       it: it stays at the top of their chat and read --last gives it
+                                       again after a restart -- a decision, a rule, a useful link;
+                                       ${PINS_MAX} at most (the oldest leaves); --off unpins it
   parley forget NAME                   forget a short-lived secret they pasted in the chat, once you are
                                        done with it (at /run/secrets/NAME): the parloir drops it at once
   parley guide                         how to work with them, in a few lines: when you forgot
@@ -176,7 +181,7 @@ export function showing(words, cwd = process.cwd()) {
 /* The options of each verb ("=": it takes a value). */
 const OPTIONS = {
     read: ['--last=', '--days=', '--before=', '--all'], tell: ['--short=', '--suggest=', '--to=', '--room=', '--re='], ask: ['--short=', '--pick-many', '--group', '--choice=', '--recommend=', '--suggest=', '--room=', '--re='],
-    show: ['--room=', '--to=', '--re='], close: [], doing: [], status: [], forget: [],
+    show: ['--room=', '--to=', '--re='], close: [], doing: [], status: [], forget: [], pin: ['--off'],
 };
 
 /* Runs one command line. Resolves with { code, out, err }: nothing is printed
@@ -213,7 +218,7 @@ export function run(argv, { env = process.env, cwd = process.cwd(), stdin = () =
             return { code: 0, out: '', err: '' };
         } catch { return { code: 1, out: '', err: '' }; }
     }
-    if (!['read', 'tell', 'ask', 'show', 'close', 'doing', 'status', 'forget'].includes(verb)) return { code: 64, out: '', err: `Unknown: ${verb}. Run "parley --help".\n` };
+    if (!['read', 'tell', 'ask', 'show', 'close', 'doing', 'status', 'forget', 'pin'].includes(verb)) return { code: 64, out: '', err: `Unknown: ${verb}. Run "parley --help".\n` };
     /* --help after a verb is help, never words to post (`parley ask --help` posted "--help" as a
        question); an option the verb does not know is refused, not posted either. */
     if (rest.includes('--help') || rest.includes('-h')) return { code: 0, out: `${HELP}\n`, err: '' };
@@ -302,6 +307,7 @@ export function run(argv, { env = process.env, cwd = process.cwd(), stdin = () =
         else if (verb === 'close') said = verbs.close(rest[0], text(rest.slice(1).join(' ')));
         else if (verb === 'doing') { let to; let room; const i = rest.indexOf('--to'); if (i >= 0) { to = rest[i + 1]; rest.splice(i, 2); } const j = rest.indexOf('--room'); if (j >= 0) { room = rest[j + 1]; rest.splice(j, 2); } said = verbs.doing(text(rest.join(' ')), { to, room }); }
         else if (verb === 'forget') said = verbs.forget(rest[0]);
+        else if (verb === 'pin') { const words = rest.filter((a) => a !== '--off'); if (words.length !== 1) return { code: 64, out: '', err: 'parley pin ID [--off]: the id of one message, as read shows it.\n' }; said = verbs.pin(words[0], { off: rest.includes('--off') }); }
         else if (verb === 'show') { let room; let to; let re; for (const [k, set] of [['--room', (v) => { room = v; }], ['--to', (v) => { to = v; }], ['--re', (v) => { re = v; }]]) { const i = rest.indexOf(k); if (i >= 0) { set(rest[i + 1]); rest.splice(i, 2); } } const { files, note } = showing(rest, cwd); said = verbs.show(files.length === 1 && !files[0].title ? files[0].path : files, note, { from: cwd, room, to, re }); }
         else said = verbs.status(rest[0], rest.slice(1).join(' '));
         return { code: 0, out: `${said}\n`, err: '' };

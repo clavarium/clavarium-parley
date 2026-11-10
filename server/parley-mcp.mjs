@@ -33,7 +33,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import { createInterface } from 'node:readline';
 
-export const VERSION = '0.17.88-next.1';
+export const VERSION = '0.17.89-next.1';
 /* A message may be long: the screen folds it, and shows its short version first. */
 export const TEXT_MAX = 16000;
 /* Its short version: a title of one or two lines. */
@@ -134,6 +134,10 @@ const reacted = (m) => {
     if (m.removed === true) return `They took back their reaction "${name}" to ${target}.`;
     return `Reaction to ${target}: ${REACTION_MEANINGS[name] ?? `"${name}"`}`;
 };
+/* PINNED MESSAGES: so many stand at most (PINS_MAX in the host), the oldest leaving for a new one. */
+export const PINS_MAX = 5;
+/* An excerpt of a message, on one line: what a pin shows of it. */
+const excerpt = (text) => plain(text, 2000).replace(/\s+/g, ' ').trim().slice(0, 200);
 const brief = (short) => { const line = plain(short, SHORT_KEPT * 2).replace(/\s+/g, ' ').trim().slice(0, SHORT_KEPT); return line ? { short: line } : {}; };
 /* The agent does not see the screen cut its short version: told when it is too long for a title of a line or two. */
 const tooLong = (short) => (plain(short ?? '', SHORT_KEPT * 2).replace(/\s+/g, ' ').trim().length > SHORT_LINE
@@ -189,6 +193,36 @@ export function bridge(dir, { how = 'run `parley read`', back = (id) => `parley 
         const unknown = ids.filter((id) => !known.has(id));
         if (unknown.length) throw new Error(`no one here has the id ${unknown.join(', ')}; those who do: ${[...known].map(([id, name]) => `${name} (${id})`).join(', ') || 'nobody'}. Nothing was sent.`);
         return ids;
+    };
+    /* THE PINS STANDING, counted as the host counts them: both sides' pins replayed in the order they
+       were put; one put again while it stands keeps its place; a message not there any more is skipped.
+       `known`: every message a pin may name, by its id. */
+    const pinState = () => {
+        const written = lines(IN).filter(Boolean);
+        const posted = lines(OUT).filter(Boolean);
+        const known = new Map([
+            ...posted.filter((m) => ['say', 'ask', 'show'].includes(m.kind) && typeof m.id === 'string').map((m) => [m.id, { from: 'agent', at: String(m.at ?? ''), text: excerpt(m.text || m.path) }]),
+            ...written.filter((m) => typeof m.id === 'string' && typeof m.reaction !== 'string' && typeof m.pin !== 'string').map((m) => [m.id, { from: 'person', at: String(m.at ?? ''), text: excerpt(m.text) }]),
+        ]);
+        const puts = [
+            ...written.filter((m) => typeof m.pin === 'string' && typeof m.reaction !== 'string').map((m) => ({ by: 'person', to: m.pin, at: String(m.at ?? ''), removed: m.removed === true })),
+            ...posted.filter((m) => m.kind === 'pin' && typeof m.pin === 'string').map((m) => ({ by: 'agent', to: m.pin, at: String(m.at ?? ''), removed: m.removed === true })),
+        ].sort((a, b) => a.at.localeCompare(b.at));
+        let pins = [];
+        for (const p of puts) {
+            if (p.removed) { pins = pins.filter((x) => x.id !== p.to); continue; }
+            const m = known.get(p.to);
+            if (!m || pins.some((x) => x.id === p.to)) continue;
+            pins.push({ id: p.to, at: p.at, by: p.by, from: m.from, text: m.text, toAt: m.at });
+            if (pins.length > PINS_MAX) pins.shift();
+        }
+        return { known, pins };
+    };
+    /* A pin of theirs, as the agent reads it: on which message, its words and its time. */
+    const pinnedText = (m) => {
+        const mine = lines(OUT).some((x) => x && x.id === m.pin);
+        const target = `${mine ? 'your' : 'their'} message${m.toAt ? ` of ${plain(m.toAt, 40).slice(0, 16).replace('T', ' ')}` : ''}${m.quote ? ` "${excerpt(m.quote)}"` : ''}`;
+        return m.removed === true ? `They unpinned ${target}.` : `They pinned ${target}: it stays at the top of their chat, keep it in mind.`;
     };
     const post = (entry) => {
         mkdirSync(dir, { recursive: true });
@@ -464,6 +498,30 @@ export function bridge(dir, { how = 'run `parley read`', back = (id) => `parley 
             appendFileSync(FORGET, `${JSON.stringify({ at: new Date().toISOString(), name: n })}\n`);
             return 'Noted. The parloir will forget it.';
         },
+        /* PIN A MESSAGE of the exchange, either side's, so that it stays at the top of their chat and
+           is read again after a restart (read with last or days): a decision, a rule, a link. `id`: the
+           message's, or the first characters of it that `read` shows. PINS_MAX at most: a new one makes
+           the oldest leave. `off`: unpins it. */
+        pin(id, { off = false } = {}) {
+            const given = plain(id, 100).trim().replace(/^\[|\]$/g, '');
+            if (given.length < ID_SHOWN) throw new Error(`give the id of the message, as "read" shows it (${ID_SHOWN} characters at least)`);
+            const { known, pins } = pinState();
+            const found = [...known.keys()].filter((k) => k.startsWith(given));
+            if (found.length === 0) throw new Error(`no message has the id ${given}`);
+            if (found.length > 1) throw new Error(`several messages start with ${given}: give more of it`);
+            const target = found[0];
+            const m = known.get(target);
+            const standing = pins.some((p) => p.id === target);
+            if (off === true) {
+                if (!standing) return 'It was not pinned: nothing to unpin.';
+                post({ kind: 'pin', pin: target, removed: true, text: '', quote: m.text, toAt: m.at });
+                return 'Unpinned: it left the top of their chat.';
+            }
+            if (standing) return 'It is pinned already.';
+            const leaving = pins.length >= PINS_MAX ? pins[0] : null;
+            post({ kind: 'pin', pin: target, text: '', quote: m.text, toAt: m.at });
+            return `Pinned: it stays at the top of their chat, and read gives it again after a restart.${leaving ? ` ${PINS_MAX} at most: the oldest pin left ("${leaving.text.slice(0, 80)}").` : ''}`;
+        },
         /* A sign of life from the agent's TOOL (its hooks), not from the agent:
            `busy` while it acts, false when its turn ended. No line, no event:
            one small file, rewritten whole. Not a verb, not an MCP tool. */
@@ -502,7 +560,7 @@ export function bridge(dir, { how = 'run `parley read`', back = (id) => `parley 
             const closed = new Set(posted.filter((m) => m.kind === 'close').map((m) => m.answers));
             const open = posted.filter((m) => m.kind === 'ask' && typeof m.id === 'string' && !answered.has(m.id) && !closed.has(m.id));
             const pending = open.length === 0 ? '' : `\nOpen questions (one they answered another way: close it with parley close ID "the answer you understood"):${open.slice(-10).map((m) => `\n  [${m.id.slice(0, ID_SHOWN)}] ${plain(m.text, 200).replace(/\s+/g, ' ')}`).join('')}`;
-            const fromThem = (m) => (m.reaction ? reacted(m) : `${m.answers ? `They answered your question "${plain(m.question, 200)}": ` : m.re ? `They replied to your message "${plain(m.quote, 200)}"${m.via === 'voice' ? ` (${DICTATED})` : ''}: ` : m.via === 'voice' ? `They wrote (${DICTATED}): ` : 'They wrote: '}${m.answers ? answerText(m) : plain(m.text)}${aboutText(m)}${attached(m)}`);
+            const fromThem = (m) => (m.reaction ? reacted(m) : typeof m.pin === 'string' ? pinnedText(m) : `${m.answers ? `They answered your question "${plain(m.question, 200)}": ` : m.re ? `They replied to your message "${plain(m.quote, 200)}"${m.via === 'voice' ? ` (${DICTATED})` : ''}: ` : m.via === 'voice' ? `They wrote (${DICTATED}): ` : 'They wrote: '}${m.answers ? answerText(m) : plain(m.text)}${aboutText(m)}${attached(m)}`);
             if (all || last !== undefined || days !== undefined || before !== undefined) {
                 const theirs = written.flatMap((m, i) => (m ? [{ id: String(m.id ?? ''), at: String(m.at ?? ''), text: `${fromThem(m)}${i >= seen ? ' (new)' : ''}` }] : []));
                 const mine = lines(OUT).filter((m) => m && ['say', 'ask', 'show', 'close'].includes(m.kind)).map((m) => ({ id: String(m.id ?? ''), at: String(m.at ?? ''),
@@ -532,7 +590,10 @@ export function bridge(dir, { how = 'run `parley read`', back = (id) => `parley 
                 if (both.length === 0) return `Nothing before that message.${pending}`;
                 const older = start > 0 ? `\nOlder: ${start} more before these. To read them: ${back(page[0].id.slice(0, ID_SHOWN))}` : '\nNothing older: this is the start of the exchange.';
                 const head = start === 0 && end === every.length ? `The whole exchange with the person, oldest first (${both.length}):` : end === every.length ? `The end of the exchange with the person, oldest first (the newest ${both.length} of ${every.length}):` : `An earlier part of the exchange with the person, oldest first (${both.length}, ${every.length - end} newer after them):`;
-                return `${head}\n${both.join('\n')}${older}\nEnd of what was asked: everything is read now.${pending}`;
+                /* After a restart, what was pinned first: the decisions and rules it must not lose. */
+                const { pins } = pinState();
+                const pinned = before === undefined && pins.length ? `Pinned (${pins.length}):\n${pins.map((p) => `  [${p.toAt.slice(0, 16).replace('T', ' ')} ${shownId(p.id)}] ${p.from === 'agent' ? 'yours' : 'theirs'}, pinned by ${p.by === 'agent' ? 'you' : 'them'}: ${p.text}`).join('\n')}\n\n` : '';
+                return `${pinned}${head}\n${both.join('\n')}${older}\nEnd of what was asked: everything is read now.${pending}`;
             }
             const fresh = written.slice(seen).filter(Boolean);
             if (fresh.length === 0) return `No new message.${pending}`;
@@ -547,7 +608,7 @@ export function bridge(dir, { how = 'run `parley read`', back = (id) => `parley 
             const from = (m) => inRoomLine(m) ?? byOther(m) ?? (m.by && typeof m.by.name === 'string' ? `Message from ${plain(m.by.name, 40)}${m.by.place ? ` (${plain(m.by.place, 40)})` : ''}, a voice box${m.by.why ? ` [${plain(m.by.why, 120)}]` : ''} (first, at once, say in a few words what you are about to do with doing to: ["${plain(m.by.id, 80)}"]; then answer it aloud with tell to: the same -- or with ask to: the same when your answer calls for theirs: the box listens after) (${DICTATED}): ` : null);
             /* Who may hear an answer, when a voice box spoke: each by its room, its place and its id. */
             const boxes = () => { const list = speakers(); return list.length ? `\nVoice boxes here (tell with to: their ids; "the kitchen" said from one place means the one there, unless told otherwise): ${list.map((x) => `${x.name}${x.place ? ` · ${x.place}` : ''} (${x.id})`).join(', ')}.` : ''; };
-            const said = (m) => (m.reaction ? reacted(m) : `${from(m) ?? (m.answers ? `Answer to your question "${plain(m.question, 200)}": ` : m.re ? `Reply to your message "${plain(m.quote, 200)}"${m.via === 'voice' ? ` (${DICTATED})` : ''}: ` : m.via === 'voice' ? `Message (${DICTATED}): ` : 'Message: ')}${m.answers ? answerText(m) : plain(m.text)}${aboutText(m)}${attached(m)}`);
+            const said = (m) => (m.reaction ? reacted(m) : typeof m.pin === 'string' ? pinnedText(m) : `${from(m) ?? (m.answers ? `Answer to your question "${plain(m.question, 200)}": ` : m.re ? `Reply to your message "${plain(m.quote, 200)}"${m.via === 'voice' ? ` (${DICTATED})` : ''}: ` : m.via === 'voice' ? `Message (${DICTATED}): ` : 'Message: ')}${m.answers ? answerText(m) : plain(m.text)}${aboutText(m)}${attached(m)}`);
             return `${fresh.map((m) => `${shownId(m.id) ? `[${shownId(m.id)}] ` : ''}${said(m)}`).join('\n')}${fresh.some((m) => m.room) ? roomsHint() : fresh.some(isBox) ? boxes() : ''}${pending}${next}`;
         },
     };
@@ -574,7 +635,7 @@ export const TOOLS = [
                 items: { type: 'object', properties: { id: { type: 'string', description: 'Short, letters, digits, - or _: the answer names it.' }, label: { type: 'string', description: 'A word or two for its tab, in their language.' }, question: { type: 'string' }, choices: { type: 'array', items: { type: 'string' } }, many: { type: 'boolean' }, recommended: { description: 'Optional, only when you do recommend one: the choice you recommend, written exactly as in choices (with many: a list). It is marked Recommended on their screen, and ticked first on a card; they decide.' }, input: { type: 'object', description: 'Optional, instead of choices: a selector for the answer. recommended (only when you recommend one): the value it starts at, marked Recommended -- a number; [a, b] for a range; yes or no; for rank, the items in the order you recommend. kind: yesno | slider | number (min, max, step, unit, value, labels: [low end, high end]) | range (same, value: [a, b]) | scale (min, max: whole numbers, 11 steps at most, labels) | stars (max 3-10) | rank (items) | split (items, total: 100 by default, unit) | table (columns, rows, values: rows of cells) | date | time | datetime (value) | text (lines). The answer comes back as plain text.', properties: { kind: { type: 'string' } } } }, required: ['question'] } }, steps: { type: 'boolean', description: 'Optional, with long questions: one at a time, as steps with tabs, instead of all on one card.' }, input: { type: 'object', description: 'Optional, instead of choices: a selector for the answer. kind: yesno | slider | number (min, max, step, unit, value, labels: [low end, high end]) | range (same, value: [a, b]) | scale (min, max: whole numbers, 11 steps at most, labels) | stars (max 3-10) | rank (items) | split (items, total: 100 by default, unit) | table (columns, rows, values: rows of cells) | date | time | datetime (value) | text (lines). The answer comes back as plain text.', properties: { kind: { type: 'string' } } }, short: { type: 'string', description: 'Optional, for a long question: its title, one or two lines.' }, recommended: { description: 'Optional, only when you do recommend one: the choice you recommend, written exactly as in choices (or, with input, the value its selector starts at) (with many: a list). It is marked Recommended on their screen, and ticked first on a card; they decide.' }, suggest: { type: 'string', description: 'Optional, only when you would answer in their place: the reply you suggest, in their words and language (one to three lines). It is shown greyed in their box; one key (Tab) or one touch makes it theirs, to send or change.' } } } },
     { name: 'show', description: `Point the person you work for to a file you made (a report, a picture, a page), or to several at once, so that they can open them from their screen. ${GALLERY} Put them in a folder you share with them.`,
         inputSchema: { type: 'object', properties: { path: { type: 'string', description: 'The path of one file.' }, files: { type: 'array', items: { type: 'object', properties: { path: { type: 'string' }, title: { type: 'string', description: 'What it is, in their language: "Home page, before".' } }, required: ['path'] }, description: `Several files shown together (${SHOW_MAX} at most), each with its title.` }, paths: { type: 'array', items: { type: 'string' }, description: 'Several files, without titles (prefer files, with titles).' }, note: { type: 'string', description: 'One line on what it is, common to all.' }, room: { type: 'string', description: 'Optional: the id of a room you are in, to show it there (its members open it through your conversation).' }, to: { type: 'array', items: { type: 'string' }, description: 'Optional, with room: the members it is for.' }, re: { type: 'string', description: 'Optional, with room: the id of the room message you answer.' } } } },
-    { name: 'read', description: 'Read what was written to you since you last read: new instructions, answers to your questions, files they attached, their reactions to your messages (only "go ahead" authorizes what a message proposes; "stop" means stop now), and the questions still open with their ids. A message they dictated is said so: it may hold recognition mistakes. Call it when you are told a message arrived, and before you finish a task. After a restart, to pick up the thread: last (the newest messages, both sides, oldest first) or days; it says how to read further back (before: the id it gives). The exchange is kept whole: read back as far as you need. Each message comes with its id: what a card or a reply can point to.',
+    { name: 'read', description: 'Read what was written to you since you last read: new instructions, answers to your questions, files they attached, their reactions to your messages (only "go ahead" authorizes what a message proposes; "stop" means stop now), and the questions still open with their ids. A message they dictated is said so: it may hold recognition mistakes. Call it when you are told a message arrived, and before you finish a task. After a restart, to pick up the thread: last (the newest messages, both sides, oldest first) or days, the pinned messages first; it says how to read further back (before: the id it gives). The exchange is kept whole: read back as far as you need. Each message comes with its id: what a card or a reply can point to.',
         inputSchema: { type: 'object', properties: { last: { type: 'integer', description: `Optional: the newest so many messages of the exchange, both sides (${LAST_MAX} at most).` }, days: { type: 'integer', description: 'Optional: the messages of the last so many days.' }, before: { type: 'string', description: 'Optional, with last or days: the part before this message (the id read gave).' }, all: { type: 'boolean', description: `Optional: the newest ${ALL_ENTRIES} messages of the exchange.` } } } },
     { name: 'close', description: 'Close a question of yours that they answered another way (in a message typed later, not with its buttons), saying the answer you understood. Their screen shows it; they may still correct it. The id is the one read shows.',
         inputSchema: { type: 'object', properties: { id: { type: 'string', description: 'The id of the question, as read shows it.' }, answer: { type: 'string', description: 'The answer you understood, in one line.' } }, required: ['id', 'answer'] } },
@@ -584,6 +645,8 @@ export const TOOLS = [
         inputSchema: { type: 'object', properties: { state: { type: 'string', enum: STATES }, note: { type: 'string', description: 'Optional: one short line.' } }, required: ['state'] } },
     { name: 'forget', description: 'Forget a short-lived secret the person pasted in the chat, once you are done with it: the parloir drops it from its store and the machine at once, before its few minutes are up. The name is the one read shows, at /run/secrets/<name>. It clears itself anyway if you do not.',
         inputSchema: { type: 'object', properties: { name: { type: 'string', description: 'The secret\'s name, as read shows it (SECRET_ then ten hex).' } }, required: ['name'] } },
+    { name: 'pin', description: `Pin a message of the exchange (yours or theirs) so it stays at the top of their chat and is read again to you after a restart: a decision, a rule, a useful link. ${PINS_MAX} at most; off: true unpins.`,
+        inputSchema: { type: 'object', properties: { id: { type: 'string', description: 'The id of the message, as read shows it.' }, off: { type: 'boolean', description: 'Optional: true unpins it.' } }, required: ['id'] } },
 ];
 
 export function serve(dir, { input = process.stdin, output = process.stdout } = {}) {
@@ -597,6 +660,7 @@ export function serve(dir, { input = process.stdin, output = process.stdout } = 
         if (name === 'status') return verbs.status(args.state, args.note);
         if (name === 'doing') return verbs.doing(args.text, { to: args.to, room: args.room });
         if (name === 'forget') return verbs.forget(args.name);
+        if (name === 'pin') return verbs.pin(args.id, { off: args.off === true });
         throw new Error(`unknown tool: ${name}`);
     };
     const send = (message) => output.write(`${JSON.stringify(message)}\n`);
