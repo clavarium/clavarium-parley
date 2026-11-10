@@ -134,7 +134,8 @@ test('an AI shows a file in a room it is in (07-11): the line keeps the room; th
         const file = join(dir, 'report.html'); writeFileSync(file, '<p>ok</p>');
         const agent = bridge(d); agent.read();
         assert.match(agent.show(file, 'Le rapport', { from: dir, room: 'room-1' }), /Posted in the room Assistants/);
-        const last = own.read().messages.at(-1);
+        /* Its show, by kind: a say and a show in the same millisecond have no fixed order. */
+        const last = own.read().messages.findLast((m) => m.kind === 'show');
         assert.equal(last.kind, 'show'); assert.equal(last.room, 'room-1'); assert.equal(last.path, file);
         const roomDir = join(dir, 'room'); mkdirSync(roomDir);
         const room = new Parley(roomDir, { room: true });
