@@ -225,40 +225,102 @@ function pulseOf(dir, now) {
         return { busy: p.busy, at: new Date(Math.min(t, now.getTime())).toISOString() };
     } catch { return null; }
 }
+/* A FILE THAT ONLY GREW is read from where it was left: the bytes kept of its end (TAIL) are read
+   again in place, and must be the same, on the same file (inode). A file rewritten, made shorter,
+   or replaced is read whole again. */
+const TAIL = 64 * 1024;
+/* A line changed further back, in the same write as one added, is not in that end: the whole file
+   is read again at most this long after it last was (milliseconds), and the change found then. */
+const WHOLE_EVERY = 60_000;
+function bytesAt(file, from, length) {
+    const out = Buffer.alloc(length);
+    if (!length) return out;
+    const fd = openSync(file, 'r');
+    try { readSync(fd, out, 0, length, from); } finally { closeSync(fd); }
+    return out;
+}
+/* `known`: { ino, end, tail, whole } of the last read (end: the byte after its last whole line;
+   whole: when it was last read whole). The bytes after it, or null when the file did not only grow
+   since (one of the same size changed in place), or when it is time to read it whole again. */
+function grownBytes(file, st, known) {
+    if (!known || known.ino !== st.ino || st.size <= known.end || !(Date.now() - known.whole < WHOLE_EVERY)) return null;
+    const from = known.end - known.tail.length;
+    if (!bytesAt(file, from, known.tail.length).equals(known.tail)) return null;
+    return bytesAt(file, known.end, st.size - known.end);
+}
+/* The end of what is kept of a file read so far: the last TAIL bytes of its whole lines. */
+const tailOf = (before, added) => { const all = before.length ? Buffer.concat([before, added]) : added; return Buffer.from(all.subarray(Math.max(0, all.length - TAIL))); };
+/* Each list of lines read is one generation: a list that only grew keeps it, one read again whole
+   gets a new one -- what the thread built from it (see #model) is then built again. */
+let GEN = 0;
+const NO_LINES = Object.freeze({ list: Object.freeze([]), gen: 0 });
+
 /* THE WHOLE LINES OF A BRIDGE FILE, parsed, in place: a line that is not an object
    stays as `undefined`, so that a line keeps its place (a cursor counts places). A
-   line not ended yet waits, unless it reads whole. Read again only when the file changed; never through a link. */
+   line not ended yet waits, unless it reads whole. Read again only when the file changed,
+   and then only what was added to it; never through a link. */
 const WHOLE = new Map();
 function wholeLines(file) {
     try {
         const st = lstatSync(file);
-        if (st.isSymbolicLink() || !st.isFile() || st.size > 16 * FILE_MAX) return [];
+        if (st.isSymbolicLink() || !st.isFile() || st.size > 16 * FILE_MAX) { WHOLE.delete(file); return NO_LINES; }
         const stamp = statOf(st);
         const known = WHOLE.get(file);
-        if (known?.stamp === stamp) return known.list;
-        const text = readFileSync(file, 'utf8');
-        const end = text.lastIndexOf('\n') + 1;
-        const list = text.slice(0, end).split('\n').filter(Boolean).map(parsed);
+        if (known?.stamp === stamp) return known;
+        /* Grown, and no line taken before it ended: only what is new is parsed, at the end of the same list. */
+        const added = known && !known.rest ? grownBytes(file, st, known) : null;
+        if (added) {
+            const end = added.lastIndexOf(0x0a) + 1;
+            for (const line of added.toString('utf8', 0, end).split('\n')) if (line) known.list.push(parsed(line));
+            const rest = parsed(added.toString('utf8', end));
+            if (rest) { known.list.push(rest); known.rest = true; }
+            Object.assign(known, { stamp, end: known.end + end, tail: tailOf(known.tail, added.subarray(0, end)) });
+            return known;
+        }
+        const buf = readFileSync(file);
+        const end = buf.lastIndexOf(0x0a) + 1;
+        const list = buf.toString('utf8', 0, end).split('\n').filter(Boolean).map(parsed);
         /* A last line with no end yet is taken once it reads whole (a hand-written file); never in part. */
-        const rest = parsed(text.slice(end));
+        const rest = parsed(buf.toString('utf8', end));
         if (rest) list.push(rest);
-        WHOLE.set(file, { stamp, list });
-        return list;
-    } catch { return []; }
+        const entry = { stamp, list, gen: (GEN += 1), ino: st.ino, end, tail: Buffer.from(buf.subarray(Math.max(0, end - TAIL), end)), whole: Date.now(), rest: Boolean(rest) };
+        WHOLE.set(file, entry);
+        return entry;
+    } catch { WHOLE.delete(file); return NO_LINES; }
 }
 /* The lines kept, parsed in place: the copy only grows, so only what is new is parsed. */
 const PARSED = new Map();
 function parsedOf(key, raw) {
     const known = PARSED.get(key);
     if (known && raw.length >= known.n && (known.n === 0 || raw[known.n - 1] === known.last)) {
-        if (raw.length > known.n) { known.list = [...known.list, ...raw.slice(known.n).map(parsed)]; known.n = raw.length; known.last = raw.at(-1); }
-        return known.list;
+        if (raw.length > known.n) { for (let i = known.n; i < raw.length; i += 1) known.list.push(parsed(raw[i])); known.n = raw.length; known.last = raw.at(-1); }
+        return known;
     }
-    const entry = { n: raw.length, last: raw.at(-1), list: raw.map(parsed) };
+    const entry = { n: raw.length, last: raw.at(-1), list: raw.map(parsed), gen: (GEN += 1) };
     PARSED.set(key, entry);
-    return entry.list;
+    return entry;
 }
-function lineCount(file) { try { if (lstatSync(file).isSymbolicLink()) return 0; return readFileSync(file, 'utf8').split('\n').filter(Boolean).length; } catch { return 0; } }
+/* How many lines a file holds (one not ended yet too): counted again only when it changed, and
+   then only in what was added to it (see grownBytes). */
+const COUNTED = new Map();
+const linesIn = (buf, from, to) => { let n = 0, at = from; while (at < to) { const nl = buf.indexOf(0x0a, at); const stop = nl < 0 || nl >= to ? to : nl; if (stop > at) n += 1; at = stop + 1; } return n; };
+function lineCount(file) {
+    try {
+        const st = lstatSync(file);
+        if (st.isSymbolicLink()) return 0;
+        const stamp = statOf(st);
+        const known = COUNTED.get(file);
+        if (known?.stamp === stamp) return known.n;
+        const added = grownBytes(file, st, known);
+        const buf = added ?? readFileSync(file);
+        const end = buf.lastIndexOf(0x0a) + 1;
+        const lines = (added ? known.lines : 0) + linesIn(buf, 0, end);
+        const entry = { stamp, ino: st.ino, end: (added ? known.end : 0) + end, tail: tailOf(added ? known.tail : Buffer.alloc(0), buf.subarray(0, end)), whole: added ? known.whole : Date.now(), lines };
+        entry.n = lines + (buf.length > end ? 1 : 0);
+        COUNTED.set(file, entry);
+        return entry.n;
+    } catch { return 0; }
+}
 
 /* THE APPLICATION'S OWN COPY: `keep`, a folder the agent cannot reach. The
    bridge folder is the agent's own: it can rewrite any line there, the
@@ -275,7 +337,8 @@ const statOf = (st) => `${st.size}:${st.mtimeMs}:${st.ctimeMs}:${st.ino}`;
 const keptStat = (file) => { try { return statOf(statSync(file)); } catch { return null; } };
 /* A file of the keep folder: { lines, ids, seen }, or null when there is none yet. Read once,
    then from memory while the file is as this process left it. `seen`: how the bridge file
-   was when last compared, so that a bridge file that did not move is not read again. */
+   was when last compared ({ stamp, ino, end, tail, n, lines }), so that a bridge file that did
+   not move is not read again, and one that only grew is read from where it was left. */
 function kept(file) {
     const stamp = keptStat(file);
     if (stamp === null) { KEPT.delete(file); return null; }
@@ -287,27 +350,45 @@ function kept(file) {
     KEPT.set(file, entry);
     return entry;
 }
+/* Lines added to a file of the keep folder, and to what is known of it: in place, its ids with
+   them (a thread of thousands of lines is not copied, nor its ids read again, for one line). */
 function keep(file, add, { whole = false } = {}) {
     const before = whole ? null : kept(file);
     if (whole) writeFileSync(file, add.map((l) => `${l}\n`).join(''));
     else if (add.length) appendFileSync(file, add.map((l) => `${l}\n`).join(''));
-    const entry = { stamp: keptStat(file), lines: [...(before?.lines ?? []), ...add], ids: null, seen: before?.seen ?? null };
+    if (before) {
+        for (const l of add) before.lines.push(l);
+        if (before.ids) for (const l of add) { const id = idOf(l); if (id) before.ids.add(id); }
+        before.stamp = keptStat(file);
+        return before;
+    }
+    const entry = { stamp: keptStat(file), lines: [...add], ids: null, seen: null };
     KEPT.set(file, entry);
     return entry;
 }
 const idsOf = (entry) => (entry.ids ??= new Set(entry.lines.map(idOf).filter(Boolean)));
 /* The whole lines of a bridge file, as written (a line not ended yet waits): none when it is
    gone, or is a link (all it held is gone from there); null when too big to compare, or when
-   it is as it was when last compared (`seen`). */
-function bridgeLines(file, seen) {
+   it is as it was when last compared (`seen`). Only grown since: the lines it had (`prev()`)
+   and those read after them. */
+function bridgeLines(file, seen, prev) {
+    const none = { lines: [], seen: { stamp: 'none' } };
     try {
         const st = lstatSync(file);
-        if (st.isSymbolicLink() || !st.isFile()) return seen === 'none' ? null : { lines: [], stamp: 'none' };
+        if (st.isSymbolicLink() || !st.isFile()) return seen?.stamp === 'none' ? null : none;
         const stamp = statOf(st);
-        if (stamp === seen || st.size > 16 * FILE_MAX) return null;
-        const text = readFileSync(file, 'utf8');
-        return { lines: text.slice(0, text.lastIndexOf('\n') + 1).split('\n').filter(Boolean), stamp };
-    } catch { return seen === 'none' ? null : { lines: [], stamp: 'none' }; }
+        if (stamp === seen?.stamp || st.size > 16 * FILE_MAX) return null;
+        const added = prev ? grownBytes(file, st, seen) : null;
+        if (added) {
+            const end = added.lastIndexOf(0x0a) + 1;
+            const lines = prev();
+            for (const l of added.toString('utf8', 0, end).split('\n')) if (l) lines.push(l);
+            return { lines, seen: { stamp, ino: st.ino, end: seen.end + end, tail: tailOf(seen.tail, added.subarray(0, end)), whole: seen.whole } };
+        }
+        const buf = readFileSync(file);
+        const end = buf.lastIndexOf(0x0a) + 1;
+        return { lines: buf.toString('utf8', 0, end).split('\n').filter(Boolean), seen: { stamp, ino: st.ino, end, tail: Buffer.from(buf.subarray(Math.max(0, end - TAIL), end)), whole: Date.now() } };
+    } catch { return seen?.stamp === 'none' ? null : none; }
 }
 const idOf = (line) => { const id = parsed(line)?.id; return typeof id === 'string' ? id : ''; };
 const atOf = (line) => { const at = parsed(line)?.at; return typeof at === 'string' ? at : ''; };
@@ -374,8 +455,81 @@ function inputKept(x) {
     return Object.fromEntries(Object.entries(out).filter(([, v]) => v !== undefined && !(Array.isArray(v) && !v.length && v !== out.values)));
 }
 
+/* THE THREADS BUILT (see #model), by folder: so many at most, the one read longest ago leaving first. */
+const MODELS = new Map();
+const MODELS_MAX = 64;
+/* A thread built from nothing yet: the lines of both files are taken into it from the first. */
+function built(fromGen, toGen, look) {
+    return {
+        fromGen, toGen, look, fromN: 0, toN: 0, paths: new Map(), place: new WeakMap(),
+        readText: null, readCount: 0, reachTop: [], reachAt: [], B: 0,
+        /* The messages in their order, each { from, m (as built), at, i (its line), e (as handed over) }. */
+        order: [], messages: [], dirty: true, byId: new Map(), asks: [], persons: [], byLine: [],
+        steps: [], lastStep: undefined, lastStatus: undefined, closeLines: [], closes: new Map(), answered: new Set(),
+        reactions: new Map(), reactionLine: new Map(), puts: { person: [], agent: [] }, putTo: new Set(), pins: [], pinsDirty: true,
+        shown: [], shownPaths: new Set(), cites: [], citeOf: new Map(), citeGone: new Set(), files: [],
+    };
+}
+/* When line i of the person was read: the first read that reached it (the running highest count above i). */
+function seenAtOf(s, i) {
+    let lo = 0, hi = s.reachTop.length;
+    while (lo < hi) { const mid = (lo + hi) >> 1; if (s.reachTop[mid] > i) hi = mid; else lo = mid + 1; }
+    return s.reachAt[lo] ?? null;
+}
+/* A message as handed over: made again only when what is put on it changed (a reaction, a close,
+   when it was read); the same object otherwise, from one read to the next. */
+function cur(s, x) {
+    if (x.e) return x.e;
+    let e;
+    if (x.from === 'agent') {
+        const r = s.reactions.get(x.m.id);
+        const c = x.m.kind === 'ask' ? s.closes.get(x.m.id) : undefined;
+        e = r || c ? { ...x.m, ...(r ? { reaction: r } : {}), ...(c ? { closed: c } : {}) } : x.m;
+    } else e = { ...x.m, seen: x.seen, ...(x.seen && x.seenAt ? { seenAt: x.seenAt } : {}), ...x.more };
+    s.place.set(e, x.i);
+    x.e = e;
+    return e;
+}
+/* The agent's messages of an id, to be made again (a reaction or a close put on them, or taken away). */
+function touch(s, id) { for (const x of s.byId.get(id) ?? []) { x.e = null; s.dirty = true; } }
+/* Where a new item goes in a list sorted by time (`at`, compared as the list was sorted): after
+   those of the same time, unless `before(y)` says it goes before y -- what one stable sort of the
+   whole list would have done. */
+function insertAt(list, item, before) {
+    let lo = 0, hi = list.length;
+    while (lo < hi) {
+        const mid = (lo + hi) >> 1;
+        const c = String(list[mid].at).localeCompare(String(item.at));
+        if (c > 0 || (c === 0 && before(list[mid]))) hi = mid; else lo = mid + 1;
+    }
+    if (lo === list.length) list.push(item); else list.splice(lo, 0, item);
+}
+/* The first of the steps (in the order of their file) at line `a` or after. */
+function firstFrom(steps, place, a) {
+    let lo = 0, hi = steps.length;
+    while (lo < hi) { const mid = (lo + hi) >> 1; if (place.get(steps[mid]) >= a) hi = mid; else lo = mid + 1; }
+    return lo;
+}
+/* A pin is no message either: both sides' pins, replayed in the order they were put. One put
+   again while it stands keeps its place; a message that is not there any more is skipped. */
+function pinsOf(s) {
+    const byId = new Map(s.order.map((x) => [x.m.id, x.m]));
+    const puts = [...s.puts.person, ...s.puts.agent].sort((a, b) => a.at.localeCompare(b.at));
+    let pins = [];
+    for (const p of puts) {
+        if (p.removed) { pins = pins.filter((x) => x.id !== p.to); continue; }
+        const m = byId.get(p.to);
+        if (!m || pins.some((x) => x.id === m.id)) continue;
+        pins.push({ id: m.id, at: p.at, by: p.by, from: m.from, text: oneLine(m.text || m.path || '', 200), toAt: m.at });
+        if (pins.length > PINS_MAX) pins.shift();
+    }
+    return pins;
+}
+
 export class Parley {
     #dir; #on; #reach; #now; #reactions; #keep; #room;
+    /* While a thread is built: its rooms and speakers, read once; and where each path it opens is noted. */
+    #members = null; #paths = null;
 
     /* `on(event)`: told what happens (see the top of this file).
        `reach(path)`: how the person opens a file the agent showed -- a
@@ -397,10 +551,10 @@ export class Parley {
     #tell(event) { try { this.#on?.(event); } catch { /* a hook that fails stops nothing */ } }
 
     /* How the person opens a file, or null. */
-    #open(path) { try { const r = this.#reach(path); return typeof r === 'string' && r ? r : null; } catch { return null; } }
+    #open(path) { let r; try { r = this.#reach(path); r = typeof r === 'string' && r ? r : null; } catch { r = null; } this.#paths?.set(path, r); return r; }
 
     /* A member of one of its rooms named in words (@{id}): by its name of the moment, either side (06-11: the id showed). */
-    #named(t) { return t.includes('@{') ? t.replace(/@\{([0-9a-f-]{36})\}/g, (whole, mid) => { for (const r of this.rooms()) { const x = r.members.find((y) => y.id === mid); if (x) return `@${x.name}`; } return whole; }) : t; }
+    #named(t) { return t.includes('@{') ? t.replace(/@\{([0-9a-f-]{36})\}/g, (whole, mid) => { for (const r of this.#members?.rooms ?? this.rooms()) { const x = r.members.find((y) => y.id === mid); if (x) return `@${x.name}`; } return whole; }) : t; }
     /* One line the agent wrote, as it is handed over. */
     #fromAgent(m) {
         const kind = KINDS.includes(m.kind) ? m.kind : 'say';
@@ -415,10 +569,11 @@ export class Parley {
         /* Whom it is for (#215): the ids of those who speak here; shown by their names of the moment. */
         if ((kind === 'say' || kind === 'ask' || kind === 'doing' || kind === 'show') && Array.isArray(m.to)) {
             /* A box by its name and place; an AI or a person of one of its rooms by its name (06-11: an id showed instead). */
-            const names = new Map([...this.rooms().flatMap((r) => r.members.map((x) => [x.id, x.name])), ...this.speakers().map((x) => [x.id, x.place ? `${x.name} \u00b7 ${x.place}` : x.name])]);
+            const rooms = this.#members?.rooms ?? this.rooms(), speakers = this.#members?.speakers ?? this.speakers();
+            const names = new Map([...rooms.flatMap((r) => r.members.map((x) => [x.id, x.name])), ...speakers.map((x) => [x.id, x.place ? `${x.name} \u00b7 ${x.place}` : x.name])]);
             const to = m.to.slice(0, SPEAKERS_MAX).map((x) => oneLine(x, 80)).filter(Boolean);
             /* For the person (06-11): not a « → Toi » tab, a mark on the message (toYou); the others by their names. */
-            const persons = new Set([...this.speakers(), ...this.rooms().flatMap((r) => r.members)].filter((x) => x.kind === 'person').map((x) => x.id));
+            const persons = new Set([...speakers, ...rooms.flatMap((r) => r.members)].filter((x) => x.kind === 'person').map((x) => x.id));
             if (to.length) { entry.to = to; entry.toNames = to.filter((id) => !persons.has(id)).map((id) => names.get(id) ?? id); if (to.some((id) => persons.has(id))) entry.toYou = true; }
         }
         /* In a room (#215): which AI wrote it (the application signs what it relays), and the message it answers. */
@@ -473,21 +628,26 @@ export class Parley {
        the lines kept, as written. */
     #sync(name) {
         const own = `${this.#keep}/${name}`;
+        const bridge = `${this.#dir}/${name}`;
         let entry = kept(own);
         if (entry === null) {
             /* First sight: the bridge is taken as it is (a thread begun before it was kept). */
             mkdirSync(this.#keep, { recursive: true });
-            const now = bridgeLines(`${this.#dir}/${name}`);
+            const now = bridgeLines(bridge);
             entry = keep(own, now?.lines ?? [], { whole: true });
-            entry.seen = now?.stamp ?? null;
+            entry.seen = now ? { ...now.seen, n: now.lines.length, lines: null } : null;
             return entry.lines;
         }
-        const now = bridgeLines(`${this.#dir}/${name}`, entry.seen);
+        /* The lines the bridge had when last compared: those kept, when it was the same as the copy. */
+        const seen = entry.seen;
+        const prev = seen?.ino !== undefined ? () => (seen.lines ? [...seen.lines] : entry.lines.slice(0, seen.n)) : null;
+        const now = bridgeLines(bridge, seen, prev);
         if (now === null) return entry.lines;
         const side = name === 'from-agent.jsonl' ? 'agent' : 'person';
         const found = compare(entry, now.lines, { takes: side === 'agent' });
         if (found.fresh.length) entry = keep(own, found.fresh);
-        entry.seen = now.stamp;
+        const same = !found.lost.length && !found.added.length && entry.lines.length === now.lines.length;
+        entry.seen = { ...now.seen, n: now.lines.length, lines: same ? null : now.lines };
         const at = this.#now().toISOString();
         const notes = [
             ...found.lost.map((i) => ({ key: `${side}:${i}`, side, kind: found.changed.has(i) ? 'changed' : 'gone', line: i + 1, id: idOf(entry.lines[i]), was: atOf(entry.lines[i]), at })),
@@ -519,76 +679,143 @@ export class Parley {
     unread() { return Math.max(0, (this.#keep ? this.#sync('to-agent.jsonl').length : lineCount(`${this.#dir}/to-agent.jsonl`)) - readCount(this.#dir)); }
 
     /* The lines of one side, parsed in place (see wholeLines): the copy kept, with a keep
-       folder; the bridge file, without. Their places are what a cursor counts. */
-    #raw(name) { return this.#keep ? parsedOf(`${this.#keep}/${name}`, this.#sync(name)) : wholeLines(`${this.#dir}/${name}`); }
+       folder; the bridge file, without. Their places are what a cursor counts. With them, their
+       generation: the same while the list only grew. */
+    #lines(name) { return this.#keep ? parsedOf(`${this.#keep}/${name}`, this.#sync(name)) : wholeLines(`${this.#dir}/${name}`); }
+    #raw(name) { return this.#lines(name).list; }
 
     /* THE WHOLE THREAD, as handed over: every message of both sides in order, every step,
        what is open, where it is. What read() gives is a part of it; nothing is left out
-       of what is counted (the questions open, the status, the files, the unread). */
+       of what is counted (the questions open, the status, the files, the unread).
+       BUILT ONCE, THEN EXTENDED: a dense thread is read every few seconds, and grows by a line
+       at a time. What was built is kept (per folder, so that a new host of the same folders finds
+       it) and only the new lines are taken into it -- each as a whole rebuild would take it. It
+       is built again whole when a file was read again whole (rewritten, shorter), when the names
+       its messages are shown by changed (rooms, speakers), or when a path is not opened the way it
+       was. */
     #model() {
-        const fromRaw = this.#raw('from-agent.jsonl');
-        const toRaw = this.#raw('to-agent.jsonl');
-        /* Where each message stands in its file: what a cursor compares. */
-        const place = new WeakMap();
-        const all = [];
-        fromRaw.forEach((m, i) => { if (!m) return; const e = this.#fromAgent(m); place.set(e, i); all.push(e); });
-        const agent = all.filter((m) => m.kind !== 'close' && m.kind !== 'pin');
-        const closes = new Map(all.filter((m) => m.kind === 'close').map((m) => [m.answers, { text: m.text, at: m.at }]));
-        const read = Math.min(readCount(this.#dir), toRaw.length);
-        const unread = Math.max(0, toRaw.length - readCount(this.#dir));
-        /* When each of the person's messages was read: the first read that reached it. */
-        const reads = readTimes(this.#dir);
-        const seenAt = (i) => reads.find((r) => r.lines > i)?.at ?? null;
-        /* A reaction is no message: it is put on the message it is about, the newest one standing. */
-        const reactions = new Map();
-        toRaw.forEach((m, i) => {
-            if (!m || typeof m.reaction !== 'string' || typeof m.to !== 'string') return;
-            if (m.removed === true) { if (reactions.get(m.to)?.id === m.reaction) reactions.delete(m.to); return; }
-            reactions.set(m.to, { id: oneLine(m.reaction, 30), at: String(m.at ?? ''), seen: i < toRaw.length - unread });
-        });
-        const person = [];
-        toRaw.forEach((m, i) => {
-            if (!m || typeof m.reaction === 'string' || typeof m.pin === 'string') return;
-            const seen = i < toRaw.length - unread;
-            const e = { from: 'person', id: String(m.id ?? ''), at: String(m.at ?? ''), kind: 'say', text: this.#named(clean(m.text)), choices: [], seen, ...(seen && seenAt(i) ? { seenAt: seenAt(i) } : {}),
-                ...(m.answers ? { answers: String(m.answers), question: oneLine(m.question, 300) } : {}), ...(m.answers && Array.isArray(m.picked) ? { picked: m.picked.slice(0, 8).map((x) => oneLine(x, 200)).filter(Boolean) } : {}),
-                ...(m.answers && Array.isArray(m.replies) ? { replies: m.replies.slice(0, GROUP_MAX).filter((r) => r && typeof r === 'object' && typeof r.id === 'string').map((r) => ({ id: oneLine(r.id, 30), ...(oneLine(r.label, 40) ? { label: oneLine(r.label, 40) } : {}), ...(Array.isArray(r.picked) ? { picked: r.picked.slice(0, 8).map((x) => oneLine(x, 200)).filter(Boolean) } : { text: clean(r.text).slice(0, 2000) }) })) } : {}), ...(m.re ? { re: String(m.re), quote: oneLine(m.quote, 300) } : {}), ...(Array.isArray(m.files) && m.files.length ? { files: this.#files(m.files) } : {}), ...(m.via === 'voice' ? { via: 'voice' } : {}), ...(aboutOf(m.about) ? { about: aboutOf(m.about) } : {}), ...(byOf(m.by) ? { by: byOf(m.by) } : {}), ...(m.room && typeof m.room === 'object' && oneLine(m.room.id, 80) ? { room: { id: oneLine(m.room.id, 80), name: oneLine(m.room.name, 60), ...(oneLine(m.room.message, 80) ? { message: oneLine(m.room.message, 80) } : {}) } } : {}) };
-            place.set(e, i);
-            person.push(e);
-        });
-        for (const m of agent) if (reactions.has(m.id)) m.reaction = reactions.get(m.id);
-        const answered = new Set(person.map((m) => m.answers).filter(Boolean));
-        /* A question it closed says the answer it understood; answered with its buttons after that, the answer is the person's. */
-        for (const m of agent) if (m.kind === 'ask' && closes.has(m.id)) m.closed = closes.get(m.id);
-        const messages = [...agent.filter((m) => !STEP.has(m.kind)), ...person].sort((a, b) => a.at.localeCompare(b.at));
-        const steps = agent.filter((m) => STEP.has(m.kind));
-        /* A pin is no message either: both sides' pins, replayed in the order they were put. One put
-           again while it stands keeps its place; a message that is not there any more is skipped. */
-        const byId = new Map(messages.map((m) => [m.id, m]));
-        const puts = [
-            ...toRaw.flatMap((m) => (m && typeof m.pin === 'string' && typeof m.reaction !== 'string' ? [{ by: 'person', to: m.pin, at: String(m.at ?? ''), removed: m.removed === true }] : [])),
-            ...all.filter((m) => m.kind === 'pin').map((m) => ({ by: 'agent', to: m.pin, at: m.at, removed: m.removed === true })),
-        ].sort((a, b) => a.at.localeCompare(b.at));
-        let pins = [];
-        for (const p of puts) {
-            if (p.removed) { pins = pins.filter((x) => x.id !== p.to); continue; }
-            const m = byId.get(p.to);
-            if (!m || pins.some((x) => x.id === m.id)) continue;
-            pins.push({ id: m.id, at: p.at, by: p.by, from: m.from, text: oneLine(m.text || m.path || '', 200), toAt: m.at });
-            if (pins.length > PINS_MAX) pins.shift();
-        }
-        const last = steps.filter((m) => m.kind === 'status').at(-1);
-        const after = steps.at(-1)?.kind === 'doing' && last?.state !== 'working';
-        /* Every file it showed, and every one it cited that can be opened. */
-        const shown = agent.filter((m) => m.kind === 'show').flatMap((m) => (m.files?.length ? m.files.map((f) => ({ path: f.path, note: f.title || m.text, at: m.at, open: f.open })) : [{ path: m.path, note: m.text, at: m.at, open: m.open }]));
-        const named = new Set(shown.map((f) => f.path));
-        const cites = agent.flatMap((m) => (m.refs ?? []).map((r) => ({ path: r.path, note: '', at: m.at, open: r.open, cited: true }))).filter((f) => !named.has(f.path) && named.add(f.path));
+        const from = this.#lines('from-agent.jsonl');
+        const to = this.#lines('to-agent.jsonl');
+        const key = `${this.#dir}\n${this.#keep ?? ''}\n${this.#room}`;
+        const look = `${keptStat(`${this.#dir}/${ROOMS_FILE}`)}|${keptStat(`${this.#dir}/${SPEAKERS_FILE}`)}`;
+        let s = MODELS.get(key);
+        if (!(s && s.fromGen === from.gen && s.toGen === to.gen && s.look === look && from.list.length >= s.fromN && to.list.length >= s.toN && this.#reachSame(s))) s = built(from.gen, to.gen, look);
+        MODELS.delete(key); MODELS.set(key, s);
+        if (MODELS.size > MODELS_MAX) MODELS.delete(MODELS.keys().next().value);
+        let readText = '';
+        try { readText = readFileSync(`${this.#dir}/read.json`, 'utf8'); } catch { /* not read yet */ }
+        this.#members = { rooms: this.rooms(), speakers: this.speakers() };
+        this.#paths = s.paths;
+        try {
+            const bulk = s.fromN === 0 && s.toN === 0;
+            this.#readsOf(s, readText, to.list.length);
+            for (let i = s.fromN; i < from.list.length; i += 1) this.#agentLine(s, from.list[i], i, bulk);
+            for (let i = s.toN; i < to.list.length; i += 1) this.#personLine(s, to.list[i], i, bulk);
+            s.fromN = from.list.length; s.toN = to.list.length;
+            if (bulk) {
+                /* A whole build sorts once, as it always did: the agent's messages, then the person's, by time. */
+                s.order.sort((a, b) => a.at.localeCompare(b.at));
+                s.files = [...s.shown, ...s.cites.filter((c) => !s.shownPaths.has(c.path))].sort((a, b) => String(a.at).localeCompare(String(b.at)));
+                s.dirty = true; s.pinsDirty = true;
+            }
+        } finally { this.#members = null; this.#paths = null; }
+        if (s.dirty) { s.messages = s.order.map((x) => cur(s, x)); s.dirty = false; }
+        if (s.pinsDirty) { s.pins = pinsOf(s); s.pinsDirty = false; }
+        const last = s.lastStatus;
+        const after = s.lastStep?.kind === 'doing' && last?.state !== 'working';
         return {
-            all, messages, steps, pins, place, read, unread, fromN: fromRaw.length, toN: toRaw.length, toRaw,
-            open: agent.filter((m) => m.kind === 'ask' && !answered.has(m.id) && !closes.has(m.id)),
-            status: after ? { state: 'working', note: '', at: steps.at(-1).at } : last ? { state: last.state, note: last.text, at: last.at } : null,
-            files: [...shown, ...cites].sort((a, b) => String(a.at).localeCompare(String(b.at))).slice(-LISTED_MAX),
+            messages: s.messages, steps: s.steps, pins: [...s.pins], place: s.place, closeLines: s.closeLines,
+            read: Math.min(s.readCount, s.toN), unread: Math.max(0, s.toN - s.readCount), fromN: s.fromN, toN: s.toN, toRaw: to.list,
+            open: s.asks.filter((x) => !s.answered.has(x.m.id) && !s.closes.has(x.m.id)).map((x) => cur(s, x)),
+            status: after ? { state: 'working', note: '', at: s.lastStep.at } : last ? { state: last.state, note: last.text, at: last.at } : null,
+            files: s.files.slice(-LISTED_MAX),
         };
+    }
+    /* Is every path opened the way it was when the thread was built? (`reach` may change its mind.) */
+    #reachSame(s) { for (const [path, open] of s.paths) if (this.#open(path) !== open) return false; return true; }
+    /* What the agent read (read.json): how far, and when. A message of the person is `seen` below
+       that line; when the count or the reads moved, those whose `seen` or `seenAt` changed are
+       made again, and the reactions whose `seen` changed. */
+    #readsOf(s, text, toN) {
+        const moved = text !== s.readText;
+        if (moved) {
+            s.readText = text;
+            s.readCount = (() => { try { return Math.max(0, Number(JSON.parse(text).lines) || 0); } catch { return 0; } })();
+            const reads = (() => { try { const r = JSON.parse(text).reads; return Array.isArray(r) ? r.filter((x) => x && Number.isInteger(x.lines) && typeof x.at === 'string') : []; } catch { return []; } })();
+            /* The first read that reached line i is the first whose running highest count is above i. */
+            let top = -Infinity;
+            s.reachTop = reads.map((r) => (top = Math.max(top, r.lines)));
+            s.reachAt = reads.map((r) => r.at);
+        }
+        const B = Math.min(s.readCount, toN);
+        if (B === s.B && !moved) return;
+        const [lo, hi] = [Math.min(B, s.B), Math.max(B, s.B)];
+        s.B = B;
+        const redo = (x) => {
+            const seen = x.i < B, at = seen ? seenAtOf(s, x.i) : null;
+            if (seen !== x.seen || at !== x.seenAt) { x.seen = seen; x.seenAt = at; x.e = null; s.dirty = true; }
+        };
+        if (moved) for (const x of s.persons) redo(x);
+        else for (let i = lo; i < hi && i < s.byLine.length; i += 1) if (s.byLine[i]) redo(s.byLine[i]);
+        for (const [to, i] of s.reactionLine) {
+            const r = s.reactions.get(to);
+            if (r && r.seen !== i < B) { s.reactions.set(to, { ...r, seen: i < B }); touch(s, to); }
+        }
+    }
+    /* One line of the agent, taken into the thread built. */
+    #agentLine(s, m, i, bulk) {
+        if (!m) return;
+        const e = this.#fromAgent(m);
+        s.place.set(e, i);
+        if (e.kind === 'close') { s.closeLines.push(e); s.closes.set(e.answers, { text: e.text, at: e.at }); touch(s, e.answers); return; }
+        if (e.kind === 'pin') { s.puts.agent.push({ by: 'agent', to: e.pin, at: e.at, removed: e.removed === true }); s.putTo.add(e.pin); s.pinsDirty = true; return; }
+        if (STEP.has(e.kind)) { s.steps.push(e); s.lastStep = e; if (e.kind === 'status') s.lastStatus = e; return; }
+        const x = { from: 'agent', m: e, at: e.at, i, e: null };
+        if (!s.byId.has(e.id)) s.byId.set(e.id, []);
+        s.byId.get(e.id).push(x);
+        if (bulk) s.order.push(x); else { insertAt(s.order, x, (y) => y.from === 'person'); s.dirty = true; if (s.putTo.has(e.id)) s.pinsDirty = true; }
+        if (e.kind === 'ask') s.asks.push(x);
+        /* Every file it showed, and every one it cited that can be opened (once, and not when shown). */
+        if (e.kind === 'show') {
+            for (const f of e.files?.length ? e.files.map((g) => ({ path: g.path, note: g.title || e.text, at: e.at, open: g.open })) : [{ path: e.path, note: e.text, at: e.at, open: e.open }]) {
+                s.shown.push(f); s.shownPaths.add(f.path);
+                if (bulk) continue;
+                const c = s.citeOf.get(f.path);
+                if (c && !s.citeGone.has(c)) { s.citeGone.add(c); s.files.splice(s.files.indexOf(c), 1); }
+                insertAt(s.files, f, (y) => y.cited === true);
+            }
+        }
+        for (const r of e.refs ?? []) {
+            if (s.shownPaths.has(r.path) || s.citeOf.has(r.path)) continue;
+            const c = { path: r.path, note: '', at: e.at, open: r.open, cited: true };
+            s.citeOf.set(r.path, c); s.cites.push(c);
+            if (!bulk) insertAt(s.files, c, () => false);
+        }
+    }
+    /* One line of the person, taken into the thread built: a reaction, a pin, or a message. */
+    #personLine(s, m, i, bulk) {
+        if (!m) return;
+        /* A reaction is no message: it is put on the message it is about, the newest one standing. */
+        if (typeof m.reaction === 'string') {
+            if (typeof m.to !== 'string') return;
+            if (m.removed === true) { if (s.reactions.get(m.to)?.id === m.reaction) { s.reactions.delete(m.to); s.reactionLine.delete(m.to); touch(s, m.to); } return; }
+            s.reactions.set(m.to, { id: oneLine(m.reaction, 30), at: String(m.at ?? ''), seen: i < s.B });
+            s.reactionLine.set(m.to, i);
+            touch(s, m.to);
+            return;
+        }
+        if (typeof m.pin === 'string') { s.puts.person.push({ by: 'person', to: m.pin, at: String(m.at ?? ''), removed: m.removed === true }); s.putTo.add(m.pin); s.pinsDirty = true; return; }
+        const seen = i < s.B;
+        const x = {
+            from: 'person', i, e: null, seen, seenAt: seen ? seenAtOf(s, i) : null,
+            m: { from: 'person', id: String(m.id ?? ''), at: String(m.at ?? ''), kind: 'say', text: this.#named(clean(m.text)), choices: [] },
+            more: { ...(m.answers ? { answers: String(m.answers), question: oneLine(m.question, 300) } : {}), ...(m.answers && Array.isArray(m.picked) ? { picked: m.picked.slice(0, 8).map((y) => oneLine(y, 200)).filter(Boolean) } : {}),
+                ...(m.answers && Array.isArray(m.replies) ? { replies: m.replies.slice(0, GROUP_MAX).filter((r) => r && typeof r === 'object' && typeof r.id === 'string').map((r) => ({ id: oneLine(r.id, 30), ...(oneLine(r.label, 40) ? { label: oneLine(r.label, 40) } : {}), ...(Array.isArray(r.picked) ? { picked: r.picked.slice(0, 8).map((y) => oneLine(y, 200)).filter(Boolean) } : { text: clean(r.text).slice(0, 2000) }) })) } : {}), ...(m.re ? { re: String(m.re), quote: oneLine(m.quote, 300) } : {}), ...(Array.isArray(m.files) && m.files.length ? { files: this.#files(m.files) } : {}), ...(m.via === 'voice' ? { via: 'voice' } : {}), ...(aboutOf(m.about) ? { about: aboutOf(m.about) } : {}), ...(byOf(m.by) ? { by: byOf(m.by) } : {}), ...(m.room && typeof m.room === 'object' && oneLine(m.room.id, 80) ? { room: { id: oneLine(m.room.id, 80), name: oneLine(m.room.name, 60), ...(oneLine(m.room.message, 80) ? { message: oneLine(m.room.message, 80) } : {}) } } : {}) },
+        };
+        x.at = x.m.at;
+        s.persons.push(x); s.byLine[i] = x;
+        if (x.more.answers) s.answered.add(x.more.answers);
+        if (bulk) s.order.push(x); else { insertAt(s.order, x, () => false); s.dirty = true; if (s.putTo.has(x.m.id)) s.pinsDirty = true; }
     }
     /* A step, as handed over. */
     static #step(m) { return { id: m.id, kind: m.kind, state: m.state, note: m.text, at: m.at }; }
@@ -638,7 +865,7 @@ export class Parley {
         if (was && Number(was[1]) <= t.fromN && Number(was[2]) <= t.toN && Number(was[3]) <= t.read) {
             const [a, p, r] = [Number(was[1]), Number(was[2]), Number(was[3])];
             const touched = new Set([
-                ...t.all.filter((m) => m.kind === 'close' && t.place.get(m) >= a).map((m) => m.answers),
+                ...t.closeLines.filter((m) => t.place.get(m) >= a).map((m) => m.answers),
                 ...t.toRaw.slice(p).filter((m) => m && typeof m.reaction === 'string' && typeof m.to === 'string').map((m) => m.to),
             ]);
             const changed = (m) => {
@@ -646,7 +873,7 @@ export class Parley {
                 if (m.from === 'person') return at >= p || (at >= r && at < t.read);
                 return at >= a || touched.has(m.id);
             };
-            return { since: true, messages: t.messages.filter(changed), ...this.#state(t), steps: t.steps.filter((m) => t.place.get(m) >= a).slice(-STEPS_MAX).map(Parley.#step),
+            return { since: true, messages: t.messages.filter(changed), ...this.#state(t), steps: t.steps.slice(firstFrom(t.steps, t.place, a)).slice(-STEPS_MAX).map(Parley.#step),
                 ...(a < t.fromN ? { files: t.files } : {}), unread: tail2.unread, pulse: tail2.pulse, ...(this.#keep ? { altered: tail2.altered } : {}), cursor };
         }
         const list = t.messages;
@@ -673,7 +900,9 @@ export class Parley {
         } else start = Math.max(0, end - count(Number(o.last), WINDOW));
         const page = list.slice(start, end);
         /* The newest window: the questions still open come with it, however old. */
-        const extra = o.before === undefined || o.before === null ? t.open.filter((q) => !page.includes(q) && list.indexOf(q) < start) : [];
+        /* With no `before`, the page ends with the thread: a question not on it is older than it. */
+        const onPage = new Set(page);
+        const extra = o.before === undefined || o.before === null ? t.open.filter((q) => !onPage.has(q)) : [];
         const fromAt = page[0]?.at ?? null;
         const steps = t.steps.filter((m) => (start === 0 || fromAt === null || m.at >= fromAt) && (until === null || m.at < until)).sort((a, b) => a.at.localeCompare(b.at)).slice(-STEPS_MAX).map(Parley.#step);
         return { messages: [...extra, ...page], ...this.#state(t), steps, ...tail2,
