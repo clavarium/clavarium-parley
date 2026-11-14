@@ -26,14 +26,16 @@
  *   to-agent.jsonl    what was written to the agent, one JSON object per line
  *   read.json         how far the agent has read
  *   pulse.json        whether it is in a turn: written by its tool's hooks
+ *   archive/          the older lines of both files, split by the host (never here: this side
+ *                     only appends); read when a part of the thread reaches into it
  */
 import { appendFileSync, readFileSync, writeFileSync, mkdirSync, existsSync, statSync, lstatSync, realpathSync, renameSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { randomUUID } from 'node:crypto';
+import { randomUUID, createHash } from 'node:crypto';
 import { createInterface } from 'node:readline';
 
-export const VERSION = '0.17.92-next.1';
+export const VERSION = '0.17.93-next.1';
 /* A message may be long: the screen folds it, and shows its short version first. */
 export const TEXT_MAX = 16000;
 /* Its short version: a title of one or two lines. */
@@ -92,7 +94,13 @@ export const LAST_MAX = 1000;
 export const DAYS_MAX = 366;
 export const LEAST = 20;
 /* Each line of a file that only grows, as an object, or null where it is not one: counted, and skipped. */
-const lines = (file) => { try { return readFileSync(file, 'utf8').split('\n').filter(Boolean).map((l) => { try { const j = JSON.parse(l); return j && typeof j === 'object' && !Array.isArray(j) ? j : null; } catch { return null; } }); } catch { return []; } };
+const parseLines = (text) => text.split('\n').filter(Boolean).map((l) => { try { const j = JSON.parse(l); return j && typeof j === 'object' && !Array.isArray(j) ? j : null; } catch { return null; } });
+const lines = (file) => { try { return parseLines(readFileSync(file, 'utf8')); } catch { return []; } };
+/* A file's lines, and what tells that file from another: a hash of its first line, which says its own
+   id and time -- never its inode, which a mounted folder (sshfs) does not keep. null when empty. */
+export const headOf = (line) => (line ? createHash('sha256').update(line).digest('hex').slice(0, 16) : null);
+const linesOf = (file) => { try { const text = readFileSync(file, 'utf8'); return { head: headOf(/^\n*([^\n]+)/.exec(text)?.[1]), list: parseLines(text) }; } catch { return { head: null, list: [] }; } };
+const jsonAt = (file) => { try { return JSON.parse(readFileSync(file, 'utf8')); } catch { return null; } };
 const size = (n) => (n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` : n >= 1024 ? `${Math.round(n / 1024)} KB` : `${n} bytes`);
 /* The files the person attached to a message, one line each: where they are, for the agent to open. */
 const attached = (m) => (Array.isArray(m.files) ? m.files.slice(0, 10).map((f) => `\n  Attached file: ${plain(f?.path, 1000)}${Number.isInteger(f?.size) ? ` (${size(f.size)})` : ''}${f?.note ? `\n    Their note on this file: ${plain(f.note, 500).replace(/\s+/g, ' ')}` : ''}`).join('') : '');
@@ -168,6 +176,39 @@ export function bridge(dir, { how = 'run `parley read`', back = (id) => `parley 
     const IN = join(dir, 'to-agent.jsonl');
     const READ = join(dir, 'read.json');
     const PULSE = join(dir, 'pulse.json');
+    /* THE ARCHIVE (docs/protocol.md, "The archive"): the host moves the older lines of both files
+       there, in volumes listed by archive/index.json. A line's place counts them: read.json says how
+       many of ALL the person's lines were read. `side(name)`: the lines after the archive (`light`:
+       a split not counted yet, then the current file), how many the archive holds before them
+       (`base`), and what its newest volume carried (`carry`: the questions still open, the pins and
+       their messages, the last steps). The current file is read first, the index after: a split
+       made in between is seen, and its file renamed away is not read twice: the same first line is
+       the same file. Read again when the index moved meanwhile. */
+    const ARCHIVED = join(dir, 'archive');
+    const indexText = () => { try { return readFileSync(join(ARCHIVED, 'index.json'), 'utf8'); } catch { return ''; } };
+    const side = (name) => {
+        const key = name === 'from-agent.jsonl' ? 'from' : 'to';
+        for (let k = 0; ; k += 1) {
+            const cur = linesOf(join(dir, name));
+            const text = indexText();
+            let index = null;
+            try { index = JSON.parse(text); } catch { /* no archive */ }
+            const volumes = Array.isArray(index?.volumes) ? index.volumes.filter((v) => v && /^[0-9TZ.-]{20,60}$/.test(String(v.name)) && Number.isInteger(v[key]?.lines)) : [];
+            const moving = index?.moving && typeof index.moving === 'object' ? linesOf(join(ARCHIVED, `moving.${name}`)) : null;
+            /* A current file one of the volumes came from (the same first line), read before it was renamed: read again. */
+            const again = indexText() !== text || (cur.head !== null && volumes.some((v) => v.src?.[key] === cur.head));
+            if (again && k < 3) continue;
+            const light = [...(moving && !(cur.head !== null && moving.head === cur.head) ? moving.list : []), ...cur.list];
+            const base = volumes.reduce((n, v) => n + v[key].lines, 0);
+            const carry = volumes.length ? jsonAt(join(ARCHIVED, `${volumes.at(-1).name}.carry.json`)) : null;
+            return { light, base, total: base + light.length, volumes, carry };
+        }
+    };
+    /* Every line of one side, the archive's first: for what needs the whole thread. */
+    const allOf = (name) => { const s = side(name); return [...s.volumes.flatMap((v) => lines(join(ARCHIVED, `${v.name}.${name}`))), ...s.light]; };
+    const OUT_NAME = 'from-agent.jsonl', IN_NAME = 'to-agent.jsonl';
+    /* The lines of a side after the archive, with those its newest volume carried before them. */
+    const recent = (name) => { const s = side(name); const k = name === OUT_NAME ? 'from' : 'to'; return { ...s, lines: [...(Array.isArray(s.carry?.[k]) ? s.carry[k].map((x) => x?.m) : []), ...s.light].filter(Boolean) }; };
     /* Requests to forget a short-lived secret, for the parloir (host) to act on: not part of the thread. */
     const FORGET = join(dir, 'forget.jsonl');
     /* Those who speak here beside the person (voice boxes, #215), as the application set them. */
@@ -197,9 +238,10 @@ export function bridge(dir, { how = 'run `parley read`', back = (id) => `parley 
     /* THE PINS STANDING, counted as the host counts them: both sides' pins replayed in the order they
        were put; one put again while it stands keeps its place; a message not there any more is skipped.
        `known`: every message a pin may name, by its id. */
-    const pinState = () => {
-        const written = lines(IN).filter(Boolean);
-        const posted = lines(OUT).filter(Boolean);
+    const pinState = (whole = false) => {
+        const r = whole ? null : recent(IN_NAME), q = whole ? null : recent(OUT_NAME);
+        const written = whole ? allOf(IN_NAME).filter(Boolean) : r.lines;
+        const posted = whole ? allOf(OUT_NAME).filter(Boolean) : q.lines;
         const known = new Map([
             ...posted.filter((m) => ['say', 'ask', 'show'].includes(m.kind) && typeof m.id === 'string').map((m) => [m.id, { from: 'agent', at: String(m.at ?? ''), text: excerpt(m.text || m.path) }]),
             ...written.filter((m) => typeof m.id === 'string' && typeof m.reaction !== 'string' && typeof m.pin !== 'string').map((m) => [m.id, { from: 'person', at: String(m.at ?? ''), text: excerpt(m.text) }]),
@@ -208,6 +250,8 @@ export function bridge(dir, { how = 'run `parley read`', back = (id) => `parley 
             ...written.filter((m) => typeof m.pin === 'string' && typeof m.reaction !== 'string').map((m) => ({ by: 'person', to: m.pin, at: String(m.at ?? ''), removed: m.removed === true })),
             ...posted.filter((m) => m.kind === 'pin' && typeof m.pin === 'string').map((m) => ({ by: 'agent', to: m.pin, at: String(m.at ?? ''), removed: m.removed === true })),
         ].sort((a, b) => a.at.localeCompare(b.at));
+        /* A pin of a message not among these may be on one further back: the whole thread then. */
+        if (!whole && q.volumes.length && puts.some((p) => !p.removed && !known.has(p.to))) return pinState(true);
         let pins = [];
         for (const p of puts) {
             if (p.removed) { pins = pins.filter((x) => x.id !== p.to); continue; }
@@ -220,7 +264,9 @@ export function bridge(dir, { how = 'run `parley read`', back = (id) => `parley 
     };
     /* A pin of theirs, as the agent reads it: on which message, its words and its time. */
     const pinnedText = (m) => {
-        const mine = lines(OUT).some((x) => x && x.id === m.pin);
+        const own = (list) => list.some((x) => x && x.id === m.pin);
+        const q = recent(OUT_NAME);
+        const mine = own(q.lines) || (q.volumes.length > 0 && !recent(IN_NAME).lines.some((x) => x.id === m.pin) && own(allOf(OUT_NAME)));
         const target = `${mine ? 'your' : 'their'} message${m.toAt ? ` of ${plain(m.toAt, 40).slice(0, 16).replace('T', ' ')}` : ''}${m.quote ? ` "${excerpt(m.quote)}"` : ''}`;
         return m.removed === true ? `They unpinned ${target}.` : `They pinned ${target}: it stays at the top of their chat, keep it in mind.`;
     };
@@ -233,7 +279,7 @@ export function bridge(dir, { how = 'run `parley read`', back = (id) => `parley 
     /* WHERE IT SAID IT IS: the newest of its states and of what it said it does -- a question it asked
        after it is waiting. { state, note, at } or null when it never said. */
     const standing = () => {
-        const mine = lines(OUT).filter(Boolean);
+        const mine = recent(OUT_NAME).lines;
         const last = mine.filter((m) => m.kind === 'status' || m.kind === 'doing').at(-1);
         if (!last) return null;
         const state = last.kind === 'doing' ? 'working' : STATES.includes(last.state) ? last.state : 'working';
@@ -252,7 +298,7 @@ export function bridge(dir, { how = 'run `parley read`', back = (id) => `parley 
     const doingNudge = () => {
         const s = standing();
         if (s?.state !== 'working') return '';
-        const mine = lines(OUT).filter(Boolean);
+        const mine = recent(OUT_NAME).lines;
         const lastDoing = [...mine].reverse().find((m) => m.kind === 'doing');
         const since = mine.filter((m) => ['say', 'ask', 'show'].includes(m.kind) && String(m.at ?? '') > String(lastDoing?.at ?? ''));
         if (since.length < NUDGE_EVERY || since.length % NUDGE_EVERY !== 0) return '';
@@ -448,7 +494,10 @@ export function bridge(dir, { how = 'run `parley read`', back = (id) => `parley 
             if (given.length < ID_SHOWN) throw new Error(`give the id of the question, as "read" shows it (${ID_SHOWN} characters at least)`);
             const said = whole(answer, 500, 'answer').replace(/\s+/g, ' ').trim();
             if (!said) throw new Error('say the answer you understood');
-            const found = lines(OUT).filter((m) => m && m.kind === 'ask' && typeof m.id === 'string' && m.id.startsWith(given));
+            const ask = (m) => m && m.kind === 'ask' && typeof m.id === 'string' && m.id.startsWith(given);
+            const q = recent(OUT_NAME);
+            let found = q.lines.filter(ask);
+            if (found.length === 0 && q.volumes.length) found = allOf(OUT_NAME).filter(ask);
             if (found.length === 0) throw new Error(`no question has the id ${given}`);
             if (found.length > 1) throw new Error(`several questions start with ${given}: give more of it`);
             post({ kind: 'close', answers: found[0].id, text: said });
@@ -545,25 +594,29 @@ export function bridge(dir, { how = 'run `parley read`', back = (id) => `parley 
            how to read the part before it (`before`: the id it gives). Either way,
            everything is read afterwards. */
         read({ all = false, last, days, before } = {}) {
-            const written = lines(IN);
+            /* Counted whole, archive included; read from the archive only when what is asked is there. */
+            const theirSide = side(IN_NAME);
+            const count = theirSide.total;
             let seen = 0;
             try { seen = Number(JSON.parse(readFileSync(READ, 'utf8')).lines) || 0; } catch { /* nothing was read yet */ }
-            if (seen > written.length) seen = 0;
+            if (seen > count) seen = 0;
             let reads = [];
             try { const r = JSON.parse(readFileSync(READ, 'utf8')).reads; if (Array.isArray(r)) reads = r.filter((x) => x && Number.isInteger(x.lines) && typeof x.at === 'string'); } catch { /* none kept yet */ }
-            if (written.length > seen) reads = [...reads, { lines: written.length, at: new Date().toISOString() }].slice(-READS_KEPT);
+            if (count > seen) reads = [...reads, { lines: count, at: new Date().toISOString() }].slice(-READS_KEPT);
             mkdirSync(dir, { recursive: true });
-            writeFileSync(READ, JSON.stringify({ lines: written.length, reads }));
-            /* The questions still open: neither answered nor closed. */
-            const answered = new Set(written.map((m) => m?.answers).filter(Boolean));
-            const posted = lines(OUT).filter(Boolean);
+            writeFileSync(READ, JSON.stringify({ lines: count, reads }));
+            /* The questions still open: neither answered nor closed -- those the archive left open, and those after it. */
+            const answered = new Set(theirSide.light.map((m) => m?.answers).filter(Boolean));
+            const mySide = side(OUT_NAME);
+            const posted = mySide.light.filter(Boolean);
             const closed = new Set(posted.filter((m) => m.kind === 'close').map((m) => m.answers));
-            const open = posted.filter((m) => m.kind === 'ask' && typeof m.id === 'string' && !answered.has(m.id) && !closed.has(m.id));
+            const leftOpen = Array.isArray(mySide.carry?.from) ? mySide.carry.from.filter((x) => x?.open === true && x.m).map((x) => x.m) : [];
+            const open = [...leftOpen, ...posted].filter((m) => m.kind === 'ask' && typeof m.id === 'string' && !answered.has(m.id) && !closed.has(m.id));
             const pending = open.length === 0 ? '' : `\nOpen questions (one they answered another way: close it with parley close ID "the answer you understood"):${open.slice(-10).map((m) => `\n  [${m.id.slice(0, ID_SHOWN)}] ${plain(m.text, 200).replace(/\s+/g, ' ')}`).join('')}`;
             const fromThem = (m) => (m.reaction ? reacted(m) : typeof m.pin === 'string' ? pinnedText(m) : `${m.answers ? `They answered your question "${plain(m.question, 200)}": ` : m.re ? `They replied to your message "${plain(m.quote, 200)}"${m.via === 'voice' ? ` (${DICTATED})` : ''}: ` : m.via === 'voice' ? `They wrote (${DICTATED}): ` : 'They wrote: '}${m.answers ? answerText(m) : plain(m.text)}${aboutText(m)}${attached(m)}`);
             if (all || last !== undefined || days !== undefined || before !== undefined) {
-                const theirs = written.flatMap((m, i) => (m ? [{ id: String(m.id ?? ''), at: String(m.at ?? ''), text: `${fromThem(m)}${i >= seen ? ' (new)' : ''}` }] : []));
-                const mine = lines(OUT).filter((m) => m && ['say', 'ask', 'show', 'close'].includes(m.kind)).map((m) => ({ id: String(m.id ?? ''), at: String(m.at ?? ''),
+                const theirs = allOf(IN_NAME).flatMap((m, i) => (m ? [{ id: String(m.id ?? ''), at: String(m.at ?? ''), text: `${fromThem(m)}${i >= seen ? ' (new)' : ''}` }] : []));
+                const mine = allOf(OUT_NAME).filter((m) => m && ['say', 'ask', 'show', 'close'].includes(m.kind)).map((m) => ({ id: String(m.id ?? ''), at: String(m.at ?? ''),
                     text: m.kind === 'close' ? `You closed a question, the answer you understood being: ${plain(m.text, 500)}` : m.kind === 'ask' && Array.isArray(m.questions) ? `You asked them ${m.questions.length} questions at once: ${plain(m.text)}` : m.kind === 'ask' ? `You asked them: ${plain(m.text)}${Array.isArray(m.choices) && m.choices.length ? ` (${m.many === true ? 'several could be ticked' : 'choices'}: ${m.choices.map((c) => plain(c, 200)).join(', ')})` : ''}`
                         : m.kind === 'show' ? (Array.isArray(m.files) && m.files.length > 1 ? `You showed them ${m.files.length} files: ${m.files.map((f) => `${plain(f?.path, 1000)}${f?.title ? ` "${plain(f.title, 120)}"` : ''}`).join(', ')}${m.text ? ` (${plain(m.text, 500)})` : ''}` : `You showed them a file: ${plain(m.path, 1000)}${m.text ? ` (${plain(m.text, 500)})` : ''}`) : `You told them: ${plain(m.text)}` }));
                 const every = [...mine, ...theirs].sort((a, b) => a.at.localeCompare(b.at));
@@ -595,7 +648,7 @@ export function bridge(dir, { how = 'run `parley read`', back = (id) => `parley 
                 const pinned = before === undefined && pins.length ? `Pinned (${pins.length}):\n${pins.map((p) => `  [${p.toAt.slice(0, 16).replace('T', ' ')} ${shownId(p.id)}] ${p.from === 'agent' ? 'yours' : 'theirs'}, pinned by ${p.by === 'agent' ? 'you' : 'them'}: ${p.text}`).join('\n')}\n\n` : '';
                 return `${pinned}${head}\n${both.join('\n')}${older}\nEnd of what was asked: everything is read now.${pending}`;
             }
-            const fresh = written.slice(seen).filter(Boolean);
+            const fresh = (seen >= theirSide.base ? theirSide.light.slice(seen - theirSide.base) : allOf(IN_NAME).slice(seen)).filter(Boolean);
             if (fresh.length === 0) return `No new message.${pending}`;
             /* What they wrote is work: said, so that their screen shows it moving (or still, said so). */
             const next = stale() || (standing()?.state === 'working' ? '' : '\nWhen you start on it, say so: parley doing "what you do"; when you finish: parley status done.');

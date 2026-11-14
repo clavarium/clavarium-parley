@@ -33,9 +33,12 @@
  * bounded, cleaned of what a screen obeys rather than shows, and handed over
  * as text. Showing it as text, never building it, is the application's part.
  */
-import { appendFileSync, readFileSync, writeFileSync, mkdirSync, copyFileSync, existsSync, statSync, lstatSync, openSync, readSync, closeSync, readdirSync } from 'node:fs';
+import { appendFileSync, readFileSync, writeFileSync, mkdirSync, copyFileSync, existsSync, statSync, lstatSync, openSync, readSync, closeSync, readdirSync, renameSync, unlinkSync } from 'node:fs';
 import { randomUUID, createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
+import { ARCHIVE, SETTINGS_FILE, SIDES, headOf, SETTLE_MS, keyOf, splitOf, jsonOf, writeJson, writeWhole, readIndex, writeIndex, volumePath, carryPath, movingPath, volumeName, cutsOf, spanOf, firstAt, lock } from './archive.mjs';
+
+export { SPLIT, splitOf } from './archive.mjs';
 
 export const TEXT_MAX = 16000;
 /* The short version of a message: a title of one or two lines, shown cut beyond SHORT_MAX
@@ -278,6 +281,7 @@ function wholeLines(file) {
             return known;
         }
         const buf = readFileSync(file);
+        if (file.includes(`/${ARCHIVE}/`)) ARCHIVE_STATS.parsed += 1;
         const end = buf.lastIndexOf(0x0a) + 1;
         const list = buf.toString('utf8', 0, end).split('\n').filter(Boolean).map(parsed);
         /* A last line with no end yet is taken once it reads whole (a hand-written file); never in part. */
@@ -424,6 +428,129 @@ function compare(entry, now, { takes }) {
     return out;
 }
 
+/* THE ARCHIVE (see archive.mjs, and "The archive" in docs/protocol.md). How many files of the
+   archive were read whole by this process: for the tests, which prove a read does not go through
+   all of them. */
+export const ARCHIVE_STATS = { parsed: 0 };
+const kindOf = (m) => (KINDS.includes(m.kind) ? m.kind : 'say');
+const personMessage = (m) => typeof m.reaction !== 'string' && typeof m.pin !== 'string';
+/* What the thread counts as messages in some lines (as #agentLine and #personLine take them), and
+   what the agent's `parley read` counts as entries. */
+const messagesIn = (from, to) => from.filter((m) => m && !['close', 'pin', 'status', 'doing'].includes(kindOf(m))).length + to.filter((m) => m && personMessage(m)).length;
+const entriesIn = (from, to) => from.filter((m) => m && ['say', 'ask', 'show', 'close'].includes(m.kind)).length + to.filter(Boolean).length;
+/* WHAT A VOLUME HANDS ON: a thread read from a volume onwards, without those before it, must still
+   know what they left standing -- the questions still open (and the reaction on each), the pins
+   standing and the messages they are on, the last state and step, the newest files, and the paths
+   already shown or cited. Those lines are carried, each with its place, from the volume before
+   (`prev`) and from this one: the thread takes them in as it would, without showing them. */
+const CARRY_FILES = 200;
+const CARRY_PATHS = 2000;
+const CARRY_DANGLING = 50;
+function carryOf(prev, from, to, fromBase, toBase) {
+    /* `was`: open as carried. A question carried for another reason (a file it cites, a pin) was answered
+       in a volume before: its answer is not carried, so it is never open again. */
+    const A = [...(prev?.from ?? []).map(({ i, m, open: was }) => ({ i, m, carried: true, was: was === true })), ...from.flatMap((m, k) => (m ? [{ i: fromBase + k, m }] : []))];
+    const P = [...(prev?.to ?? []).map(({ i, m }) => ({ i, m })), ...to.flatMap((m, k) => (m ? [{ i: toBase + k, m }] : []))];
+    const keepA = new Map(), keepP = new Map(), open = new Set();
+    /* The questions neither answered nor closed. */
+    const answered = new Set(P.filter((x) => personMessage(x.m) && x.m.answers).map((x) => String(x.m.answers)));
+    const closed = new Set(A.filter((x) => kindOf(x.m) === 'close').map((x) => oneLine(x.m.answers, 100)));
+    for (const x of A) {
+        const id = String(x.m.id ?? '');
+        if (kindOf(x.m) === 'ask' && (!x.carried || x.was) && !answered.has(id) && !closed.has(id)) { keepA.set(x.i, x); open.add(x.i); }
+    }
+    const openIds = new Set([...open].map((i) => String(keepA.get(i).m.id ?? '')));
+    const react = new Map();
+    for (const x of P) {
+        const m = x.m;
+        if (typeof m.reaction !== 'string' || typeof m.to !== 'string') continue;
+        if (m.removed !== true) react.set(m.to, x);
+        else if (react.has(m.to) && oneLine(react.get(m.to).m.reaction, 30) === m.reaction) react.delete(m.to);
+    }
+    for (const [id, x] of react) if (openIds.has(id)) keepP.set(x.i, x);
+    /* The last state, and the last step. */
+    let step, state;
+    for (const x of A) { const k = kindOf(x.m); if (k === 'status' || k === 'doing') { step = x; if (k === 'status') state = x; } }
+    for (const x of [step, state]) if (x) keepA.set(x.i, x);
+    /* The pins, replayed as pinsOf does; a pin of a message not there (yet) is carried too. */
+    const byId = new Map();
+    for (const x of A) if (!['close', 'pin', 'status', 'doing'].includes(kindOf(x.m))) byId.set(String(x.m.id ?? ''), { side: 'from', x });
+    for (const x of P) if (personMessage(x.m)) byId.set(String(x.m.id ?? ''), { side: 'to', x });
+    const puts = [
+        ...P.filter((x) => typeof x.m.reaction !== 'string' && typeof x.m.pin === 'string').map((x) => ({ x, side: 'to', to: x.m.pin, at: String(x.m.at ?? ''), removed: x.m.removed === true })),
+        ...A.filter((x) => kindOf(x.m) === 'pin').map((x) => ({ x, side: 'from', to: oneLine(x.m.pin, 100), at: String(x.m.at ?? ''), removed: x.m.removed === true })),
+    ].sort((a, b) => a.at.localeCompare(b.at));
+    let pins = [];
+    const dangling = new Map();
+    for (const p of puts) {
+        if (p.removed) { pins = pins.filter((q) => q.to !== p.to); dangling.delete(p.to); continue; }
+        if (!byId.has(p.to)) { dangling.set(p.to, p); continue; }
+        if (pins.some((q) => q.to === p.to)) continue;
+        pins.push(p);
+        if (pins.length > PINS_MAX) pins.shift();
+    }
+    for (const p of [...pins, ...[...dangling.values()].slice(-CARRY_DANGLING)]) (p.side === 'from' ? keepA : keepP).set(p.x.i, p.x);
+    for (const p of pins) { const t = byId.get(p.to); (t.side === 'from' ? keepA : keepP).set(t.x.i, t.x); }
+    /* The newest lines that showed or cited a file, and every path shown or cited (the newest so many). */
+    const shown = new Set(prev?.shown ?? []), cites = new Set(prev?.cited ?? []);
+    const files = [];
+    for (const x of A) {
+        const k = kindOf(x.m);
+        if (k === 'show') {
+            files.push(x);
+            shown.add(oneLine(x.m.path, 1000));
+            for (const f of Array.isArray(x.m.files) ? x.m.files : []) if (f && typeof f === 'object') shown.add(oneLine(f.path, 1000));
+        } else if (k === 'say' || k === 'ask') {
+            const c = cited(`${clean(x.m.text)}\n${typeof x.m.short === 'string' ? oneLine(x.m.short, SHORT_KEPT) : ''}`);
+            if (c.length) { files.push(x); for (const path of c) cites.add(path); }
+        }
+    }
+    for (const x of files.slice(-CARRY_FILES)) keepA.set(x.i, x);
+    const sorted = (map, flag) => [...map.values()].sort((a, b) => a.i - b.i).map((x) => ({ i: x.i, m: x.m, ...(flag?.has(x.i) ? { open: true } : {}) }));
+    return { from: sorted(keepA, open), to: sorted(keepP), shown: [...shown].slice(-CARRY_PATHS), cited: [...cites].slice(-CARRY_PATHS) };
+}
+/* The volumes of a split: what `src(side)` holds, cut (cutsOf), each written whole with what it
+   carries, then listed in the index -- which is what makes them count. The files split are
+   removed only then: what they held is in the volumes, line for line. Done again whole if it
+   stopped half way (the index still says `moving`): the same names, the same files. */
+function writeVolumes(root, index, src, split) {
+    const raw = {}, obj = {};
+    for (const name of SIDES) {
+        let text = '';
+        try { text = readFileSync(src(name), 'utf8'); } catch { /* none */ }
+        raw[name] = text.split('\n').filter(Boolean);
+        obj[name] = raw[name].map(parsed);
+    }
+    const [F, T] = SIDES;
+    const volumes = [...index.volumes];
+    if (raw[F].length || raw[T].length) {
+        const taken = new Set(volumes.map((v) => v.name));
+        let fromBase = 0, toBase = 0;
+        for (const v of volumes) { fromBase += v.from.lines; toBase += v.to.lines; }
+        let prev = volumes.length ? jsonOf(carryPath(root, volumes.at(-1))) : null;
+        let a = 0, b = 0;
+        for (const [fa, tb] of cutsOf(obj[F], obj[T], split || undefined)) {
+            const f = obj[F].slice(a, fa), t = obj[T].slice(b, tb);
+            if (!f.length && !t.length) continue;
+            const span = spanOf([f, t]) ?? [Date.now(), Date.now()];
+            const v = { name: volumeName(span[0], span[1], taken), from: { lines: f.length }, to: { lines: t.length }, messages: messagesIn(f, t), entries: entriesIn(f, t), first: new Date(span[0]).toISOString(), last: new Date(span[1]).toISOString(),
+                /* The files it came from, by their first lines (see headOf): a reader of a mounted folder that read
+                   one of them as current before it was renamed reads again. No inode: a mounted folder changes them. */
+                src: { from: headOf(raw[F][0]), to: headOf(raw[T][0]) } };
+            taken.add(v.name);
+            writeWhole(volumePath(root, v, F), raw[F].slice(a, fa).map((l) => `${l}\n`).join(''));
+            writeWhole(volumePath(root, v, T), raw[T].slice(b, tb).map((l) => `${l}\n`).join(''));
+            prev = carryOf(prev, f, t, fromBase, toBase);
+            writeJson(carryPath(root, v), prev);
+            volumes.push(v);
+            fromBase += f.length; toBase += t.length; a = fa; b = tb;
+        }
+    }
+    writeIndex(root, { volumes });
+    for (const name of SIDES) try { unlinkSync(src(name)); } catch { /* none */ }
+    return { raw };
+}
+
 /* Puts the bridge in `dir`: the two files, and the MCP server for an agent
    that is given it that way. Resolves with how that server is declared to an
    agent. `as`: where that folder is seen FROM THE AGENT, when that is not
@@ -458,16 +585,35 @@ function inputKept(x) {
 /* THE THREADS BUILT (see #model), by folder: so many at most, the one read longest ago leaving first. */
 const MODELS = new Map();
 const MODELS_MAX = 64;
+/* The lines of a side read from a volume on (see #view), by folder and side. */
+const VIEWS = new Map();
+/* The time the first line of a file says, read again only when the file changed. */
+const FIRSTS = new Map();
+function firstOf(file) {
+    const stamp = keptStat(file);
+    if (stamp === null) return null;
+    const known = FIRSTS.get(file);
+    if (known?.stamp === stamp) return known.t;
+    const t = firstAt(file);
+    FIRSTS.set(file, { stamp, t });
+    if (FIRSTS.size > 4 * MODELS_MAX) FIRSTS.delete(FIRSTS.keys().next().value);
+    return t;
+}
 /* A thread built from nothing yet: the lines of both files are taken into it from the first. */
-function built(fromGen, toGen, look) {
+/* A cite that stands for a path cited in a volume not read (see carryOf): never in the list of files. */
+const CITED_BEFORE = Object.freeze({ path: '', cited: true });
+/* `from`: where the thread is read from -- v0, the first volume read; fromBase, toBase, the lines
+   of each side before it; U, the messages before it; vols, how many volumes the index had. */
+function built(fromGen, toGen, look, from = { v0: 0, fromBase: 0, toBase: 0, U: 0, vols: 0 }) {
     return {
-        fromGen, toGen, look, fromN: 0, toN: 0, paths: new Map(), place: new WeakMap(),
+        fromGen, toGen, look, ...from, fromN: 0, toN: 0, paths: new Map(), place: new WeakMap(),
+        ghostById: new Map(), missing: new Set(), looked: new Set(),
         readText: null, readCount: 0, reachTop: [], reachAt: [], B: 0,
         /* The messages in their order, each { from, m (as built), at, i (its line), e (as handed over) }. */
         order: [], messages: [], dirty: true, byId: new Map(), asks: [], persons: [], byLine: [],
         steps: [], lastStep: undefined, lastStatus: undefined, closeLines: [], closes: new Map(), answered: new Set(),
         reactions: new Map(), reactionLine: new Map(), puts: { person: [], agent: [] }, putTo: new Set(), pins: [], pinsDirty: true,
-        shown: [], shownPaths: new Set(), cites: [], citeOf: new Map(), citeGone: new Set(), files: [],
+        shown: [], shownPaths: new Set(), cites: [], citeOf: new Map(), citeGone: new Set([CITED_BEFORE]), files: [],
     };
 }
 /* When line i of the person was read: the first read that reached it (the running highest count above i). */
@@ -512,13 +658,17 @@ function firstFrom(steps, place, a) {
 }
 /* A pin is no message either: both sides' pins, replayed in the order they were put. One put
    again while it stands keeps its place; a message that is not there any more is skipped. */
+/* A message carried from a volume not read (ghostById) counts too; one found nowhere is noted
+   (`missing`): it may be in a volume not read. */
 function pinsOf(s) {
     const byId = new Map(s.order.map((x) => [x.m.id, x.m]));
     const puts = [...s.puts.person, ...s.puts.agent].sort((a, b) => a.at.localeCompare(b.at));
     let pins = [];
+    s.missing = new Set();
     for (const p of puts) {
         if (p.removed) { pins = pins.filter((x) => x.id !== p.to); continue; }
-        const m = byId.get(p.to);
+        const m = byId.get(p.to) ?? s.ghostById.get(p.to);
+        if (!m) s.missing.add(p.to);
         if (!m || pins.some((x) => x.id === m.id)) continue;
         pins.push({ id: m.id, at: p.at, by: p.by, from: m.from, text: oneLine(m.text || m.path || '', 200), toAt: m.at });
         if (pins.length > PINS_MAX) pins.shift();
@@ -527,7 +677,7 @@ function pinsOf(s) {
 }
 
 export class Parley {
-    #dir; #on; #reach; #now; #reactions; #keep; #room;
+    #dir; #on; #reach; #now; #reactions; #keep; #room; #settle; #onSplit;
     /* While a thread is built: its rooms and speakers, read once; and where each path it opens is noted. */
     #members = null; #paths = null;
 
@@ -542,8 +692,13 @@ export class Parley {
     /* `room`: a room's thread (#215), written by the application alone: only there is an agent-side line
        signed (by), and only by relay(). In an agent's own folder a signature it writes is never believed --
        who wrote a line is where it came from, never what it says of itself (03-11). */
-    constructor(dir, { on, reach = (path) => path, now = () => new Date(), reactions = REACTIONS, keep, room = false } = {}) {
+    /* `settle`: how long a split waits before its volumes are counted (SETTLE_MS; see archive.mjs).
+       `onSplit(step)`: told each step of a split as it is made -- for the tests, which write
+       between them as an agent would. */
+    constructor(dir, { on, reach = (path) => path, now = () => new Date(), reactions = REACTIONS, keep, room = false, settle = SETTLE_MS, onSplit } = {}) {
         this.#room = room === true;
+        this.#settle = Number.isFinite(settle) && settle >= 0 ? settle : SETTLE_MS;
+        this.#onSplit = typeof onSplit === 'function' ? onSplit : null;
         this.#dir = dir; this.#on = on; this.#reach = reach; this.#now = now; this.#keep = typeof keep === 'string' && keep ? keep : null;
         this.#reactions = (Array.isArray(reactions) ? reactions : REACTIONS).filter((r) => r && REACTION_ID.test(r.id));
     }
@@ -676,7 +831,7 @@ export class Parley {
     }
 
     /* How many messages of the person the agent has not read. */
-    unread() { return Math.max(0, (this.#keep ? this.#sync('to-agent.jsonl').length : lineCount(`${this.#dir}/to-agent.jsonl`)) - readCount(this.#dir)); }
+    unread() { return Math.max(0, (this.#keep ? this.#sync('to-agent.jsonl').length : lineCount(`${this.#dir}/to-agent.jsonl`)) + this.#archived('to-agent.jsonl') - readCount(this.#dir)); }
 
     /* The lines of one side, parsed in place (see wholeLines): the copy kept, with a keep
        folder; the bridge file, without. Their places are what a cursor counts. With them, their
@@ -693,13 +848,24 @@ export class Parley {
        is built again whole when a file was read again whole (rewritten, shorter), when the names
        its messages are shown by changed (rooms, speakers), or when a path is not opened the way it
        was. */
-    #model() {
-        const from = this.#lines('from-agent.jsonl');
-        const to = this.#lines('to-agent.jsonl');
+    #model({ v0: want } = {}) {
+        this.#split();
+        const root = this.#keep ?? this.#dir;
+        const index = readIndex(root);
+        const vols = index.volumes;
         const key = `${this.#dir}\n${this.#keep ?? ''}\n${this.#room}`;
-        const look = `${keptStat(`${this.#dir}/${ROOMS_FILE}`)}|${keptStat(`${this.#dir}/${SPEAKERS_FILE}`)}`;
         let s = MODELS.get(key);
-        if (!(s && s.fromGen === from.gen && s.toGen === to.gen && s.look === look && from.list.length >= s.fromN && to.list.length >= s.toN && this.#reachSame(s))) s = built(from.gen, to.gen, look);
+        /* How deep it is read: as deep as asked, never less deep than it is; once a volume is added,
+           from near the end again (what a long-lived host holds does not grow with the months). */
+        const v0 = want !== undefined ? Math.min(want, s && s.vols === vols.length ? s.v0 : vols.length) : s && s.vols === vols.length ? s.v0 : this.#shallow(root, index);
+        const from = this.#view('from-agent.jsonl', root, index, v0);
+        const to = this.#view('to-agent.jsonl', root, index, v0);
+        const look = `${keptStat(`${this.#dir}/${ROOMS_FILE}`)}|${keptStat(`${this.#dir}/${SPEAKERS_FILE}`)}`;
+        if (!(s && s.v0 === v0 && s.vols === vols.length && s.fromGen === from.gen && s.toGen === to.gen && s.look === look && from.list.length >= s.fromN && to.list.length >= s.toN && this.#reachSame(s))) {
+            let U = 0;
+            for (let q = 0; q < v0; q += 1) U += vols[q].messages;
+            s = built(from.gen, to.gen, look, { v0, fromBase: from.base, toBase: to.base, U, vols: vols.length });
+        }
         MODELS.delete(key); MODELS.set(key, s);
         if (MODELS.size > MODELS_MAX) MODELS.delete(MODELS.keys().next().value);
         let readText = '';
@@ -708,9 +874,11 @@ export class Parley {
         this.#paths = s.paths;
         try {
             const bulk = s.fromN === 0 && s.toN === 0;
-            this.#readsOf(s, readText, to.list.length);
-            for (let i = s.fromN; i < from.list.length; i += 1) this.#agentLine(s, from.list[i], i, bulk);
-            for (let i = s.toN; i < to.list.length; i += 1) this.#personLine(s, to.list[i], i, bulk);
+            /* What the volumes not read left standing: taken in first, shown nowhere. */
+            if (bulk && v0 > 0) this.#ghosts(s, jsonOf(carryPath(root, vols[v0 - 1])));
+            this.#readsOf(s, readText, s.toBase + to.list.length);
+            for (let i = s.fromN; i < from.list.length; i += 1) this.#agentLine(s, from.list[i], s.fromBase + i, bulk);
+            for (let i = s.toN; i < to.list.length; i += 1) this.#personLine(s, to.list[i], s.toBase + i, bulk);
             s.fromN = from.list.length; s.toN = to.list.length;
             if (bulk) {
                 /* A whole build sorts once, as it always did: the agent's messages, then the person's, by time. */
@@ -721,15 +889,228 @@ export class Parley {
         } finally { this.#members = null; this.#paths = null; }
         if (s.dirty) { s.messages = s.order.map((x) => cur(s, x)); s.dirty = false; }
         if (s.pinsDirty) { s.pins = pinsOf(s); s.pinsDirty = false; }
+        /* A pin of a message in a volume not read: read down to it (once for each, found or not). */
+        if (s.missing.size && s.v0 > 0) {
+            const ids = [...s.missing].filter((id) => !s.looked.has(id));
+            for (const id of ids) s.looked.add(id);
+            const q = ids.length ? this.#locate(root, index, s.v0, ids) : null;
+            if (q !== null) { const looked = s.looked; const t = this.#model({ v0: q }); for (const id of looked) MODELS.get(key)?.looked.add(id); return t; }
+        }
         const last = s.lastStatus;
         const after = s.lastStep?.kind === 'doing' && last?.state !== 'working';
+        const fromN = s.fromBase + s.fromN, toN = s.toBase + s.toN;
         return {
             messages: s.messages, steps: s.steps, pins: [...s.pins], place: s.place, closeLines: s.closeLines,
-            read: Math.min(s.readCount, s.toN), unread: Math.max(0, s.toN - s.readCount), fromN: s.fromN, toN: s.toN, toRaw: to.list,
+            read: Math.min(s.readCount, toN), unread: Math.max(0, toN - s.readCount), fromN, toN, toRaw: to.list,
+            v0: s.v0, U: s.U, fromBase: s.fromBase, toBase: s.toBase, vols,
             open: s.asks.filter((x) => !s.answered.has(x.m.id) && !s.closes.has(x.m.id)).map((x) => cur(s, x)),
             status: after ? { state: 'working', note: '', at: s.lastStep.at } : last ? { state: last.state, note: last.text, at: last.at } : null,
             files: s.files.slice(-LISTED_MAX),
         };
+    }
+    /* What a volume not read carried (see carryOf), taken into the thread as its lines would be,
+       none of them shown: the paths shown before first, those cited after. */
+    #ghosts(s, carry) {
+        if (!carry || typeof carry !== 'object') return;
+        for (const p of Array.isArray(carry.shown) ? carry.shown : []) s.shownPaths.add(p);
+        for (const x of Array.isArray(carry.from) ? carry.from : []) if (x && Number.isInteger(x.i)) this.#agentLine(s, x.m, x.i, true, x.open === true ? 'open' : true);
+        for (const x of Array.isArray(carry.to) ? carry.to : []) if (x && Number.isInteger(x.i)) this.#personLine(s, x.m, x.i, true, true);
+        for (const p of Array.isArray(carry.cited) ? carry.cited : []) if (!s.citeOf.has(p)) s.citeOf.set(p, CITED_BEFORE);
+    }
+    /* THE LINES OF ONE SIDE FROM VOLUME v0 ON: those volumes, a split not counted yet (moving), and
+       the current file; `base`, the lines before them. A thread never split is its current file,
+       as it always was. The list only grows while none of its parts was read again. */
+    #view(name, root, index, v0) {
+        const cur = this.#lines(name);
+        const k = keyOf(name);
+        const vols = index.volumes;
+        let base = 0;
+        for (let q = 0; q < v0; q += 1) base += vols[q][k].lines;
+        const parts = [];
+        for (let q = v0; q < vols.length; q += 1) parts.push(wholeLines(volumePath(root, vols[q], name)));
+        /* The file renamed away: unless it is the one just read as current (read before it was renamed). */
+        if (index.moving) { const mv = wholeLines(movingPath(root, name)); if (mv.list.length && mv.ino !== cur.ino) parts.push(mv); }
+        if (!parts.length) return { list: cur.list, gen: cur.gen, base };
+        const vkey = `${root}\n${name}`;
+        const pk = `${v0}|${parts.map((p) => p.gen).join(',')}`;
+        let v = VIEWS.get(vkey);
+        if (!(v && v.pk === pk && v.curGen === cur.gen && cur.list.length >= v.curN)) {
+            v = { pk, curGen: cur.gen, curN: 0, list: [], gen: (GEN += 1) };
+            for (const p of parts) for (const m of p.list) v.list.push(m);
+            VIEWS.delete(vkey); VIEWS.set(vkey, v);
+            if (VIEWS.size > 2 * MODELS_MAX) VIEWS.delete(VIEWS.keys().next().value);
+        }
+        for (let i = v.curN; i < cur.list.length; i += 1) v.list.push(cur.list[i]);
+        v.curN = cur.list.length;
+        return { list: v.list, gen: v.gen, base };
+    }
+    /* Lines of one side in the archive (`root`: the keep folder, with one): the volumes, and a split
+       not counted yet -- unless its file is still the current one. */
+    #archived(name, root = this.#keep ?? this.#dir) {
+        const index = readIndex(root);
+        let n = 0;
+        for (const v of index.volumes) n += v[keyOf(name)].lines;
+        if (index.moving) {
+            const mv = wholeLines(movingPath(root, name));
+            let ino = null;
+            try { ino = lstatSync(`${root}/${name}`).ino; } catch { /* none */ }
+            if (mv.ino !== ino) n += mv.list.length;
+        }
+        return n;
+    }
+    /* The archived lines of one side from place `pos` on (volumes, then a split not counted yet). */
+    #archivedFrom(name, pos, root = this.#keep ?? this.#dir) {
+        const index = readIndex(root);
+        const out = [];
+        let at = 0;
+        for (const v of index.volumes) {
+            const n = v[keyOf(name)].lines;
+            if (at + n > pos) out.push(...wholeLines(volumePath(root, v, name)).list.slice(Math.max(0, pos - at)));
+            at += n;
+        }
+        if (index.moving) {
+            const mv = wholeLines(movingPath(root, name));
+            let ino = null;
+            try { ino = lstatSync(`${root}/${name}`).ino; } catch { /* none */ }
+            if (mv.ino !== ino) out.push(...mv.list.slice(Math.max(0, pos - at)));
+        }
+        return out;
+    }
+    /* Where to read from when nothing asks for more: the newest volumes, down to a window of messages. */
+    #shallow(root, index) {
+        let n = 0;
+        for (const name of SIDES) {
+            const side = name === 'from-agent.jsonl' ? 'agent' : 'person';
+            const lists = [this.#lines(name).list, ...(index.moving ? [wholeLines(movingPath(root, name)).list] : [])];
+            for (const list of lists) n += side === 'agent' ? messagesIn(list, []) : messagesIn([], list);
+        }
+        let q = index.volumes.length;
+        while (q > 0 && n < WINDOW) { q -= 1; n += index.volumes[q].messages; }
+        return q;
+    }
+    /* From which volume `n` more messages are read than from t.v0. */
+    static #deeper(t, n) {
+        let q = t.v0, got = 0;
+        while (q > 0 && got < n) { q -= 1; got += t.vols[q].messages; }
+        return q;
+    }
+    /* The newest volume below `below` that holds one of `ids` (the oldest such, for several), or null. */
+    #locate(root, index, below, ids) {
+        const left = new Set(ids);
+        let found = null;
+        for (let q = below - 1; q >= 0 && left.size; q -= 1) {
+            for (const name of SIDES) for (const m of wholeLines(volumePath(root, index.volumes[q], name)).list) {
+                const id = m && String(m.id ?? '');
+                if (id && left.has(id)) { left.delete(id); found = q; }
+            }
+        }
+        return found;
+    }
+    /* A message of the thread by its id, however old: in what is read, else read down to it. */
+    #find(id, ok = () => true) {
+        const hit = (t) => t.messages.find((m) => m.id === id && ok(m)) ?? t.open.find((m) => m.id === id && ok(m));
+        let t = this.#model();
+        let m = typeof id === 'string' && id ? hit(t) : undefined;
+        if (!m && typeof id === 'string' && id && t.v0 > 0) {
+            const q = this.#locate(this.#keep ?? this.#dir, readIndex(this.#keep ?? this.#dir), t.v0, [id]);
+            if (q !== null) { t = this.#model({ v0: q }); m = hit(t); }
+        }
+        return { t, m };
+    }
+
+    /* THE SPLIT (see "The archive" in docs/protocol.md): made here only, never by the agent's side,
+       when the current files pass the setting; counted for good SETTLE_MS later. */
+    split() { return splitOf(this.#settings().split); }
+    /* The setting, kept in the bridge folder (settings.json): { messages: N }, { days: D } or false. */
+    setSplit(value) {
+        const v = splitOf(value);
+        mkdirSync(this.#dir, { recursive: true });
+        writeJson(`${this.#dir}/${SETTINGS_FILE}`, { ...this.#settings(), split: v });
+        return v;
+    }
+    #settings() { const v = jsonOf(`${this.#dir}/${SETTINGS_FILE}`); return v && typeof v === 'object' && !Array.isArray(v) ? v : {}; }
+    #split() {
+        const dir = this.#dir;
+        if (this.#keep && readIndex(this.#keep).moving) this.#settleKeep();
+        const index = readIndex(dir);
+        if (index.moving) { if (Date.now() - index.moving.since >= this.#settle) this.#settleSplit(); return; }
+        const split = this.split();
+        if (!split) return;
+        const F = `${dir}/from-agent.jsonl`, T = `${dir}/to-agent.jsonl`;
+        let due;
+        if (split.messages) due = lineCount(F) + lineCount(T) >= split.messages;
+        else {
+            const t = Math.min(firstOf(F) ?? Infinity, firstOf(T) ?? Infinity);
+            due = Number.isFinite(t) && this.#now().getTime() - t >= split.days * 86_400_000;
+        }
+        if (due) this.#begin();
+    }
+    #splitStep(what) { try { this.#onSplit?.(what); } catch { /* a hook that fails stops nothing */ } }
+    /* A SPLIT BEGUN: the index says so first (`moving`, with what the files were), then each file is
+       renamed into the archive and an empty one put in its place. The agent appends by opening the
+       file each time: a line written meanwhile lands in the file renamed or in the new one, and both
+       are read until the split is counted. With a keep folder, what is kept is split at once. */
+    #begin() {
+        const dir = this.#dir;
+        const unlock = lock(dir);
+        if (!unlock) return;
+        try {
+            const index = readIndex(dir);
+            if (index.moving) return;
+            if (this.#keep) for (const name of SIDES) this.#sync(name);
+            const inoOf = (f) => { try { return lstatSync(f).ino; } catch { return null; } };
+            const seen = this.#keep ? KEPT.get(`${this.#keep}/from-agent.jsonl`)?.seen?.n ?? null : null;
+            writeIndex(dir, { volumes: index.volumes, moving: { since: Date.now(), from: inoOf(`${dir}/from-agent.jsonl`), to: inoOf(`${dir}/to-agent.jsonl`), ...(seen === null ? {} : { kept: seen }) } });
+            this.#splitStep('marked');
+            for (const name of ['to-agent.jsonl', 'from-agent.jsonl']) {
+                const file = `${dir}/${name}`;
+                if (existsSync(file)) renameSync(file, movingPath(dir, name));
+                appendFileSync(file, '');
+                this.#splitStep(`moved ${name}`);
+            }
+            if (this.#keep) this.#splitKeep();
+        } finally { unlock(); }
+    }
+    /* THE SPLIT COUNTED: the files renamed away are cut into volumes (writeVolumes). With a keep
+       folder, a line of the agent's that reached the file renamed after it was last compared has
+       not been kept: it is kept now, as a new line. */
+    #settleSplit() {
+        const dir = this.#dir;
+        const unlock = lock(dir);
+        if (!unlock) return;
+        try {
+            const index = readIndex(dir);
+            if (!index.moving) return;
+            const { raw } = writeVolumes(dir, index, (name) => movingPath(dir, name), this.split());
+            if (this.#keep && Number.isInteger(index.moving.kept)) {
+                const late = raw['from-agent.jsonl'].slice(index.moving.kept);
+                const own = `${this.#keep}/from-agent.jsonl`;
+                const ids = idsOf(kept(own) ?? { lines: [] });
+                const fresh = late.filter((l) => !(idOf(l) && ids.has(idOf(l))));
+                if (fresh.length) keep(own, fresh);
+            }
+        } finally { unlock(); }
+    }
+    /* What is kept is split at once, the same way: nobody else writes there. */
+    #splitKeep() {
+        const root = this.#keep;
+        const index = readIndex(root);
+        writeIndex(root, { volumes: index.volumes, moving: { since: Date.now() } });
+        for (const name of SIDES) {
+            const own = `${root}/${name}`;
+            if (existsSync(own)) renameSync(own, movingPath(root, name));
+            writeFileSync(own, '');
+            KEPT.delete(own);
+        }
+        this.#settleKeep();
+    }
+    #settleKeep() {
+        const root = this.#keep;
+        const index = readIndex(root);
+        if (!index.moving) return;
+        writeVolumes(root, index, (name) => movingPath(root, name), this.split());
+        /* The bridge's new files are compared from their start. */
+        for (const name of SIDES) { const e = kept(`${root}/${name}`); if (e) e.seen = null; }
     }
     /* Is every path opened the way it was when the thread was built? (`reach` may change its mind.) */
     #reachSame(s) { for (const [path, open] of s.paths) if (this.#open(path) !== open) return false; return true; }
@@ -756,25 +1137,28 @@ export class Parley {
             if (seen !== x.seen || at !== x.seenAt) { x.seen = seen; x.seenAt = at; x.e = null; s.dirty = true; }
         };
         if (moved) for (const x of s.persons) redo(x);
-        else for (let i = lo; i < hi && i < s.byLine.length; i += 1) if (s.byLine[i]) redo(s.byLine[i]);
+        else for (let i = Math.max(lo, s.toBase); i < hi && i - s.toBase < s.byLine.length; i += 1) if (s.byLine[i - s.toBase]) redo(s.byLine[i - s.toBase]);
         for (const [to, i] of s.reactionLine) {
             const r = s.reactions.get(to);
             if (r && r.seen !== i < B) { s.reactions.set(to, { ...r, seen: i < B }); touch(s, to); }
         }
     }
-    /* One line of the agent, taken into the thread built. */
-    #agentLine(s, m, i, bulk) {
+    /* One line of the agent, taken into the thread built. `ghost`: carried from a volume not read
+       (see #ghosts): it counts, it is not shown -- a question among them is open only when
+       carried as one ('open'). */
+    #agentLine(s, m, i, bulk, ghost = false) {
         if (!m) return;
         const e = this.#fromAgent(m);
         s.place.set(e, i);
-        if (e.kind === 'close') { s.closeLines.push(e); s.closes.set(e.answers, { text: e.text, at: e.at }); touch(s, e.answers); return; }
+        if (e.kind === 'close') { if (!ghost) s.closeLines.push(e); s.closes.set(e.answers, { text: e.text, at: e.at }); touch(s, e.answers); return; }
         if (e.kind === 'pin') { s.puts.agent.push({ by: 'agent', to: e.pin, at: e.at, removed: e.removed === true }); s.putTo.add(e.pin); s.pinsDirty = true; return; }
-        if (STEP.has(e.kind)) { s.steps.push(e); s.lastStep = e; if (e.kind === 'status') s.lastStatus = e; return; }
+        if (STEP.has(e.kind)) { if (!ghost) s.steps.push(e); s.lastStep = e; if (e.kind === 'status') s.lastStatus = e; return; }
         const x = { from: 'agent', m: e, at: e.at, i, e: null };
         if (!s.byId.has(e.id)) s.byId.set(e.id, []);
         s.byId.get(e.id).push(x);
-        if (bulk) s.order.push(x); else { insertAt(s.order, x, (y) => y.from === 'person'); s.dirty = true; if (s.putTo.has(e.id)) s.pinsDirty = true; }
-        if (e.kind === 'ask') s.asks.push(x);
+        if (ghost) s.ghostById.set(e.id, e);
+        else if (bulk) s.order.push(x); else { insertAt(s.order, x, (y) => y.from === 'person'); s.dirty = true; if (s.putTo.has(e.id)) s.pinsDirty = true; }
+        if (e.kind === 'ask' && (!ghost || ghost === 'open')) s.asks.push(x);
         /* Every file it showed, and every one it cited that can be opened (once, and not when shown). */
         if (e.kind === 'show') {
             for (const f of e.files?.length ? e.files.map((g) => ({ path: g.path, note: g.title || e.text, at: e.at, open: g.open })) : [{ path: e.path, note: e.text, at: e.at, open: e.open }]) {
@@ -793,7 +1177,7 @@ export class Parley {
         }
     }
     /* One line of the person, taken into the thread built: a reaction, a pin, or a message. */
-    #personLine(s, m, i, bulk) {
+    #personLine(s, m, i, bulk, ghost = false) {
         if (!m) return;
         /* A reaction is no message: it is put on the message it is about, the newest one standing. */
         if (typeof m.reaction === 'string') {
@@ -813,7 +1197,8 @@ export class Parley {
                 ...(m.answers && Array.isArray(m.replies) ? { replies: m.replies.slice(0, GROUP_MAX).filter((r) => r && typeof r === 'object' && typeof r.id === 'string').map((r) => ({ id: oneLine(r.id, 30), ...(oneLine(r.label, 40) ? { label: oneLine(r.label, 40) } : {}), ...(Array.isArray(r.picked) ? { picked: r.picked.slice(0, 8).map((y) => oneLine(y, 200)).filter(Boolean) } : { text: clean(r.text).slice(0, 2000) }) })) } : {}), ...(m.re ? { re: String(m.re), quote: oneLine(m.quote, 300) } : {}), ...(Array.isArray(m.files) && m.files.length ? { files: this.#files(m.files) } : {}), ...(m.via === 'voice' ? { via: 'voice' } : {}), ...(aboutOf(m.about) ? { about: aboutOf(m.about) } : {}), ...(byOf(m.by) ? { by: byOf(m.by) } : {}), ...(m.room && typeof m.room === 'object' && oneLine(m.room.id, 80) ? { room: { id: oneLine(m.room.id, 80), name: oneLine(m.room.name, 60), ...(oneLine(m.room.message, 80) ? { message: oneLine(m.room.message, 80) } : {}) } } : {}) },
         };
         x.at = x.m.at;
-        s.persons.push(x); s.byLine[i] = x;
+        if (ghost) { s.ghostById.set(x.m.id, x.m); return; }
+        s.persons.push(x); s.byLine[i - s.toBase] = x;
         if (x.more.answers) s.answered.add(x.more.answers);
         if (bulk) s.order.push(x); else { insertAt(s.order, x, () => false); s.dirty = true; if (s.putTo.has(x.m.id)) s.pinsDirty = true; }
     }
@@ -847,66 +1232,102 @@ export class Parley {
         const o = options && typeof options === 'object' && ['last', 'days', 'before', 'from', 'since', 'all'].some((k) => options[k] !== undefined && options[k] !== null && options[k] !== false) ? options : null;
         /* Nothing written on either side, nothing read since the cursor: nothing to go through. */
         if (o?.since !== undefined && o.since !== null) {
-            const toN = this.#raw('to-agent.jsonl').length;
-            const now = `${this.#raw('from-agent.jsonl').length}.${toN}.${Math.min(readCount(this.#dir), toN)}`;
+            const toN = this.#raw('to-agent.jsonl').length + this.#archived('to-agent.jsonl');
+            const now = `${this.#raw('from-agent.jsonl').length + this.#archived('from-agent.jsonl')}.${toN}.${Math.min(readCount(this.#dir), toN)}`;
             if (String(o.since) === now) return { since: true, messages: [], steps: [], unread: Math.max(0, toN - readCount(this.#dir)), pulse: pulseOf(this.#dir, this.#now()), ...(this.#keep ? { altered: this.#altered() } : {}), cursor: now };
         }
-        const t = this.#model();
-        const tail2 = { files: t.files, unread: t.unread, pulse: pulseOf(this.#dir, this.#now()), ...(this.#keep ? { altered: this.#altered() } : {}) };
+        /* A part further back than what is read: read down to it, then answer (#part says how far). */
+        let t = this.#model();
+        for (let k = 0; k < 4; k += 1) {
+            const r = this.#part(t, o);
+            if (r.deeper === undefined || r.deeper >= t.v0) return r.answer ?? this.#part(t, o, true).answer;
+            t = this.#model({ v0: r.deeper });
+        }
+        return this.#part(t, o, true).answer;
+    }
+    /* The answer of read() from the thread as read (t), or { deeper: v0 } when it needs the volumes
+       from v0 on -- unless `last` (as deep as it went). Counts are the whole thread's: t.U messages
+       are in the volumes not read. */
+    #part(t, o, last = false) {
+        const tail2 = () => ({ files: t.files, unread: t.unread, pulse: pulseOf(this.#dir, this.#now()), ...(this.#keep ? { altered: this.#altered() } : {}) });
+        const deeper = (q) => (!last && t.v0 > 0 && q !== null && q < t.v0 ? { deeper: q } : null);
         if (!o) {
+            const more = deeper(t.messages.length < SHOWN_MAX ? Parley.#deeper(t, SHOWN_MAX - t.messages.length) : null);
+            if (more) return more;
             const messages = t.messages.slice(-SHOWN_MAX);
             /* Steps older than the first message kept would sit before a conversation that is no longer there. */
             const since = messages.length === SHOWN_MAX ? messages[0].at : '';
-            return { messages, ...this.#state(t), steps: t.steps.filter((m) => m.at >= since).sort((a, b) => a.at.localeCompare(b.at)).slice(-STEPS_MAX).map(Parley.#step), ...tail2 };
+            return { answer: { messages, ...this.#state(t), steps: t.steps.filter((m) => m.at >= since).sort((a, b) => a.at.localeCompare(b.at)).slice(-STEPS_MAX).map(Parley.#step), ...tail2() } };
         }
         const cursor = `${t.fromN}.${t.toN}.${t.read}`;
         const was = o.since === undefined || o.since === null ? null : /^(\d{1,9})\.(\d{1,9})\.(\d{1,9})$/.exec(String(o.since));
-        /* Only grown since: what is new, and what it changed. A file that shrank (a bridge rewritten, without a keep folder): the window again. */
-        if (was && Number(was[1]) <= t.fromN && Number(was[2]) <= t.toN && Number(was[3]) <= t.read) {
+        /* Only grown since: what is new, and what it changed. A file that shrank (a bridge rewritten, without a keep folder),
+           or a cursor from before what is read: the window again. */
+        if (was && Number(was[1]) <= t.fromN && Number(was[2]) <= t.toN && Number(was[3]) <= t.read && Number(was[1]) >= t.fromBase && Number(was[2]) >= t.toBase && Number(was[3]) >= t.toBase) {
             const [a, p, r] = [Number(was[1]), Number(was[2]), Number(was[3])];
             const touched = new Set([
                 ...t.closeLines.filter((m) => t.place.get(m) >= a).map((m) => m.answers),
-                ...t.toRaw.slice(p).filter((m) => m && typeof m.reaction === 'string' && typeof m.to === 'string').map((m) => m.to),
+                ...t.toRaw.slice(p - t.toBase).filter((m) => m && typeof m.reaction === 'string' && typeof m.to === 'string').map((m) => m.to),
             ]);
             const changed = (m) => {
                 const at = t.place.get(m);
                 if (m.from === 'person') return at >= p || (at >= r && at < t.read);
                 return at >= a || touched.has(m.id);
             };
-            return { since: true, messages: t.messages.filter(changed), ...this.#state(t), steps: t.steps.slice(firstFrom(t.steps, t.place, a)).slice(-STEPS_MAX).map(Parley.#step),
-                ...(a < t.fromN ? { files: t.files } : {}), unread: tail2.unread, pulse: tail2.pulse, ...(this.#keep ? { altered: tail2.altered } : {}), cursor };
+            const tail = tail2();
+            return { answer: { since: true, messages: t.messages.filter(changed), ...this.#state(t), steps: t.steps.slice(firstFrom(t.steps, t.place, a)).slice(-STEPS_MAX).map(Parley.#step),
+                ...(a < t.fromN ? { files: t.files } : {}), unread: tail.unread, pulse: tail.pulse, ...(this.#keep ? { altered: tail.altered } : {}), cursor } };
         }
+        const root = this.#keep ?? this.#dir;
         const list = t.messages;
+        const where = (id) => list.findIndex((m) => m.id === String(id));
+        const has = (k) => o[k] !== undefined && o[k] !== null;
+        if (o.all === true) { const more = deeper(0); if (more) return more; }
         let end = list.length;
         let until = null;
-        if (o.before !== undefined && o.before !== null) {
-            const i = list.findIndex((m) => m.id === String(o.before));
+        if (has('before')) {
+            const i = where(o.before);
+            if (i < 0) { const more = deeper(this.#locate(root, readIndex(root), t.v0, [String(o.before)])); if (more) return more; }
             end = i < 0 ? 0 : i;
             until = i < 0 ? null : list[i].at;
         }
         const count = (n, d) => (Number.isInteger(n) && n > 0 ? Math.min(n, PAGE_MAX) : d);
         let start;
         if (o.all === true) start = 0;
-        else if (o.from !== undefined && o.from !== null && o.before !== undefined && o.before !== null) {
-            const j = list.findIndex((m) => m.id === String(o.from));
+        else if (has('from') && has('before')) {
+            const j = where(o.from);
+            if (j < 0 && end > 0) { const more = deeper(this.#locate(root, readIndex(root), t.v0, [String(o.from)])); if (more) return more; }
+            if (j >= 0 && j < CONTEXT) { const more = deeper(Parley.#deeper(t, CONTEXT - j)); if (more) return more; }
             start = j >= 0 && j < end ? Math.max(0, j - CONTEXT) : end;
-        } else if (o.days !== undefined && o.days !== null && o.last === undefined) {
+        } else if (has('days') && o.last === undefined) {
             const days = Math.min(DAYS_MAX, Math.max(1, Number(o.days) || 1));
             const ref = until !== null && Number.isFinite(Date.parse(until)) ? Date.parse(until) : this.#now().getTime();
             const limit = new Date(ref - days * 86_400_000).toISOString();
             start = end;
             while (start > 0 && list[start - 1].at >= limit) start -= 1;
+            if (start === 0 || end < LEAST) {
+                /* The volumes whose newest line is in those days, and enough for LEAST. */
+                let q = t.v0;
+                while (q > 0 && t.vols[q - 1].last >= limit) q -= 1;
+                const more = deeper(Math.min(q, end < LEAST ? Parley.#deeper(t, LEAST - end) : t.v0));
+                if (more) return more;
+            }
             start = Math.max(Math.min(start, end - LEAST), end - PAGE_MAX, 0);
-        } else start = Math.max(0, end - count(Number(o.last), WINDOW));
+        } else {
+            const n = count(Number(o.last), WINDOW);
+            if (end - n < 0) { const more = deeper(Parley.#deeper(t, n - end)); if (more) return more; }
+            start = Math.max(0, end - n);
+        }
         const page = list.slice(start, end);
         /* The newest window: the questions still open come with it, however old. */
         /* With no `before`, the page ends with the thread: a question not on it is older than it. */
         const onPage = new Set(page);
-        const extra = o.before === undefined || o.before === null ? t.open.filter((q) => !onPage.has(q)) : [];
+        const extra = !has('before') ? t.open.filter((q) => !onPage.has(q)) : [];
         const fromAt = page[0]?.at ?? null;
-        const steps = t.steps.filter((m) => (start === 0 || fromAt === null || m.at >= fromAt) && (until === null || m.at < until)).sort((a, b) => a.at.localeCompare(b.at)).slice(-STEPS_MAX).map(Parley.#step);
-        return { messages: [...extra, ...page], ...this.#state(t), steps, ...tail2,
-            window: { before: start > 0 ? page[0]?.id ?? null : null, more: page.length ? start : 0, total: list.length, from: fromAt, until }, cursor };
+        const older = start + t.U;
+        const steps = t.steps.filter((m) => (older === 0 || fromAt === null || m.at >= fromAt) && (until === null || m.at < until)).sort((a, b) => a.at.localeCompare(b.at)).slice(-STEPS_MAX).map(Parley.#step);
+        return { answer: { messages: [...extra, ...page], ...this.#state(t), steps, ...tail2(),
+            window: { before: older > 0 ? page[0]?.id ?? null : null, more: page.length ? older : 0, total: list.length + t.U, from: fromAt, until }, cursor } };
     }
 
     /* THE WHOLE THREAD SEARCHED, however little of it is shown: the messages whose words hold
@@ -917,7 +1338,8 @@ export class Parley {
         if (!q) return { matches: [], count: 0 };
         const words = (m) => [m.text, m.short, m.intro, m.kind === 'show' ? m.path : '', ...(m.files ?? []).map((f) => [f.title, f.name, f.path].filter(Boolean).join(' ')), ...(m.questions ?? []).map((x) => [x.question, ...x.choices].join(' ')), ...(m.choices ?? [])]
             .filter(Boolean).join('\n').replace(/\*\*|__|`|==/g, '');
-        const found = this.#model().messages.map((m) => ({ m, w: words(m) })).filter((x) => x.w.toLowerCase().includes(q));
+        /* The whole thread: every volume read (the only part of Parley that reads them all). */
+        const found = this.#model({ v0: 0 }).messages.map((m) => ({ m, w: words(m) })).filter((x) => x.w.toLowerCase().includes(q));
         const max = Number.isInteger(limit) && limit > 0 ? Math.min(limit, SEARCH_MAX) : SEARCH_MAX;
         return {
             matches: found.slice(-max).reverse().map(({ m, w }) => {
@@ -991,7 +1413,7 @@ export class Parley {
        application has handed what was said to its AIs, it is read -- said here, as an agent's read would. */
     seen() {
         if (!this.#room) throw new RangeError('Only a room\'s thread is marked read by the application.');
-        const lines = lineCount(`${this.#dir}/to-agent.jsonl`);
+        const lines = lineCount(`${this.#dir}/to-agent.jsonl`) + this.#archived('to-agent.jsonl', this.#dir);
         if (lines <= readCount(this.#dir)) return lines;
         const reads = [...readTimes(this.#dir), { lines, at: this.#now().toISOString() }].slice(-200);
         mkdirSync(this.#dir, { recursive: true });
@@ -1005,7 +1427,7 @@ export class Parley {
         const attached = given.map((f) => ({ path: oneLine(f?.path, 1000), name: oneLine(f?.name, 200), size: Number.isInteger(f?.size) && f.size >= 0 ? f.size : undefined, note: oneLine(f?.note, NOTE_MAX) }));
         if (attached.some((f) => !f.path.startsWith('/'))) throw new RangeError('A file is given by its whole path.');
         /* Any message of the thread, however old: not only those a screen shows at first. */
-        const asked = typeof answers === 'string' && answers ? this.#model().messages.find((m) => m.from === 'agent' && ['say', 'ask', 'show'].includes(m.kind) && m.id === answers) : undefined;
+        const asked = typeof answers === 'string' && answers ? this.#find(answers, (m) => m.from === 'agent' && ['say', 'ask', 'show'].includes(m.kind)).m : undefined;
         /* Ticked: only choices of a question that lets several be ticked, kept in its order. */
         let ticked;
         if (picked !== undefined) {
@@ -1068,7 +1490,7 @@ export class Parley {
        application is told (person-reacted, with `wakes`: the set's hint) and
        decides whether to tell the agent now. Resolves with read(). */
     react(to, reaction) {
-        const target = this.#model().messages.find((m) => m.from === 'agent' && m.id === to && ['say', 'ask', 'show'].includes(m.kind));
+        const target = this.#find(to, (m) => m.from === 'agent' && ['say', 'ask', 'show'].includes(m.kind)).m;
         if (!target) throw new RangeError('No such message of the agent.');
         const standing = target.reaction?.id ?? null;
         const kind = reaction === null || reaction === undefined || reaction === '' ? null : String(reaction);
@@ -1092,8 +1514,7 @@ export class Parley {
        at most: a new one makes the oldest leave. The application is told
        (person-pinned). Resolves with read(). */
     pin(to, on = true) {
-        const t = this.#model();
-        const target = t.messages.find((m) => m.id === to);
+        const { t, m: target } = this.#find(to);
         if (!target) throw new RangeError('No such message.');
         const put = on !== false;
         if (put === t.pins.some((p) => p.id === target.id)) return this.read();
@@ -1115,26 +1536,38 @@ export class Parley {
        once, by where it sits in the file, and only once it is whole. */
     listen({ every = 2000 } = {}) {
         const file = `${this.#dir}/from-agent.jsonl`;
-        const size = () => { try { return lstatSync(file).isSymbolicLink() ? 0 : statSync(file).size; } catch { return 0; } };
-        let offset = size();
-        let rest = Buffer.alloc(0);
+        const stat = () => { try { const st = lstatSync(file); return st.isSymbolicLink() ? { size: 0, ino: null } : { size: st.size, ino: st.ino }; } catch { return { size: 0, ino: null }; } };
         const TYPES = { say: 'agent-said', ask: 'agent-asked', show: 'agent-showed', status: 'agent-status', doing: 'agent-doing', close: 'agent-closed', pin: 'agent-pinned' };
         const tell = (m) => { const message = this.#fromAgent(m); this.#tell({ type: TYPES[message.kind], message }); };
         if (this.#keep) {
-            /* Kept: each line once it is kept, by its place in the copy, which only grows -- whatever the agent does to its file. */
-            let known = this.#sync('from-agent.jsonl').length;
+            /* Kept: each line once it is kept, by its place in the copy, which only grows -- whatever the agent does to its
+               file; a split of the copy moves its lines into the archive, never their places. */
+            const total = () => this.#archived('from-agent.jsonl') + this.#sync('from-agent.jsonl').length;
+            let known = total();
             const timer = setInterval(() => {
-                let all;
-                try { all = this.#sync('from-agent.jsonl'); } catch { return; }
-                for (const line of all.slice(known)) { const m = parsed(line); if (m) tell(m); }
-                known = all.length;
+                let base, all;
+                try { all = this.#sync('from-agent.jsonl'); base = this.#archived('from-agent.jsonl'); } catch { return; }
+                if (known < base) for (const m of this.#archivedFrom('from-agent.jsonl', known)) if (m) tell(m);
+                for (const line of all.slice(Math.max(0, known - base))) { const m = parsed(line); if (m) tell(m); }
+                known = base + all.length;
             }, every);
             timer.unref?.();
             return () => clearInterval(timer);
         }
+        let { size: offset, ino } = stat();
+        let rest = Buffer.alloc(0);
+        /* Whole lines read of this file, and the lines archived before it: where it stood, if it is split. */
+        let lines = this.#raw('from-agent.jsonl').length, base = this.#archived('from-agent.jsonl', this.#dir);
         const look = () => {
-            const now = size();
-            if (now < offset) { offset = 0; rest = Buffer.alloc(0); }        /* the file was started again */
+            const st = stat();
+            /* Split since (the file renamed away): what it took after the last look is in the archive. */
+            if (ino !== null && st.ino !== ino) {
+                for (const m of this.#archivedFrom('from-agent.jsonl', base + lines, this.#dir)) if (m) tell(m);
+                offset = 0; rest = Buffer.alloc(0); lines = 0; ino = st.ino; base = this.#archived('from-agent.jsonl', this.#dir);
+            }
+            if (ino === null) ino = st.ino;
+            const now = st.size;
+            if (now < offset) { offset = 0; rest = Buffer.alloc(0); lines = 0; }        /* the file was started again */
             if (now === offset) return;
             let from = offset;
             if (now - from > FILE_MAX) { from = now - FILE_MAX; rest = Buffer.alloc(0); }
@@ -1147,6 +1580,7 @@ export class Parley {
             if (end < 0) { rest = all; return; }
             rest = all.subarray(end + 1);
             for (const line of all.subarray(0, end).toString('utf8').split('\n')) {
+                if (line) lines += 1;
                 const m = line ? parsed(line) : undefined;
                 if (m) tell(m);
             }

@@ -11,8 +11,11 @@ Parley is three small things that agree on one folder.
 | `read.json` | the agent's side | how many lines of `to-agent.jsonl` the agent has read (`lines`), and when it read (`reads`: `[{lines, at}]`, the last 200) |
 | `pulse.json` | the agent's side | whether the agent is in the middle of a turn (`busy`), and since its last sign (`at`): written by its own tool, never by the agent |
 | `server.mjs` | the application, once | the MCP server, for an agent given it that way (`install()`) |
+| `settings.json` | the application | Parley's own settings: `split` (see "The archive") |
+| `archive/` | the application's side only | the older lines of both files, in volumes (see "The archive") |
 
-The two `.jsonl` files only grow. Nothing is edited, nothing is deleted. There is no
+The two `.jsonl` files only grow. Nothing is edited, nothing is deleted. Their
+older lines move, whole and in order, into the archive (see "The archive"). There is no
 address, no port and no key: whoever can read and write the folder is a side.
 The agent can still rewrite them: an application that must not trust that keeps
 its own copy (see "The application's own copy").
@@ -363,6 +366,70 @@ what will happen rather than as a technical line. Plain data, never markup:
 A line's `actions` and `text` stay its fallback for an older screen. The same
 card is exported for the application's own pages: `requestCard(request,
 {act, words, locale, open, steps, host, schemes, openRef})`, and `requestBlock(list, ...)`.
+
+## The archive
+
+A thread of months stays light without losing a line: the host splits it into
+volumes; the current files keep only what came after. Nothing is cut, summarised
+or deleted, and every part of the thread is read as if never split.
+
+- **The setting**, in `settings.json` (`setSplit()` and `split()` on the host):
+  `{split: {messages: N}}` (a split once both files hold N lines together, steps
+  included; 10 at least), `{split: {days: D}}` (no volume spans more than D days;
+  `1` is a day, `0.5` half of one), or `{split: false}` (never). By default
+  `{messages: 5000}`: a thread below it is never touched.
+- **Only the host splits**, at its own reads (a lock, `archive/lock`, keeps two
+  hosts from doing it at once). The agent's side never does: it only appends,
+  and only reads what was split.
+- **The volumes**: `archive/<first>--<last>.from-agent.jsonl` and
+  `.to-agent.jsonl`, named by the first and last times their lines say, to the
+  second, in UTC (`2026-11-07T09-12-03Z--2026-11-14T08-00-00Z`): sorted by name,
+  they are in order. A volume holds a run of lines of each side, both sides cut
+  at the same moment of the thread, each in the order of its file. Beside each,
+  `<name>.carry.json`: what it leaves standing for what comes after (below).
+- **The index**, `archive/index.json`, written whole (a file renamed over it):
+  `{volumes: [{name, from: {lines}, to: {lines}, messages, entries, first,
+  last, src}]}`, oldest first, and `moving` while a split is not counted yet. A part
+  of the thread is found by it alone: how many lines and messages each volume
+  holds, and their times.
+- **A split, while the agent writes**: (1) the index says `moving`, with the
+  inode of each current file; (2) each file is renamed to
+  `archive/moving.<side>` and an empty one put in its place. The agent opens,
+  appends and closes at each line: a line written meanwhile lands whole in the
+  file renamed or in the new one, never in neither, never in both. Until it is
+  counted, a reader reads both: the current file first, then the index, then the
+  file renamed -- skipped when it is the one just read as current. The agent's
+  side tells them apart by their first line (a hash of it: a line says its own id
+  and time), never by inode: it may read the folder through a mount (sshfs) that
+  does not keep them. Each volume also notes the first line of the file it came
+  from (`src`): a reader that read that file as current reads again.
+  (3) Two seconds later (`settle`), when no write begun before the rename can
+  still be under way, the host cuts the file renamed into volumes, writes them
+  and what they carry, lists them in the index, and only then removes it: what
+  it held is in the volumes, line for line. Stopped half way, it is done again
+  whole, to the same names.
+- **Places do not move**: a line's place counts the lines archived before it.
+  `read.json` (`lines`), a cursor `fromN.toN.read`, `unread()`, a message's
+  `place`: all count the whole thread (archived + current), so a split never
+  makes them go back, and a cursor taken before it still fits after.
+- **Reading**: the host reads the current files and the newest volumes, down to
+  a window; a part further back (`before`, `from`, `days`, `last`, `all`, an id
+  answered or reacted to or pinned) reads down to the volume it needs, found by
+  the index; `search` reads them all. Counts (`window.more`, `total`) are the
+  whole thread's, from the index.
+- **What a volume carries**: a thread read from a volume on must still know what
+  those before it left standing -- the questions still open (and the reaction on
+  each), the pins standing and the messages they are on, the last state and
+  step, the newest files shown or cited, and the paths already shown or cited.
+  Those lines are copied, with their places, into `<name>.carry.json`; the host
+  takes them in without showing them, and the agent's `parley read` finds the
+  open questions and the pins there without reading the volumes. A pin put now
+  on a message of an old volume (scrolled back to) is found where it is.
+- **With a keep folder**, what is kept is split at once, the same way, into
+  `keep/archive/` (nobody else writes there); it is what the thread is read
+  from, as always. A line of the agent's that reached the bridge's file renamed
+  after it was last compared is kept then, as a new line. Nothing is noted as
+  changed by a split.
 
 ## The application's own copy
 
