@@ -890,6 +890,9 @@ mark.parley-found[data-now="true"] { outline: 2px solid var(--parley-ask); }
 
 /* 03-11: what is being sent, at once, faint; the mark of a dictated message only in the detailed view. */
 .parley-sending { opacity: .55; }
+/* Not sent: in full, its edge says so, and one button sends it again. */
+.parley-sending[data-state="failed"] { opacity: 1; outline: 1px dashed var(--parley-caution); outline-offset: 2px; }
+.parley-send-again { display: block; margin-top: .4em; font: inherit; font-size: .85em; }
 .parley[data-view="simple"] .parley-dictated { display: none; }
 /* The list in three groups (03-11: "avec des séparations entre les principales parties"): yes, not quite, no. */
 .parley-react-choice[data-reaction="go"] { order: 1; } .parley-react-choice[data-reaction="agree"] { order: 2; } .parley-react-choice[data-reaction="love"] { order: 3; }

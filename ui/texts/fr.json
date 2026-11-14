@@ -24,6 +24,7 @@
   "no-files": "Aucun fichier pour l'instant.",
   "terminal": "Ouvrir son terminal",
   "not-sent": "Pas envoyé : {error}",
+  "send-again": "Renvoyer",
   "alert-asks": "{name} vous pose une question",
   "alert-waits": "{name} attend votre réponse",
   "step-one": "1 étape",

@@ -263,7 +263,7 @@ import { icon, fileIcon, ICONS } from './parley-icons.js';
 export const VIEWS = Object.freeze(['simple', 'detailed']);
 /* The words this screen uses: a dictionary needs these keys. */
 export const KEYS = Object.freeze(['send', 'placeholder', 'empty', 'view', 'simple', 'detailed', 'working', 'waiting', 'done', 'no-status', 'asks', 'open', 'outside',
-    'not-read', 'read', 'remind', 'reminded', 'urgent', 'urgent-told', 'steps', 'no-steps', 'files', 'no-files', 'terminal', 'not-sent', 'step-one', 'steps-many', 'today', 'yesterday', 'quiet', 'stopped',
+    'not-read', 'read', 'remind', 'reminded', 'urgent', 'urgent-told', 'steps', 'no-steps', 'files', 'no-files', 'terminal', 'not-sent', 'send-again', 'step-one', 'steps-many', 'today', 'yesterday', 'quiet', 'stopped',
     'mic', 'mic-stop', 'auto-send', 'auto-on', 'settings', 'voice-placeholder', 'voice-calibrating', 'voice-listening', 'voice-hearing', 'voice-transcribing', 'voice-wait', 'voice-off', 'replies', 'replies-more', 'replies-less',
     'recommended', 'recommended-value', 'recommended-order', 'suggestion', 'suggest-take',
     'attach', 'remove-file', 'sending-files', 'attach-where', 'draw-open', 'draw-again', 'drawn-from', 'draw-marked', 'draw-colour', 'draw-undo', 'draw-clear', 'draw-cancel', 'draw-done', 'draw-note', 'draw-hint',
@@ -409,8 +409,16 @@ const nameOf = (path) => String(path ?? '').split('/').pop();
 /* A size, as a person reads it. */
 export const sizeText = (n) => (!Number.isInteger(n) || n < 0 ? '' : n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` : n >= 1024 ? `${Math.round(n / 1024)} KB` : `${n} B`);
 const stamp = (at) => { const t = Date.parse(at); return Number.isNaN(t) ? null : t; };
-/* Written the device's way, or the given locale's; a locale that is not one is the device's. */
-const format = (t, locale, options) => { if (t === null) return ''; const d = new Date(t); try { return d.toLocaleString(locale, options); } catch { return d.toLocaleString(undefined, options); } };
+/* Written the device's way, or the given locale's; a locale that is not one is the device's.
+   One formatter made per locale and options, then kept: making one is most of what a long thread costs to draw. */
+const formatters = new Map();
+const formatter = (locale, options) => {
+    const key = `${String(locale)}|${JSON.stringify(options)}`;
+    let f = formatters.get(key);
+    if (!f) { try { f = new Intl.DateTimeFormat(locale, options); } catch { f = new Intl.DateTimeFormat(undefined, options); } if (formatters.size < 64) formatters.set(key, f); }
+    return f;
+};
+const format = (t, locale, options) => { if (t === null) return ''; const d = new Date(t); if (Number.isNaN(d.getTime())) return String(d); return formatter(locale, options).format(d); };
 const clock = (t, locale) => format(t, locale, { timeStyle: 'short' });
 const whole = (t, locale) => format(t, locale, { dateStyle: 'full', timeStyle: 'short' });
 const dayKey = (t) => { const d = new Date(t); return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`; };
@@ -3171,6 +3179,8 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
     let shown = '';
     let count = 0;
     let latest;
+    /* When the thread was last worked out (view()): a look that brings nothing works it out again only after a while. */
+    let viewedAt = 0;
     let folded = true;
     /* Steps the person opened or closed, by group; messages unfolded: kept while the page is drawn again. */
     const unfolded = new Map();
@@ -4443,6 +4453,37 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
     }
     /* The rows already seen: null before the first look. */
     let seenKeys = null;
+    /* The rows as drawn, by key: their node and what they showed (sigOf), so that a row the same as before is kept. */
+    let drawnRows = new Map();
+    let drawnWhole = '';
+    /* What a row shows: its data, and what the reader did to the messages in it (unfolded, folding, folded, kept open).
+       A reaction button shown by a tap is not in it: it is on the node, which is kept. */
+    const idsOf = (row, out = []) => { if (row?.id) out.push(String(row.id)); for (const x of Array.isArray(row?.items) ? row.items : []) idsOf(x, out); return out; };
+    const sigOf = (row) => {
+        const own = idsOf(row).map((id) => `${expanded.has(id) ? 'e' : ''}${foldAt.has(id) ? 'a' : ''}${foldDone.has(id) ? 'd' : ''}${foldKept.has(id) ? 'k' : ''}`).join('');
+        return `${own}|${JSON.stringify(row)}`;
+    };
+    /* The thread made to hold these nodes in this order, moving only those that are not in their place:
+       a node that stays where it was is not touched (a node moved loses the focus, as in a browser). */
+    const placeRows = (list) => {
+        const want = new Set(list);
+        for (const n of [...thread.childNodes]) if (!want.has(n)) thread.removeChild(n);
+        list.forEach((n, i) => { if (thread.childNodes[i] !== n) thread.insertBefore(n, thread.childNodes[i] ?? null); });
+    };
+    /* THE MESSAGES BEING SENT: each a faint bubble at the end of the thread, from the moment it leaves the box until
+       the thread has it (the person's message with these words that was not there before), or until it failed:
+       then it says so, with a button to send it again. */
+    const sendings = new Set();
+    const SENT_WAIT_MS = 30_000;
+    const personIds = () => new Set((latest?.messages ?? []).filter((m) => m?.from === 'person').map((m) => String(m.id ?? '')));
+    const dropSending = (x) => { sendings.delete(x); clearTimeout(x.wait); try { x.node.remove(); } catch { /* already gone */ } };
+    function sentIn(data) {
+        for (const x of [...sendings]) {
+            if (x.state === 'failed') continue;
+            const copy = (data?.messages ?? []).some((m) => m?.from === 'person' && !x.known.has(String(m.id ?? '')) && String(m.text ?? '').trim() === x.text);
+            if (copy) dropSending(x);
+        }
+    }
     const wrap = (row, made) => {
         const r = el('div', 'parley-row'); r.dataset.type = row.type; if (row.key) r.dataset.key = row.key;
         if (row.type === 'message') r.dataset.from = row.from;
@@ -4454,14 +4495,20 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
         paintQuick();
         paintSuggest();
         const v = view(data, { words, view: as, locale, agentName, agentTool, receivedAfter, noAnswerAfter });
+        viewedAt = Date.now();
         paintReply(v);
         paintPins(v.pins);
         const small = narrow();
         const older = Number(data?.window?.more) > 0 && typeof data?.window?.before === 'string' ? Number(data.window.more) : 0;
-        const mark = JSON.stringify([v, small, [...expanded], searching ? query.value : '', older]);
+        /* What every row is drawn with (the view, the width, the search): changed, every row is made again. */
+        const whole = JSON.stringify([v.view, small, searching ? query.value : '', older]);
+        /* Each row by what it shows and what the reader did to it; the rest of the view (its items, already in the rows, apart). */
+        const sigs = v.rows.map(sigOf);
+        const mark = `${whole}\n${JSON.stringify({ ...v, rows: undefined, items: v.items.length })}\n${sigs.join('\n')}`;
         if (mark === shown) { anchor = null; return; }
         shown = mark;
         /* #87: did a newer agent message just push the previous newest up? Then that one folds, with a countdown. Not under reduced motion (it stays an instant fold). */
+        const foldsWere = foldAt.size;
         if (!reduceMotion()) {
             const curLast = v.rows.find((r) => r.type === 'message' && r.last)?.id ?? null;
             if (foldFrom !== null && curLast !== null && curLast !== foldFrom
@@ -4472,6 +4519,8 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
             }
             if (curLast !== null) foldFrom = curLast;
         }
+        /* A fold that just began is drawn in its row: that row is made again. */
+        if (foldAt.size !== foldsWere) sigs.splice(0, sigs.length, ...v.rows.map(sigOf));
         for (const b of toggles) b.setAttribute('aria-pressed', String(b.dataset.view === v.view));
         status.hidden = !v.status;
         if (v.status) { status.dataset.state = v.status.state; status.textContent = v.status.text; status.title = [v.status.text, v.status.when].filter(Boolean).join(' - '); }
@@ -4484,21 +4533,39 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
         count = v.items.length;
         /* Typing in a card when the thread is drawn again: seen before its rows are made, which move the box being written in. */
         const typing = document.activeElement?.dataset?.draft ? { key: document.activeElement.dataset.draft, from: document.activeElement.selectionStart, to: document.activeElement.selectionEnd } : null;
+        /* A row shown the same as last time is the very same node: where the reader is, what is open or ticked, what
+           is selected, stay as they were, and nothing is built again. Under a search, all again (its marks are in the text). */
+        const again = searching || whole !== drawnWhole;
+        drawnWhole = whole;
+        const nextRows = new Map();
+        const built = [];
         /* What arrives while the thread is open comes in softly, and is marked a moment: never on the first look, nor what was there. */
-        const made = v.rows.map((row) => { const r = wrap(row, rowOf(row, v)); if (!paging && seenKeys !== null && row.key && !seenKeys.has(row.key) && !['day', 'gap'].includes(row.type)) r.dataset.arrived = row.type === 'message' && row.from !== 'system' ? 'message' : 'line'; return r; });
+        const made = v.rows.map((row, i) => {
+            let k = row.key || `#${i}`; while (nextRows.has(k)) k += '+';
+            const had = again ? null : drawnRows.get(k);
+            if (had && had.sig === sigs[i]) { nextRows.set(k, had); return had.node; }
+            const r = wrap(row, rowOf(row, v));
+            if (!paging && seenKeys !== null && row.key && !seenKeys.has(row.key) && !['day', 'gap'].includes(row.type)) r.dataset.arrived = row.type === 'message' && row.from !== 'system' ? 'message' : 'line';
+            nextRows.set(k, { node: r, sig: sigs[i] }); built.push(r);
+            return r;
+        });
+        drawnRows = nextRows;
         /* The thread goes further back: one button at its top asks for the page before. */
         if (older) { const b = button(said(words, 'earlier'), 'parley-earlier', () => { void before(); }); b.title = `${said(words, 'earlier')} (${older})`; b.disabled = Boolean(fetching); const r = el('div', 'parley-row'); r.dataset.type = 'earlier'; r.append(b); made.unshift(r); }
         const firstLook = seenKeys === null;
         seenKeys = new Set([...(seenKeys ?? []), ...v.rows.map((row) => row.key).filter(Boolean)]);
         if (firstLook && !v.rows.length) seenKeys = new Set();
-        thread.replaceChildren(...made);
+        /* A message being sent stays at the end, faint, until the thread has it: then it goes, in the same drawing. */
+        sentIn(data);
+        if (v.empty) made.push(el('p', 'parley-empty', v.empty));
+        made.push(...[...sendings].map((x) => x.node));
+        placeRows(made);
         /* Its name once (02-11): said again only when the one speaking changes. */
         { let last = null; for (const b of thread.querySelectorAll('.parley-said')) { const who = `${b.dataset.from}:${b.querySelector('.parley-name, .parley-who-person')?.textContent ?? ''}`; b.dataset.same = String(who === last); last = who; } }
         /* The same box, moved: given the focus back at once, and its cursor (a NodeList has no find). */
         if (typing) { const back2 = [...thread.querySelectorAll('textarea')].find((x) => x.dataset.draft === typing.key); if (back2 && document.activeElement !== back2) { back2.focus({ preventScroll: true }); try { back2.setSelectionRange(typing.from, typing.to ?? typing.from); } catch { /* not a text field */ } } }
-        for (const r of made) if (r.dataset.arrived) setTimeout(() => { delete r.dataset.arrived; }, 1700);
+        for (const r of built) if (r.dataset.arrived) setTimeout(() => { delete r.dataset.arrived; }, 1700);
         watchChoices();
-        if (v.empty) thread.append(el('p', 'parley-empty', v.empty));
         aside.hidden = v.view !== 'detailed';
         aside.dataset.narrow = String(small);
         if (v.view !== 'detailed') aside.replaceChildren();
@@ -4579,14 +4646,34 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
     settle?.observe(thread);
     /* A picture that arrives after the page was drawn makes it taller: the newest stays in sight. */
     thread.addEventListener('load', () => { if (sticky) bottom(); }, true);
-    /* A look: only what changed since the cursor the application gave, when it gives one; else all of it again, as before. */
-    async function refresh() {
+    /* A look: only what changed since the cursor the application gave, when it gives one; else all of it again, as before.
+       Two clocks ask for looks (this one, and the application's own refresh()): a look asked while one runs waits for it,
+       then one more is made for all who asked meanwhile -- what was just sent is in it. */
+    let looking = null;
+    let lookAgain = null;
+    let lookedOk = false;
+    function refresh() {
+        if (looking) { lookAgain ??= looking.then(() => { lookAgain = null; return refresh(); }); return lookAgain; }
+        looking = (async () => { try { await look(); } finally { looking = null; } })();
+        return looking;
+    }
+    /* The cursor did not move and nothing small changed: the thread is as drawn, so nothing is worked out again --
+       but at least every LOOK_MS, for what time alone changes ("no answer yet", a pulse that grows old). */
+    const LOOK_MS = 30_000;
+    const SMALL = ['waiting', 'status', 'unread', 'pulse', 'files', 'altered', 'about', 'pins'];
+    const unmoved = (cursor, got) => cursor !== null && got?.since === true && got.cursor === cursor
+        && !(Array.isArray(got.messages) && got.messages.length) && !(Array.isArray(got.steps) && got.steps.length)
+        && SMALL.every((k) => !Object.hasOwn(got, k) || JSON.stringify(got[k]) === JSON.stringify(latest?.[k]))
+        && Date.now() - viewedAt < LOOK_MS;
+    async function look() {
         try {
             const cursor = typeof latest?.cursor === 'string' && latest.cursor ? latest.cursor : null;
             const got = await load(cursor ? { ...span, since: cursor } : { ...span });
             if (gone) return;   /* closed meanwhile: nothing painted into a screen that is gone */
-            paint(cursor ? since(latest, got) : got);
-        } catch { /* shown again at the next look */ }
+            if (!unmoved(cursor, got)) paint(cursor ? since(latest, got) : got);
+            lookedOk = true;
+            for (const x of [...sendings]) if (x.state === 'sent') dropSending(x);
+        } catch { lookedOk = false; /* shown again at the next look */ }
     }
     /* THE PART BEFORE what is shown: "Earlier messages", at the top; where the reader was stays in sight. */
     let fetching = null;
@@ -4925,6 +5012,32 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
         box.addEventListener('input', again); box.addEventListener('compositionend', again);
         setTimeout(off, 1600);
     };
+    /* Words sent without files: their bubble stands at the end of the thread, in sight even when the reader was further
+       up (they just wrote), drawings of the thread around it notwithstanding, until the thread has the message. */
+    const sendWords = async (text, answers, via, about) => {
+        for (const x of [...sendings]) if (x.state === 'failed') dropSending(x);
+        const row = el('div', 'parley-row parley-sending-row'); row.dataset.from = 'person';
+        const b = el('div', 'parley-said parley-sending'); b.dataset.from = 'person'; b.append(el('p', 'parley-text', text)); row.append(b);
+        const x = { text, node: row, known: personIds(), state: 'sending', wait: null };
+        sendings.add(x);
+        thread.append(row);
+        sticky = true; awayCount = 0; paintJump(); bottom(); requestAnimationFrame(() => { if (sendings.has(x)) bottom(); });
+        const ok = await say(text, answers, undefined, via, about);   /* it read the thread again: the message is in it, most often */
+        if (!sendings.has(x)) return ok;
+        /* Sent, and the thread read since does not show it (an application that keeps it elsewhere): it goes, as before.
+           That look failed: the next one that does not fail takes it away, if the thread has not shown it by then. */
+        if (ok && lookedOk) { dropSending(x); return ok; }
+        if (ok) { x.state = 'sent'; x.wait = setTimeout(() => dropSending(x), SENT_WAIT_MS); return ok; }
+        /* Not sent: the bubble says so, and sends it again with one tap (the words are back in the box too). */
+        x.state = 'failed'; row.dataset.state = 'failed'; b.dataset.state = 'failed';
+        const again = button(said(words, 'send-again'), 'parley-send-again', () => {
+            dropSending(x);
+            if (box.value.trim() === text) clearBox(text);
+            void sendWords(text, answers, via, about);
+        });
+        b.append(again);
+        return ok;
+    };
     const sendBox = async () => {
         const text = box.value.trim();
         if ((!text && pending.length === 0) || uploading) return;
@@ -4936,11 +5049,7 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
            them; not sent, they go back to the box. */
         if (pending.length === 0) {
             clearBox(text); dictatedNow = false;
-            const row = el('div', 'parley-row parley-sending-row'); row.dataset.from = 'person';
-            const b = el('div', 'parley-said parley-sending'); b.dataset.from = 'person'; b.append(el('p', 'parley-text', text)); row.append(b);
-            thread.append?.(row); if (sticky) bottom();
-            const ok = await say(text, answers, undefined, via, about);   /* it read the thread again: the message is in it */
-            try { row.remove?.() ?? row.parentNode?.removeChild?.(row); } catch { /* already gone with a new paint */ }
+            const ok = await sendWords(text, answers, via, about);
             if (ok) answered(); else { dictatedNow = Boolean(via); if (!box.value.trim()) { box.value = text; grow(); } }
             return;
         }
@@ -5221,6 +5330,6 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
         get side() { return side; }, set side(given) { setSide(given); },
         get folded() { return panel ? (beside() ? panelFolded : !panelSheet) : true; }, set folded(v) { panelFolded = Boolean(v); if (panelFolded && panelSheet) showSheet(false); placePanel(); },
         get layers() { return steps.open; },
-        destroy() { steps.destroy(); gone = true; quiet(); letGo([]); for (const u of urls) try { URL.revokeObjectURL(u); } catch { /* gone */ } document.removeEventListener('pointerdown', away); document.removeEventListener('pointerdown', awayFromSheet); clearTimeout(hush); if (timer) clearInterval(timer); clearTimeout(hiding); watch?.disconnect(); settle?.disconnect(); watchQuick?.disconnect(); seeing?.disconnect(); root.replaceChildren(); root.classList.remove('parley'); delete root.dataset.view; delete root.dataset.panel; },
+        destroy() { steps.destroy(); gone = true; for (const x of sendings) clearTimeout(x.wait); quiet(); letGo([]); for (const u of urls) try { URL.revokeObjectURL(u); } catch { /* gone */ } document.removeEventListener('pointerdown', away); document.removeEventListener('pointerdown', awayFromSheet); clearTimeout(hush); if (timer) clearInterval(timer); clearTimeout(hiding); watch?.disconnect(); settle?.disconnect(); watchQuick?.disconnect(); seeing?.disconnect(); root.replaceChildren(); root.classList.remove('parley'); delete root.dataset.view; delete root.dataset.panel; },
     };
 }

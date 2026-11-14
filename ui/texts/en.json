@@ -24,6 +24,7 @@
   "no-files": "No file yet.",
   "terminal": "Open its terminal",
   "not-sent": "Not sent: {error}",
+  "send-again": "Send again",
   "alert-asks": "{name} asks you something",
   "alert-waits": "{name} waits for you",
   "step-one": "1 step",
