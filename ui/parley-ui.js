@@ -62,6 +62,19 @@
  *                          itself
  *   locale                 optional: how times and days are written (the
  *                          device's own way when not given)
+ *   timeZone, onTimeZone   optional: the zone a time the agent wrote with its
+ *                          own ("2026-11-15T09:00Z", "09:00 UTC") is shown in
+ *                          (the browser's when not given); what it wrote is
+ *                          on hover. Another can be chosen in the menu of
+ *                          settings: told to onTimeZone(zone, '' for the
+ *                          browser's), for the application to keep; without
+ *                          onTimeZone, kept by Parley on the device
+ *   times, onTimes         optional: how those times are written: 'short'
+ *                          (default: "10:00" today, else "16 Nov, 10:00"),
+ *                          'full' (the weekday too) or 'written' (as the
+ *                          agent wrote them); chosen in the same menu, kept
+ *                          the same way. A time without a zone, a date
+ *                          alone, a link, a path and code are never touched
  *   agentName              optional: the agent's name, said above its messages
  *                          (default: the neutral word of the dictionary)
  *   agentTool              optional: which tool it is, said small beside its
@@ -291,7 +304,7 @@ export const KEYS = Object.freeze(['send', 'placeholder', 'empty', 'view', 'simp
     'line-topic-request', 'line-topic-notice', 'line-accepted', 'line-done', 'line-failed', 'line-failed-plain', 'line-refused', 'line-timeout', 'line-withdrawn', 'line-stopped', 'line-handled',
     'line-flash', 'line-flash-device', 'line-notice', 'line-notice-said', 'line-notice-at', 'notice-later', 'notice-mail-bounced', 'notice-mail-delayed', 'notice-mail-send-failed',
     'notice-mail-later-failed', 'notice-mail-later-unsure', 'notice-mail-later-late', 'notice-mail-sent-late', 'notice-mail-later-draft-kept', 'notice-calendar-declined',
-    'request-re', 'request-re-forward', 'request-re-mail', 'line-re-sent', 'ref-chip']);
+    'request-re', 'request-re-forward', 'request-re-mail', 'line-re-sent', 'ref-chip', 'times', 'times-short', 'times-full', 'times-written', 'zone', 'zone-device', 'time-written']);
 /* THE REACTIONS offered by default, each with its Lucide icon; their words
    are "react-<id>" (shown under the icon) and "react-<id>-hint" (on hover).
    The same ids as REACTIONS of parley-host.mjs, which says which wake. */
@@ -422,6 +435,103 @@ const format = (t, locale, options) => { if (t === null) return ''; const d = ne
 const clock = (t, locale) => format(t, locale, { timeStyle: 'short' });
 const whole = (t, locale) => format(t, locale, { dateStyle: 'full', timeStyle: 'short' });
 const dayKey = (t) => { const d = new Date(t); return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`; };
+/* TIMES WRITTEN WITH THEIR ZONE (15-11), shown in the reader's: "2026-11-15T09:00Z", "2026-07-01 09:00 UTC",
+   "2026-11-15T10:00+01:00", "15-11 09:00 UTC" (day-month, the year of the message), "09:00 UTC", "9h UTC",
+   "09:00 (UTC)" (a time only: the day of the message, as written in that zone). Without a zone nothing is
+   touched: a time alone may be anyone's, and a wrong conversion is worse than none. A time only after a word
+   that names another day (tomorrow, Monday, the 16th) is left too: the day of the message would be wrong. */
+export const TIMES = Object.freeze(['short', 'full', 'written']);
+const SP = '[ \\u00a0\\u202f]';
+const ZONE_WORD = `${SP}?(?:UTC|GMT)(?:[+-]\\d{1,2}(?::?\\d{2})?)?|${SP}?\\((?:UTC|GMT)(?:[+-]\\d{1,2}(?::?\\d{2})?)?\\)`;
+/* An offset written right after the time ("+01:00") only with a whole date: alone, "09:00-10:00" is a range. */
+const EDGE = '(?<![\\w.:/+-])';
+const END = '(?![\\w+-])';
+const TIME_FORMS = [
+    new RegExp(`${EDGE}(\\d{4})-(\\d{2})-(\\d{2})(?:T|${SP})(\\d{2}):(\\d{2})(?::(\\d{2})(?:\\.\\d+)?)?(Z|[+-]\\d{2}(?::?\\d{2})?|${ZONE_WORD})${END}`, 'g'),
+    new RegExp(`${EDGE}(\\d{1,2})-(\\d{1,2})${SP}(\\d{1,2}):(\\d{2})(Z|${ZONE_WORD})${END}`, 'g'),
+    new RegExp(`${EDGE}(?:(\\d{1,2}):(\\d{2})|(\\d{1,2})${SP}?h(\\d{2})?)(Z|${ZONE_WORD})${END}`, 'g'),
+];
+/* Words that name another day than the message's, just before a time only (a few words between at most). */
+const OTHER_DAY = new RegExp('(?:(?<![\\p{L}\\d])(?:tomorrow|yesterday|demain|hier|monday|tuesday|wednesday|thursday|friday|saturday|sunday|mon|tue|wed|thu|fri|sat|sun'
+    + '|lundi|mardi|mercredi|jeudi|vendredi|samedi|dimanche|lun|mer|jeu|ven|sam|dim'
+    + '|january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sept?|oct|nov|dec'
+    + '|janvier|février|fevrier|mars|avril|mai|juin|juillet|août|aout|septembre|octobre|novembre|décembre|decembre|janv|févr|fevr|avr|juil|déc)\\.?'
+    + '|(?<![\\d:])\\d{1,2}(?:er|st|nd|rd|th)?(?![\\d:\\p{L}]))(?:[^\\p{L}\\d]+\\p{L}+){0,2}[^\\p{L}\\d]*$|(?<!\\p{L})(?:dans|in)[ \\u00a0]*$', 'iu');
+/* "Z", "+01:00", " UTC", " (GMT+2)": minutes east of UTC; null when no place on Earth is that far. */
+const offsetOf = (zone) => {
+    const z = zone.replace(/[\s\u00a0\u202f()]/g, '').replace(/^(UTC|GMT)/, '');
+    if (z === '' || z === 'Z') return 0;
+    const m = /^([+-])(\d{1,2})(?::?(\d{2}))?$/.exec(z);
+    if (!m || Number(m[3] ?? 0) > 59) return null;
+    const min = Number(m[2]) * 60 + Number(m[3] ?? 0);
+    return min > 14 * 60 ? null : (m[1] === '-' ? -min : min);
+};
+/* The zone the browser shows times in; a zone it does not know is none. */
+export const zoneOk = (zone) => { if (typeof zone !== 'string' || !zone) return null; try { return new Intl.DateTimeFormat('en', { timeZone: zone }).resolvedOptions().timeZone; } catch { return null; } };
+export const deviceZone = () => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'; } catch { return 'UTC'; } };
+/* When one form found says it: ms since 1970, or null (a day that is not one, an hour past 23). */
+function timeOf(form, g, base, text, index) {
+    if (form === 0) {
+        /* A whole date, a time, a zone. */
+        const [y, mo, d, h, mi, sec] = g.slice(0, 6).map((x) => Number(x ?? 0)); const off = offsetOf(g[6]);
+        if (off === null || mo < 1 || mo > 12 || h > 23 || mi > 59 || sec > 59) return null;
+        const u = Date.UTC(y, mo - 1, d, h, mi);
+        return new Date(u).getUTCDate() === d ? u - off * 60_000 : null;
+    }
+    if (form === 1) {
+        /* Day-month (never month-day), in the year of the message. */
+        const [d, mo, h, mi] = g.slice(0, 4).map(Number); const off = offsetOf(g[4]);
+        if (off === null || mo < 1 || mo > 12 || h > 23 || mi > 59) return null;
+        const u = Date.UTC(new Date(base + off * 60_000).getUTCFullYear(), mo - 1, d, h, mi);
+        return new Date(u).getUTCDate() === d ? u - off * 60_000 : null;
+    }
+    /* A time only: the message's day, as it was in that zone -- unless the words before name another. */
+    const h = Number(g[0] ?? g[2]); const mi = Number(g[1] ?? g[3] ?? 0); const off = offsetOf(g[4]);
+    /* The times said before it are no day ("09:00 UTC, 9 h UTC"): only what names a day is looked for. */
+    const before = text.slice(Math.max(0, index - 40), index).replace(/\d{1,2}(?::\d{2}|[ \u00a0]?h\d{0,2})/g, 'T');
+    if (off === null || h > 23 || mi > 59 || OTHER_DAY.test(before)) return null;
+    const day = new Date(base + off * 60_000);
+    return Date.UTC(day.getUTCFullYear(), day.getUTCMonth(), day.getUTCDate(), h, mi) - off * 60_000;
+}
+/* A text cut into what stays and the times found: { at, text, written }, `text` as this reader sees it.
+   `at` is when the message was written (its day and year complete a time written without them), `now` says
+   what "today" is, `zone` the reader's. `as`: 'short' (the time only today, else the day and the time), 'full'
+   (the weekday too), 'written' (nothing changed). */
+export function timesIn(text, { at, now = Date.now(), zone, locale, as = 'short' } = {}) {
+    const s = String(text ?? '');
+    if (as === 'written' || !/\d/.test(s) || !/UTC|GMT|\d[Z+-]/.test(s)) return [s];
+    const tz = zoneOk(zone) ?? deviceZone();
+    const base = Number.isFinite(at) ? at : now;
+    const dayOf = (x) => formatter('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(x));
+    /* "00:30" where the day has 24 hours, "12:30 AM" where it has twice 12. */
+    const h24 = /^h2[34]$/.test(formatter(locale, { hour: 'numeric' }).resolvedOptions().hourCycle ?? '');
+    const out = [];
+    let from = 0;
+    for (;;) {
+        /* The first time found from here, of any form; at the same place the longest (the whole date first). */
+        let best = null;
+        TIME_FORMS.forEach((re, form) => {
+            re.lastIndex = from;
+            for (let m; (m = re.exec(s));) {
+                if (best && m.index > best.m.index) break;
+                const t = timeOf(form, m.slice(1), base, s, m.index);
+                if (t !== null && Number.isFinite(t)) { if (!best || m.index < best.m.index || m[0].length > best.m[0].length) best = { m, t }; break; }
+            }
+        });
+        if (!best) break;
+        const { m, t } = best;
+        if (m.index > from) out.push(s.slice(from, m.index));
+        const sameYear = dayOf(t).slice(0, 4) === dayOf(now).slice(0, 4);
+        const clockOnly = { hour: h24 ? '2-digit' : 'numeric', minute: '2-digit', timeZone: tz };
+        const options = as === 'full' ? { weekday: 'short', day: 'numeric', month: 'short', ...(sameYear ? {} : { year: 'numeric' }), ...clockOnly }
+            : dayOf(t) === dayOf(now) ? clockOnly : { day: 'numeric', month: 'short', ...(sameYear ? {} : { year: 'numeric' }), ...clockOnly };
+        /* "a 09:00 (UTC)": the zone goes away with the time it was said for. */
+        out.push({ at: t, text: formatter(locale, options).format(new Date(t)), written: m[0].trim() });
+        from = m.index + m[0].length;
+    }
+    if (from < s.length) out.push(s.slice(from));
+    return out.length ? out : [s];
+}
 function dayText(t, now, words, locale) {
     if (dayKey(t) === dayKey(now)) return said(words, 'today');
     const before = new Date(now); before.setDate(before.getDate() - 1);
@@ -1769,26 +1879,50 @@ function painter(ctx) {
     const { words, refs, open, picture, diagram, highlight, cache, secrets: liveSecrets = {}, forget } = ctx;
     const fileOf = (path) => (refs.has(path) ? { path, open: refs.get(path) } : null);
     const pathLink = (file, text) => { const b = button('', 'parley-pathlink', () => open?.(file)); b.append(text ?? file.path); b.title = file.path; return b; };
-    function inlines(nodes, into) {
+    /* `still`: inside a link, whose words are left as written (its times too). */
+    function inlines(nodes, into, still = false) {
         for (const n of nodes) {
-            if (n.t === 'text') into.append(...splitPaths(n.v));
+            if (n.t === 'text') into.append(...(still ? [n.v] : splitPaths(n.v).flatMap((x) => (typeof x === 'string' ? splitTimes(x) : [x]))));
             else if (n.t === 'br') into.append(el('br'));
             else if (n.t === 'code') { const f = fileOf(n.v.trim()); const c = el('code', '', n.v); into.append(f && open ? pathLink(f, c) : c); }
-            else if (n.t === 'em' || n.t === 'strong' || n.t === 'del' || n.t === 'mark') { const e = el(n.t === 'del' ? 's' : n.t); inlines(n.c, e); into.append(e); }
+            else if (n.t === 'em' || n.t === 'strong' || n.t === 'del' || n.t === 'mark') { const e = el(n.t === 'del' ? 's' : n.t); inlines(n.c, e, still); into.append(e); }
             else if (n.t === 'badge') { const b = el('span', 'parley-badge', said(words, `badge-${n.kind}`)); b.dataset.kind = n.kind; into.append(b); }
             else if (n.t === 'secret') into.append(secretChipEl(n.name, words, liveSecrets, forget));
             else if (n.t === 'link') {
                 const href = safeLink(n.href);
                 const f = n.href.startsWith('/') ? fileOf(n.href) : null;
                 const own = href || f ? null : schemeRef(n.href, ctx.schemes);
-                if (own) { const holder = el('span'); inlines(n.c, holder); const [label, note] = labelParts(holder.textContent || own.ref); into.append(refChip(own, label, note, words)); }
-                else if (href) { const a = el('a', 'parley-link'); a.href = href; a.target = '_blank'; a.rel = 'noopener noreferrer nofollow'; a.title = href; inlines(n.c, a); into.append(a); }
-                else if (f && open) { const holder = el('span'); inlines(n.c, holder); into.append(pathLink(f, holder)); }
-                else inlines(n.c, into);
+                if (own) { const holder = el('span'); inlines(n.c, holder, true); const [label, note] = labelParts(holder.textContent || own.ref); into.append(refChip(own, label, note, words)); }
+                else if (href) { const a = el('a', 'parley-link'); a.href = href; a.target = '_blank'; a.rel = 'noopener noreferrer nofollow'; a.title = href; inlines(n.c, a, true); into.append(a); }
+                else if (f && open) { const holder = el('span'); inlines(n.c, holder, true); into.append(pathLink(f, holder)); }
+                else inlines(n.c, into, still);
             } else if (n.t === 'img') into.append(imageOf(n));
             else if (n.t === 'math') into.append(formula(n));
         }
         return into;
+    }
+    /* TIMES WITH THEIR ZONE (15-11), in a run of text that is no path: each in the reader's zone and way
+       (ctx.times: { as, zone, at, now }), what was written on hover, for a screen reader, and on a long press. */
+    function splitTimes(text) {
+        const t = ctx.times;
+        if (!t || t.as === 'written') return [text];
+        return timesIn(text, { ...t, locale: ctx.locale }).map((x) => {
+            if (typeof x === 'string') return x;
+            const e = el('time', 'parley-at', x.text);
+            e.setAttribute('datetime', new Date(x.at).toISOString().replace(/:00\.000Z$/, 'Z').replace(/\.000Z$/, 'Z'));
+            e.title = said(words, 'time-written', { text: x.written });
+            e.setAttribute('aria-label', `${x.text} (${e.title})`);
+            e.dataset.written = x.written;
+            /* A finger held on it: what was written, a few seconds; the browser may select it as well. */
+            let held = null; let back = null;
+            const drop = () => { clearTimeout(held); held = null; };
+            e.addEventListener('pointerdown', (event) => {
+                if (event.pointerType === 'mouse') return;
+                drop(); held = setTimeout(() => { held = null; clearTimeout(back); e.textContent = x.written; e.dataset.showing = 'written'; back = setTimeout(() => { e.textContent = x.text; delete e.dataset.showing; }, 4000); }, PRESS_MS);
+            });
+            for (const type of ['pointerup', 'pointercancel', 'pointerleave']) e.addEventListener(type, drop);
+            return e;
+        });
     }
     /* The paths it cited that can be opened, in a run of text: each a link. */
     function splitPaths(text) {
@@ -3166,7 +3300,8 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
     markdown: rich = false, picture, diagram, highlight, agentName, agentTool, react, reactions: offered = REACTIONS,
     secrets: liveSecrets = {}, forget,
     receivedAfter = RECEIVED_MS, noAnswerAfter = NO_ANSWER_MS, back = true, draft: draftKey = '', math: mathGiven, refs: zoneRefs,
-    window: shownAtFirst, search: searchAll, side: sideGiven, card: toCard, pin: pinHook, schemes: schemesGiven } = {}) {
+    window: shownAtFirst, search: searchAll, side: sideGiven, card: toCard, pin: pinHook, schemes: schemesGiven,
+    times: timesGiven, onTimes, timeZone: zoneGiven, onTimeZone } = {}) {
     const steps = stepper(back);
     /* The application's own kinds of link (mail:...), each a chip that it opens. */
     const schemes = schemesOf(schemesGiven);
@@ -3231,7 +3366,7 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
     prefsButton.setAttribute('aria-expanded', 'false'); prefsButton.setAttribute('aria-haspopup', 'true'); prefsButton.append(sign('prefs'));
     const prefsMenu = el('div', 'parley-prefs-menu'); prefsMenu.hidden = true; prefsMenu.setAttribute('role', 'group'); prefsMenu.setAttribute('aria-label', said(words, 'settings'));
     const showPrefs = (on) => {
-        if (on && prefsMenu.hidden) steps.opened('prefs', () => showPrefs(false)); else if (!on && !prefsMenu.hidden) steps.closed('prefs');
+        if (on && prefsMenu.hidden) { fillZones(); steps.opened('prefs', () => showPrefs(false)); } else if (!on && !prefsMenu.hidden) steps.closed('prefs');
         prefsMenu.hidden = !on; prefsButton.setAttribute('aria-expanded', String(on)); };
     const switcher = el('div', 'parley-views'); switcher.setAttribute('role', 'group'); switcher.setAttribute('aria-label', said(words, 'view'));
     const choose = (v) => { if (v === as) return; as = v; root.dataset.view = as; unfolded.clear(); seenKeys = null; try { onView?.(as); } catch { /* the page's business */ } repaint(); void refresh(); };
@@ -3253,7 +3388,44 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
     const searchButton = el('button', 'parley-search-open'); searchButton.type = 'button'; searchButton.append(sign('search'), el('span', '', said(words, 'search')));
     /* Every picture and file of the thread, as a gallery. */
     const mediaButton = el('button', 'parley-media-open'); mediaButton.type = 'button'; mediaButton.append(icon('images', 'parley-sign'), el('span', '', said(words, 'media')));
-    prefsMenu.append(switcher, searchButton, mediaButton, dictation);
+    /* TIMES WITH THEIR ZONE (15-11): how they are written, and in which zone. Choices of the device: told to
+       onTimes / onTimeZone for the application to keep, as the others; with no one to tell, kept here. */
+    const keptPref = (key) => { try { return localStorage.getItem(key) ?? ''; } catch { return ''; } };
+    const keepPref = (key, value) => { try { if (value) localStorage.setItem(key, value); else localStorage.removeItem(key); } catch { /* a private window: kept as long as the page */ } };
+    let timesAs = TIMES.includes(timesGiven) ? timesGiven : !onTimes && TIMES.includes(keptPref('parley-times')) ? keptPref('parley-times') : 'short';
+    let zoneChosen = zoneOk(zoneGiven) ?? (onTimeZone ? null : zoneOk(keptPref('parley-zone')));
+    const zoneNow = () => zoneChosen ?? deviceZone();
+    const timesSelect = el('select', 'parley-times-as');
+    for (const v of TIMES) { const o = el('option', '', said(words, `times-${v}`)); o.value = v; timesSelect.append(o); }
+    timesSelect.value = timesAs;
+    timesSelect.addEventListener('change', () => {
+        if (!TIMES.includes(timesSelect.value) || timesSelect.value === timesAs) return;
+        timesAs = timesSelect.value;
+        if (onTimes) { try { onTimes(timesAs); } catch { /* the application's business */ } } else keepPref('parley-times', timesAs === 'short' ? '' : timesAs);
+        repaint();
+    });
+    const zoneSelect = el('select', 'parley-times-zone');
+    /* Some 400 zones: listed the first time the menu opens, not at every mount. */
+    const fillZones = () => {
+        if (zoneSelect.dataset.filled) return;
+        zoneSelect.dataset.filled = 'true';
+        const device = deviceZone();
+        const first = el('option', '', said(words, 'zone-device', { zone: device.split('/').pop().replace(/_/g, ' ') })); first.value = '';
+        let all = []; try { all = Intl.supportedValuesOf('timeZone'); } catch { /* an older browser: the device's and the chosen one */ }
+        const names = [...new Set(['UTC', ...all, ...(zoneChosen ? [zoneChosen] : [])])];
+        zoneSelect.replaceChildren(first, ...names.map((z) => { const o = el('option', '', z.replace(/_/g, ' ')); o.value = z; return o; }));
+        zoneSelect.value = zoneChosen ?? '';
+    };
+    zoneSelect.addEventListener('change', () => {
+        const z = zoneSelect.value === '' ? null : zoneOk(zoneSelect.value);
+        if (z === zoneChosen) return;
+        zoneChosen = z;
+        if (onTimeZone) { try { onTimeZone(z ?? ''); } catch { /* the application's business */ } } else keepPref('parley-zone', z ?? '');
+        repaint();
+    });
+    const line = (key, field) => { const l = el('label', 'parley-times-line'); l.append(el('span', 'parley-times-word', said(words, key)), field); return l; };
+    const timesPrefs = el('div', 'parley-times'); timesPrefs.append(line('times', timesSelect), line('zone', zoneSelect));
+    prefsMenu.append(switcher, searchButton, mediaButton, timesPrefs, dictation);
     prefs.append(prefsButton, prefsMenu);
     prefsButton.addEventListener('click', () => showPrefs(prefsMenu.hidden));
     prefs.addEventListener('keydown', (event) => { if (event.key === 'Escape' && !prefsMenu.hidden) { event.preventDefault(); showPrefs(false); prefsButton.focus(); } });
@@ -3902,6 +4074,7 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
         if (!rich) return [el('p', 'parley-text', maskSecrets(item.text))];
         const refs = new Map(item.refs.map((r) => [r.path, r.open]));
         const paint2 = painter({ words, locale, refs, open, schemes, picture: picture ? pictureUrl : null, pictureUrl, diagram, highlight, cache, urls, zoom: zoomFrom, math: formula, targets: zoneRefs, secrets: liveSecrets, forget,
+            times: { as: timesAs, zone: zoneNow(), at: Number.isFinite(item.at) ? item.at : undefined, now: Date.now() },
             ...(send ? {
                 /* "Talk about it": said at once, with what it is about. */
                 talk: (about) => { void say(said(words, 'talk-text', { name: about.label }), undefined, undefined, undefined, { about }); },
@@ -4501,7 +4674,8 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
         const small = narrow();
         const older = Number(data?.window?.more) > 0 && typeof data?.window?.before === 'string' ? Number(data.window.more) : 0;
         /* What every row is drawn with (the view, the width, the search): changed, every row is made again. */
-        const whole = JSON.stringify([v.view, small, searching ? query.value : '', older]);
+        /* The times written with a zone too: their way, their zone, and today (a time of today says no day). */
+        const whole = JSON.stringify([v.view, small, searching ? query.value : '', older, timesAs, zoneNow(), formatter('en-CA', { timeZone: zoneNow(), dateStyle: 'short' }).format(new Date())]);
         /* Each row by what it shows and what the reader did to it; the rest of the view (its items, already in the rows, apart). */
         const sigs = v.rows.map(sigOf);
         const mark = `${whole}\n${JSON.stringify({ ...v, rows: undefined, items: v.items.length })}\n${sigs.join('\n')}`;

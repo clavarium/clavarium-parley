@@ -407,5 +407,12 @@
   "request-re-forward": "transfert de",
   "request-re-mail": "le mail",
   "line-re-sent": "le mail envoyé",
-  "ref-chip": "Ouvrir {label}"
+  "ref-chip": "Ouvrir {label}",
+  "times": "Heures",
+  "times-short": "Courtes",
+  "times-full": "Complètes",
+  "times-written": "Telles qu'écrites",
+  "zone": "Fuseau",
+  "zone-device": "Navigateur ({zone})",
+  "time-written": "Écrit : {text}"
 }

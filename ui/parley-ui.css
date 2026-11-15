@@ -951,6 +951,14 @@ mark.parley-found[data-now="true"] { outline: 2px solid var(--parley-ask); }
 .parley .parley-auto-wait { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; padding: 2px 12px 8px; font-size: .75rem; color: var(--parley-dim); }
 .parley .parley-auto-wait button { min-height: 28px; padding: 2px 9px; border-radius: 999px; font-size: .75rem; }
 .parley .parley-auto-wait button[aria-pressed="true"] { color: var(--parley-action); border-color: var(--parley-action); }
+/* A time the agent wrote with its zone, shown in the reader's (15-11): a discreet dotted line says it was
+   converted; what was written is on hover, or on a long press. */
+.parley-at { white-space: nowrap; text-decoration: underline dotted; text-decoration-color: var(--parley-dim); text-decoration-thickness: 1px; text-underline-offset: 3px; cursor: help; }
+.parley-at[data-showing="written"] { text-decoration-style: solid; }
+/* How they are written, and in which zone: two lines of the menu of settings. */
+.parley .parley-times { display: grid; gap: 4px; padding: 6px 12px; border-top: 1px solid var(--parley-line); margin-top: 4px; }
+.parley .parley-times-line { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: .85rem; color: var(--parley-dim); }
+.parley .parley-times-line select { min-height: 30px; max-width: 12em; padding: 2px 6px; border: 1px solid var(--parley-line); border-radius: 8px; background: var(--parley-bg); color: var(--parley-text); font: inherit; font-size: .85rem; }
 /* CHARTS (```chart, a Mermaid pie or xychart): SVG in the screen's colours. The series take
    --parley-s1...s6 in this order, never by rank (the charter's categorical palette, one step per
    theme); --parley-s0 is "Other". Marks carry the colour; every word stays in the text's colours. */

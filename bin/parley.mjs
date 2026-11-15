@@ -40,6 +40,8 @@ export const GUIDE = `How to work with the person through Parley
    A formula, a family, zones on a picture: only when
    the topic calls for it (parley --help says how).
    Numbers: a \`\`\`chart block; results: \`\`\`cards.
+   Times: always with their zone (2026-11-15T09:00Z or
+   09:00 UTC); their screen shows them in their own time.
 
 5. After a restart: parley read --last 100
    Older: parley read --before ID (it gives the ID)

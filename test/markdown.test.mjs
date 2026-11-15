@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { fakePage } from './fake-dom.mjs';
-import { mount, markdown, inline, safeLink, plainOf, view, maskSecrets } from '../ui/parley-ui.js';
+import { mount, markdown, inline, safeLink, plainOf, view, maskSecrets, timesIn, TIMES } from '../ui/parley-ui.js';
 import { texts, cited } from '../host/parley-host.mjs';
 
 const SOURCE = readFileSync(fileURLToPath(new URL('../ui/parley-ui.js', import.meta.url)), 'utf8');
@@ -204,4 +204,131 @@ test('the secret chip renders in the PERSON\'s own bubble too (not the raw marke
     assert.ok(chip.textContent.includes('•••••'), 'stars, not the marker');
     assert.ok(chip.textContent.includes('9'), 'with the time left');
     assert.ok(!root.textContent.includes('⟨secret:'), 'the raw marker is never shown');
+});
+
+/* TIMES WITH THEIR ZONE (15-11): read in Paris, on 15 Nov 2026 (UTC+1), a message written that morning. */
+const PARIS = { zone: 'Europe/Paris', locale: 'fr', at: Date.parse('2026-11-15T07:42:00Z'), now: Date.parse('2026-11-15T12:00:00Z') };
+/* What the reader sees: the text, each time found in brackets. */
+const seen = (text, options = {}) => timesIn(text, { ...PARIS, ...options }).map((x) => (typeof x === 'string' ? x : `[${x.text}]`)).join('');
+
+test('times: each form written with its zone is shown in the reader\'s, the time only today, else the day', () => {
+    assert.equal(seen('2026-11-15T09:00:00Z'), '[10:00]', 'today: the time only');
+    assert.equal(seen('2026-11-16T09:00Z'), '[16 nov., 10:00]', 'another day: the day too');
+    assert.equal(seen('2026-11-15T23:30Z'), '[16 nov., 00:30]', 'the day changes as well');
+    assert.equal(seen('2026-11-15T10:00+01:00'), '[10:00]', 'an offset of its own');
+    assert.equal(seen('2026-11-15T04:00-05:00'), '[10:00]');
+    assert.equal(seen('2026-11-15 09:00 UTC'), '[10:00]', 'a space, and UTC in words');
+    assert.equal(seen('15-11 09:00 UTC'), '[10:00]', 'day-month: the year of the message');
+    assert.equal(seen('03-04 09:00 UTC'), '[3 avr., 11:00]', 'day-month, never month-day');
+    assert.equal(seen('a 09:00 (UTC), 9h UTC, 9 h UTC, 09:00 GMT, 09:00Z'), 'a [10:00], [10:00], [10:00], [10:00], [10:00]', 'a time only: the day of the message');
+    assert.equal(seen('9h30 UTC et 11:00 UTC+2'), '[10:30] et [10:00]');
+    assert.equal(seen('Prod at 09:00 UTC, window until 2026-11-16T07:00Z.'), 'Prod at [10:00], window until [16 nov., 08:00].');
+    const [found] = timesIn('2026-11-16T07:00Z', PARIS);
+    assert.deepEqual([found.at, found.written], [Date.parse('2026-11-16T07:00:00Z'), '2026-11-16T07:00Z'], 'the moment, and what was written');
+    assert.equal(seen('2027-01-02T09:00Z'), '[2 janv. 2027, 10:00]', 'another year: the year too');
+});
+
+test('times: winter and summer in Paris (CET +1, CEST +2), the change of day both ways', () => {
+    assert.equal(seen('2026-07-01 09:00 UTC'), '[1 juil., 11:00]', 'summer: +2');
+    assert.equal(seen('2026-01-15T09:00Z'), '[15 janv., 10:00]', 'winter: +1');
+    assert.equal(seen('2026-03-29T00:59Z'), '[29 mars, 01:59]', 'just before the change of March');
+    assert.equal(seen('2026-03-29T01:00Z'), '[29 mars, 03:00]', 'just after it');
+    assert.equal(seen('2026-10-25T00:30Z'), '[25 oct., 02:30]', 'October, before: still summer');
+    assert.equal(seen('2026-10-25T01:30Z'), '[25 oct., 02:30]', 'after: winter again');
+    /* A time only takes the message's day: in summer it is two hours on. */
+    assert.equal(seen('a 09:00 UTC', { at: Date.parse('2026-07-01T06:00:00Z'), now: Date.parse('2026-07-01T12:00:00Z') }), 'a [11:00]');
+    assert.equal(seen('a 23:30 UTC'), 'a [16 nov., 00:30]', 'its day changes in Paris');
+    /* Written east of UTC, the message's day is the one of that zone. */
+    assert.equal(seen('09:00 UTC+9', { at: Date.parse('2026-11-14T20:00:00Z'), now: Date.parse('2026-11-15T12:00:00Z') }), '[01:00]', 'the 15th in Tokyo: today in Paris');
+    assert.equal(seen('2026-11-15T09:00Z', { zone: 'America/New_York', locale: 'en-US' }), '[4:00 AM]', 'elsewhere, its own way');
+});
+
+test('times: nothing else is touched -- a date alone, a time without zone, relative words, numbers, ranges, nonsense', () => {
+    for (const text of ['2026-11-15', 'a 09:00', 'at 9:00 tomorrow', 'demain 9 h, dans 2 h', '1763197200', 'demain 09:00 UTC', 'tomorrow at 9h UTC', 'lundi 09:00 UTC',
+        'le 16 a 09:00 UTC', '16 nov. 09:00 UTC', '2026-11-16 at 07:00 UTC', 'dans 2 h UTC', '09:00-10:00 UTC', '9h-10h UTC', 'v1.2.10:00Z', 'build-09:00Z',
+        '25:00 UTC', '09:75 UTC', '2026-13-01T09:00Z', '2026-02-30T09:00Z', '31-02 09:00 UTC', '2026-11-15T09:00+15:00', '09:00 UTCX', '2026-11-15T09:00Zulu', 'score 3-2 UTC', 'UTC 09:00'])
+        assert.equal(seen(text), text, text);
+});
+
+test('times: "as written" changes nothing; "full" says the weekday', () => {
+    assert.deepEqual(TIMES, ['short', 'full', 'written']);
+    assert.deepEqual(timesIn('at 09:00 UTC, 2026-11-16T09:00Z', { ...PARIS, as: 'written' }), ['at 09:00 UTC, 2026-11-16T09:00Z']);
+    assert.equal(seen('2026-11-15T09:00Z and 2026-11-16T09:00Z', { as: 'full' }), '[dim. 15 nov., 10:00] and [lun. 16 nov., 10:00]');
+    assert.equal(seen('2026-11-15T09:00Z', { locale: 'en-GB', as: 'full' }), '[Sun 15 Nov, 10:00]');
+});
+
+/* The screen, in Paris: a message of the agent with times in its text, its code, a link. */
+async function timed(t, text, options = {}) {
+    const leave = fakePage();
+    const root = document.createElement('div');
+    document.body.append(root);
+    const handle = mount(root, { load: async () => ({ messages: [{ from: 'agent', id: 'm', at: new Date(PARIS.at).toISOString(), kind: 'say', text }] }), send: async () => {}, words: texts('fr'), every: 0, touch: false,
+        markdown: true, locale: 'fr', timeZone: 'Europe/Paris', ...options });
+    t.after(() => { handle.destroy(); leave(); });
+    await settle(); await settle();
+    return { root, said: root.querySelector('.parley-said') };
+}
+
+test('times on screen: a <time> with the moment, what was written on hover and for a screen reader; code and links as written', async (t) => {
+    const text = 'Prod at 09:00 UTC, until 2026-11-16T07:00Z.\n\nRun `at 09:00 UTC` and see [the 09:00 UTC plan](https://example.com/plan).\n\n```\n2026-11-16T07:00Z\n```';
+    const { said } = await timed(t, text);
+    const times = said.querySelectorAll('time.parley-at');
+    assert.equal(times.length, 2, 'two times, none in code or the link');
+    const want = (x) => timesIn(x, { ...PARIS, now: Date.now() })[0].text;
+    assert.deepEqual(times.map((e) => e.textContent), [want('2026-11-15T09:00Z'), want('2026-11-16T07:00Z')], 'in Paris, today or not as the clock says');
+    assert.equal(times[1].getAttribute('datetime'), '2026-11-16T07:00Z');
+    assert.equal(times[1].title, 'Écrit : 2026-11-16T07:00Z');
+    assert.equal(times[1].getAttribute('aria-label'), `${times[1].textContent} (Écrit : 2026-11-16T07:00Z)`);
+    assert.equal(times[0].title, 'Écrit : 09:00 UTC');
+    assert.deepEqual(said.querySelectorAll('code').map((c) => c.textContent), ['at 09:00 UTC', '2026-11-16T07:00Z'], 'inline code and a block of code untouched');
+    assert.equal(said.querySelector('a.parley-link').textContent, 'the 09:00 UTC plan', 'a link untouched');
+    assert.ok(!said.querySelector('pre').querySelector('time') && !said.querySelector('a.parley-link').querySelector('time'));
+});
+
+test('times on screen: a long press shows what was written, a few seconds; a mouse does nothing', async (t) => {
+    const { said } = await timed(t, 'Prod at 09:00 UTC.');
+    t.mock.timers.enable({ apis: ['setTimeout'] });
+    const time = said?.querySelector('time.parley-at');
+    assert.ok(time, 'a time');
+    const shownText = time.textContent;
+    time.dispatchEvent({ type: 'pointerdown', pointerType: 'mouse' }); t.mock.timers.tick(600);
+    assert.equal(time.textContent, shownText, 'a mouse has the hover');
+    time.dispatchEvent({ type: 'pointerdown', pointerType: 'touch' }); t.mock.timers.tick(200); time.dispatchEvent({ type: 'pointerup', pointerType: 'touch' }); t.mock.timers.tick(600);
+    assert.equal(time.textContent, shownText, 'a short tap: nothing');
+    time.dispatchEvent({ type: 'pointerdown', pointerType: 'touch' }); t.mock.timers.tick(500);
+    assert.equal(time.textContent, '09:00 UTC', 'held: as written');
+    t.mock.timers.tick(4100);
+    assert.equal(time.textContent, shownText, 'then back');
+});
+
+test('times in the menu of settings: their way and their zone, told to the application, drawn again at once', async (t) => {
+    const told = []; const zones = [];
+    const { root } = await timed(t, 'Prod at 09:00 UTC.', { onTimes: (v) => told.push(v), onTimeZone: (z) => zones.push(z) });
+    const as = root.querySelector('select.parley-times-as');
+    const zone = root.querySelector('select.parley-times-zone');
+    assert.ok(as && zone, 'two lines in the menu');
+    assert.deepEqual(as.querySelectorAll('option').map((o) => [o.value, o.textContent]), [['short', 'Courtes'], ['full', 'Complètes'], ['written', "Telles qu'écrites"]]);
+    assert.equal(as.value, 'short');
+    root.querySelector('.parley-prefs-open').click();
+    const options = zone.querySelectorAll('option');
+    assert.equal(options[0].value, '', 'the browser\'s first');
+    assert.match(options[0].textContent, /^Navigateur \(.+\)$/);
+    assert.ok(options.some((o) => o.value === 'Asia/Tokyo') && options.some((o) => o.value === 'UTC'));
+    assert.equal(zone.value, 'Europe/Paris', 'the one given');
+    as.value = 'written'; as.dispatchEvent({ type: 'change' }); await settle();
+    assert.deepEqual(told, ['written']);
+    assert.equal(root.querySelector('.parley-said').querySelector('time.parley-at'), null, 'as written: no time converted');
+    assert.ok(root.querySelector('.parley-said').textContent.includes('Prod at 09:00 UTC.'));
+    as.value = 'short'; as.dispatchEvent({ type: 'change' }); await settle();
+    zone.value = 'Asia/Tokyo'; zone.dispatchEvent({ type: 'change' }); await settle();
+    assert.deepEqual(zones, ['Asia/Tokyo']);
+    assert.equal(root.querySelector('.parley-said').querySelector('time.parley-at').getAttribute('datetime'), '2026-11-15T09:00Z', 'the same moment');
+    assert.match(root.querySelector('.parley-said').querySelector('time.parley-at').textContent, /18:00$/, 'in Tokyo now');
+    zone.value = ''; zone.dispatchEvent({ type: 'change' }); await settle();
+    assert.deepEqual(zones, ['Asia/Tokyo', ''], 'back to the browser\'s');
+});
+
+test('times: what the agent wrote stays as written for the thread and its copy -- markdown() does not change', () => {
+    assert.deepEqual(plainOf(inline('at 09:00 UTC')), 'at 09:00 UTC');
+    assert.ok(!SOURCE.slice(SOURCE.indexOf('export function markdown('), SOURCE.indexOf('export function markdown(') + 4000).includes('timesIn'));
 });

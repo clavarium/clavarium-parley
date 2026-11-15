@@ -407,5 +407,12 @@
   "request-re-forward": "forwarding",
   "request-re-mail": "the mail",
   "line-re-sent": "the mail sent",
-  "ref-chip": "Open {label}"
+  "ref-chip": "Open {label}",
+  "times": "Times",
+  "times-short": "Short",
+  "times-full": "Full",
+  "times-written": "As written",
+  "zone": "Time zone",
+  "zone-device": "Browser ({zone})",
+  "time-written": "Written: {text}"
 }
