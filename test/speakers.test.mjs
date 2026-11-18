@@ -64,3 +64,12 @@ test('a message signed by an AI or a program outside a room (an API key) is not 
     assert.match(read, /Message from Home automation \(API key\), an AI or a program writing here \(answer it here, with tell and no to: it reads this thread back\): Lights are off\./);
     assert.doesNotMatch(read, /a voice box|Voice boxes here|apikey:k1/);
 });
+
+/* 18-11, the owner: alone with its AI, nobody is named -- the sides say who speaks; once another speaks, the AI is named. */
+test('who says it: alone with its AI no name above its messages; with a voice box or another speaker, the AI named again', () => {
+    const at = (m) => new Date(Date.parse('2026-11-18T09:00:00Z') + m * 60_000).toISOString();
+    const alone = view({ messages: [{ from: 'person', id: 'a', at: at(0), text: 'hello' }, { from: 'agent', id: 'b', at: at(1), kind: 'say', text: 'hi' }] }, { agentName: 'Assistant' });
+    assert.deepEqual(alone.items.map((x) => x.name), ['', ''], 'no « Assistant » in a talk of two');
+    const three = view({ messages: [{ from: 'person', id: 'a', at: at(0), text: 'hello', by: { name: 'Salon' } }, { from: 'agent', id: 'b', at: at(1), kind: 'say', text: 'hi' }] }, { agentName: 'Assistant' });
+    assert.deepEqual(three.items.map((x) => x.name), ['Salon', 'Assistant'], 'another speaker: each named');
+});

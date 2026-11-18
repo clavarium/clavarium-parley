@@ -1008,10 +1008,13 @@ export function view(data, { words = {}, view: as = 'simple', now = Date.now(), 
     });
     /* Who says it: once above each run of messages of one side. */
     let side = '';
+    /* Only the person and its AI here (18-11, the owner): the AI is not named either -- the sides say who speaks. Its
+       name comes back once anyone else speaks in the thread (a voice box, a key, another AI). */
+    const others = items.some((it) => it.by);
     for (const item of items) {
         /* A voice box is a speaker of its own (#215): named by itself, never "You". */
         const who = item.from === 'system' ? '' : item.by ? `by:${item.by}` : item.from;
-        item.name = who && who !== side ? (item.by ? item.by : who === 'person' ? '' : agentName2) : '';   /* the person here: no « You » (03-11), their side says it */
+        item.name = who && who !== side ? (item.by ? item.by : who === 'person' || !others ? '' : agentName2) : '';   /* the person here: no « You » (03-11), their side says it */
         side = who;
     }
     /* It waits, its last word a message that is not a question with choices: a
@@ -1229,7 +1232,8 @@ export function view(data, { words = {}, view: as = 'simple', now = Date.now(), 
                 : live ? { state: 'working', text: `${state('working')}${doingNow ? ` - ${doingNow}` : ''}`, when: whole(stamp(live.at), locale) }
                     : status ? null : { state: 'none', text: said(words, 'no-status'), when: '' },
         empty: messages.length === 0 && shown.length === 0 ? said(words, 'empty') : null,
-        rows: shown.map(({ at, end, ...row }) => row),
+        /* A message keeps when it was written (`written`, ms): a time it says without its day is of that day (18-11). */
+        rows: shown.map(({ at, end, ...row }) => (row.type === 'message' && Number.isFinite(at) ? { ...row, written: at } : row)),
         items: items.map(({ at, type, key, ...item }) => item),
         unread: Number(data?.unread) || 0,
         pins,
@@ -4074,7 +4078,7 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
         if (!rich) return [el('p', 'parley-text', maskSecrets(item.text))];
         const refs = new Map(item.refs.map((r) => [r.path, r.open]));
         const paint2 = painter({ words, locale, refs, open, schemes, picture: picture ? pictureUrl : null, pictureUrl, diagram, highlight, cache, urls, zoom: zoomFrom, math: formula, targets: zoneRefs, secrets: liveSecrets, forget,
-            times: { as: timesAs, zone: zoneNow(), at: Number.isFinite(item.at) ? item.at : undefined, now: Date.now() },
+            times: { as: timesAs, zone: zoneNow(), at: Number.isFinite(item.written) ? item.written : Number.isFinite(item.at) ? item.at : undefined, now: Date.now() },
             ...(send ? {
                 /* "Talk about it": said at once, with what it is about. */
                 talk: (about) => { void say(said(words, 'talk-text', { name: about.label }), undefined, undefined, undefined, { about }); },
