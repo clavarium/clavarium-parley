@@ -68,6 +68,8 @@
   "secret": "secret",
   "secret-hint": "A secret you pasted, kept out of the chat -- the tool uses it, you never see it, and it clears itself.",
   "secret-left": "expires in {mins} min",
+  "secret-forgotten": "deleted",
+  "secret-forget-failed": "not deleted: {why}",
   "secret-forget": "Forget it now",
   "fold-soon": "Folds soon · tap to keep it open",
   "fold-keep": "Keep open",

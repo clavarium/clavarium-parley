@@ -35,7 +35,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { randomUUID, createHash } from 'node:crypto';
 import { createInterface } from 'node:readline';
 
-export const VERSION = '0.17.96-next.1';
+export const VERSION = '0.17.97-next.1';
 /* A message may be long: the screen folds it, and shows its short version first. */
 export const TEXT_MAX = 16000;
 /* Its short version: a title of one or two lines. */

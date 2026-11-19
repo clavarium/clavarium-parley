@@ -629,9 +629,17 @@ function secretChipEl(name, words, liveSecrets, forget) {
     const chip = el('span', 'parley-secret'); chip.title = said(words, 'secret-hint');
     chip.append(el('span', 'parley-secret-dots', '•••••'));
     const live = (typeof liveSecrets === 'function' ? liveSecrets() : liveSecrets)?.[name];
+    /* Deleted by the person a moment ago: said so, as long as the application keeps it marked gone. */
+    if (live?.gone === true) { chip.classList.add('parley-secret-gone'); chip.append(el('span', 'parley-secret-label', said(words, 'secret-forgotten'))); return chip; }
     const mins = live ? Math.max(1, Math.round(live.expiresInMs / 60_000)) : 0;
     chip.append(el('span', 'parley-secret-label', live ? said(words, 'secret-left', { mins }) : said(words, 'secret')));
-    if (live && forget) { const x = el('button', 'parley-secret-forget'); x.type = 'button'; x.append(sign('trash')); x.title = said(words, 'secret-forget'); x.setAttribute('aria-label', said(words, 'secret-forget')); x.addEventListener('click', (e) => { e.stopPropagation(); forget(name); }); chip.append(x); }
+    if (live && forget) { const x = el('button', 'parley-secret-forget'); x.type = 'button'; x.append(sign('trash')); x.title = said(words, 'secret-forget'); x.setAttribute('aria-label', said(words, 'secret-forget')); x.addEventListener('click', (e) => {
+        e.stopPropagation(); x.disabled = true;
+        /* Said either way (19-11, the owner: it said nothing, deleted or not): « deleted », or why not. */
+        const label = chip.querySelector('.parley-secret-label');
+        Promise.resolve().then(() => forget(name)).then(() => { label.textContent = said(words, 'secret-forgotten'); chip.classList.add('parley-secret-gone'); x.remove(); },
+            (error) => { label.textContent = said(words, 'secret-forget-failed', { why: String(error?.message ?? error ?? '').slice(0, 120) }); chip.classList.add('parley-secret-failed'); x.disabled = false; });
+    }); chip.append(x); }
     return chip;
 }
 /* Plain text (the person's own words), with any lifted-secret marker turned into the chip -- not Markdown. */

@@ -183,7 +183,24 @@ test('a live secret chip shows the minutes left and a button that forgets it', a
     const btn = chip.querySelector('.parley-secret-forget');
     assert.ok(btn, 'a forget button when it is live');
     btn.click();
+    await new Promise((r) => setTimeout(r, 0));
     assert.equal(forgot, 'SECRET_0A1B2C3D4E', 'clicking it forgets that secret');
+    assert.match(chip.textContent, /deleted/, '19-11: it says so');
+    assert.ok(!chip.querySelector('.parley-secret-forget'), 'and its button goes');
+});
+
+test('a secret not deleted says why; one deleted a moment ago stays said « deleted » (19-11)', async (t) => {
+    const marker = '⟨secret:SECRET_0A1B2C3D4E⟩';
+    const { root } = await shown(t, `here is ${marker}`, { secrets: { SECRET_0A1B2C3D4E: { expiresInMs: 9 * 60_000 } }, forget: async () => { throw new Error('the vault is locked'); } });
+    const chip = root.querySelector('.parley-secret');
+    chip.querySelector('.parley-secret-forget').click();
+    await new Promise((r) => setTimeout(r, 0));
+    assert.match(chip.textContent, /not deleted: the vault is locked/);
+    assert.ok(chip.querySelector('.parley-secret-forget'), 'its button stays, to try again');
+    const gone = await shown(t, `here is ${marker}`, { secrets: { SECRET_0A1B2C3D4E: { gone: true } }, forget: () => {} });
+    const c2 = gone.root.querySelector('.parley-secret');
+    assert.match(c2.textContent, /deleted/);
+    assert.ok(!c2.querySelector('.parley-secret-forget'));
 });
 
 test('a secret with nothing live shown about it: stars, no button (expired or not passed)', async (t) => {
