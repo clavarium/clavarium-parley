@@ -164,3 +164,11 @@ test('a room topic: short as it is, long cut at a word with an ellipsis, a membe
     assert.equal(roomTopic('@{0f8e2c1a-1234-4abc-9def-0123456789ab} tu regardes ?'), 'tu regardes ?');
     assert.equal(roomTopic(undefined), '');
 });
+
+test('19-11: a room told to an AI keeps its limit of hand-overs between AIs and what is left; nothing else slips in', async () => {
+    const { roomOf } = await import('../host/parley-host.mjs');
+    assert.deepEqual(roomOf({ id: 'r1', name: 'Équipe', members: [], handovers: { perHour: 60, left: 12, extra: 'x' } }).handovers, { perHour: 60, left: 12 });
+    assert.deepEqual(roomOf({ id: 'r1', name: 'Équipe', members: [], handovers: { perHour: 0, left: 5 } }).handovers, { perHour: 0 }, 'no limit: nothing left to count');
+    assert.equal(roomOf({ id: 'r1', name: 'Équipe', members: [], handovers: { perHour: -1 } }).handovers, undefined);
+    assert.equal(roomOf({ id: 'r1', name: 'Équipe', members: [] }).handovers, undefined);
+});

@@ -132,7 +132,10 @@ export function roomOf(v) {
     if (!v || typeof v !== 'object') return null;
     const id = oneLine(v.id, 80); const name = oneLine(v.name, 60);
     const members = Array.isArray(v.members) ? v.members.map(byOf).filter(Boolean).slice(0, 40) : [];
-    return id && name ? { id, name, members } : null;
+    /* Hand-overs between its AIs an hour, and what is left now (19-11): told to each AI, to say why nothing came. */
+    const h = v.handovers && typeof v.handovers === 'object' ? v.handovers : null;
+    const handovers = h && Number.isInteger(h.perHour) && h.perHour >= 0 ? { perHour: h.perHour, ...(h.perHour > 0 && Number.isInteger(h.left) && h.left >= 0 ? { left: Math.min(h.left, h.perHour) } : {}) } : null;
+    return id && name ? { id, name, members, ...(handovers ? { handovers } : {}) } : null;
 }
 export const SPEAKERS_MAX = 20;
 export function byOf(v) {
