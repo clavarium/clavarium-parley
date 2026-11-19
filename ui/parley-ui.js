@@ -203,6 +203,9 @@
  *                          microphone wears a dot while it is on. The
  *                          person's choice is told to onAutoSend(on), for the
  *                          application to keep.
+ *   stopOnSend, onStopOnSend  "turn the microphone off when I send" (on by default): the person's own Send
+ *                          ends the dictation; an automatic send does not. Told to onStopOnSend(on), or kept
+ *                          in the browser when nobody is told.
  *   replies                [{ label, text, send }]: ready answers, above the
  *                          box, after the choices of the question the agent
  *                          asks now. `send: true` sends the text at once,
@@ -277,7 +280,7 @@ export const VIEWS = Object.freeze(['simple', 'detailed']);
 /* The words this screen uses: a dictionary needs these keys. */
 export const KEYS = Object.freeze(['send', 'placeholder', 'empty', 'view', 'simple', 'detailed', 'working', 'waiting', 'done', 'no-status', 'asks', 'open', 'outside',
     'not-read', 'read', 'remind', 'reminded', 'urgent', 'urgent-told', 'steps', 'no-steps', 'files', 'no-files', 'terminal', 'not-sent', 'send-again', 'step-one', 'steps-many', 'today', 'yesterday', 'quiet', 'stopped',
-    'mic', 'mic-stop', 'auto-send', 'auto-on', 'settings', 'voice-placeholder', 'voice-calibrating', 'voice-listening', 'voice-hearing', 'voice-transcribing', 'voice-wait', 'voice-off', 'replies', 'replies-more', 'replies-less',
+    'mic', 'mic-stop', 'auto-send', 'auto-on', 'stop-on-send', 'stop-on-send-off', 'settings', 'voice-placeholder', 'voice-calibrating', 'voice-listening', 'voice-hearing', 'voice-transcribing', 'voice-wait', 'voice-off', 'replies', 'replies-more', 'replies-less',
     'recommended', 'recommended-value', 'recommended-order', 'suggestion', 'suggest-take',
     'attach', 'remove-file', 'sending-files', 'attach-where', 'draw-open', 'draw-again', 'drawn-from', 'draw-marked', 'draw-colour', 'draw-undo', 'draw-clear', 'draw-cancel', 'draw-done', 'draw-note', 'draw-hint',
     'copy', 'copied', 'copy-md', 'copy-rich', 'see-details', 'see-more', 'see-less', 'note', 'tip', 'important', 'warning', 'caution', 'badge-ok', 'badge-todo', 'badge-blocked', 'badge-warn',
@@ -3308,7 +3311,7 @@ export function requestBlock(list, ctx = {}) {
 }
 
 export function mount(root, { load, send, words = {}, open, terminal, remind, view: first = 'simple', onView, every = 3000, locale,
-    voice: speaking, autoSend = false, onAutoSend, autoSendMs = AUTO_SEND_MS, onAutoSendMs, replies: ready = [], enter = 'auto', touch, attach, act,
+    voice: speaking, autoSend = false, onAutoSend, autoSendMs = AUTO_SEND_MS, onAutoSendMs, stopOnSend: stopOnSendGiven, onStopOnSend, replies: ready = [], enter = 'auto', touch, attach, act,
     markdown: rich = false, picture, diagram, highlight, agentName, agentTool, react, reactions: offered = REACTIONS,
     secrets: liveSecrets = {}, forget,
     receivedAfter = RECEIVED_MS, noAnswerAfter = NO_ANSWER_MS, back = true, draft: draftKey = '', math: mathGiven, refs: zoneRefs,
@@ -3395,8 +3398,13 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
     const waitButtons = AUTO_SEND_CHOICES.map((ms) => { const b = button(`${ms / 1000} s`, '', () => { waitMs = ms; try { onAutoSendMs?.(ms); } catch { /* the application's business */ } paintWait(); }); b.dataset.ms = String(ms); return b; });
     const paintWait = () => { for (const b of waitButtons) b.setAttribute('aria-pressed', String(Number(b.dataset.ms) === waitMs)); };
     waitRow.append(el('span', 'parley-auto-wait-word', said(words, 'auto-wait')), ...waitButtons); paintWait();
+    /* "Turn the microphone off when I send" (19-11, the owner): on by default, a choice of the device -- told to
+       onStopOnSend for the application to keep, else kept here. Only the person's own Send: an automatic one goes on listening. */
+    const stopButton = el('button', 'parley-stop-on-send'); stopButton.type = 'button';
+    const stopOff = el('span', 'parley-auto-off', said(words, 'stop-on-send-off'));
+    stopButton.append(el('span', 'parley-auto-word', said(words, 'stop-on-send')), stopOff);
     /* Under a heading of its own: it is about dictation. */
-    const dictation = el('div', 'parley-dictation'); dictation.append(el('p', 'parley-menu-head', said(words, 'dictation')), autoButton, waitRow);
+    const dictation = el('div', 'parley-dictation'); dictation.append(el('p', 'parley-menu-head', said(words, 'dictation')), autoButton, waitRow, stopButton);
     const searchButton = el('button', 'parley-search-open'); searchButton.type = 'button'; searchButton.append(sign('search'), el('span', '', said(words, 'search')));
     /* Every picture and file of the thread, as a gallery. */
     const mediaButton = el('button', 'parley-media-open'); mediaButton.type = 'button'; mediaButton.append(icon('images', 'parley-sign'), el('span', '', said(words, 'media')));
@@ -5292,6 +5300,8 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
     let starting = false;
     let hearing = '';
     let auto = autoSend === true;
+    let stopOnSend = typeof stopOnSendGiven === 'boolean' ? stopOnSendGiven : (() => { try { return localStorage.getItem('parley-stop-on-send') !== 'off'; } catch { return true; } })();
+    let closeAfter = false;
     let autoTimer;
     /* The countdown before an automatic send, drawn around the arrow (CSS: data-countdown). */
     const disarm = () => { clearTimeout(autoTimer); autoTimer = undefined; delete go.dataset.countdown; };
@@ -5313,6 +5323,7 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
         const label = said(words, on ? 'mic-stop' : 'mic');
         mic.title = auto ? `${label} - ${said(words, 'auto-on')}` : label; mic.setAttribute('aria-label', mic.title);
         autoButton.setAttribute('aria-pressed', String(auto));
+        stopButton.setAttribute('aria-pressed', String(stopOnSend)); stopOff.hidden = stopOnSend;
         field.dataset.voice = form.dataset.voice = on ? hearing || 'listening' : '';
         paintGo(); paintSuggest();
         box.placeholder = said(words, on ? 'voice-placeholder' : 'placeholder');
@@ -5331,7 +5342,7 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
         if (levelFrame === null) levelFrame = requestAnimationFrame(paintLevel);
     };
     const levelOff = () => { levels = []; delete heard.dataset.level; for (const bar of heardBars) bar.style.transform = ''; };
-    const sendWritten = () => { clearTimeout(writing); writing = null; void sendBox(); paintVoice(); };
+    const sendWritten = () => { clearTimeout(writing); writing = null; void sendBox(); if (closeAfter) { closeAfter = false; quiet(); return; } paintVoice(); };
     const quiet = () => {
         const was = stopping; stopping = null;
         try { was?.(); } catch { /* the application's business */ }
@@ -5383,6 +5394,11 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
         paintVoice();
         stayIn();
     });
+    stopButton.addEventListener('click', () => {
+        stopOnSend = !stopOnSend;
+        if (onStopOnSend) { try { onStopOnSend(stopOnSend); } catch { /* the application's business */ } } else { try { if (stopOnSend) localStorage.removeItem('parley-stop-on-send'); else localStorage.setItem('parley-stop-on-send', 'off'); } catch { /* a private window */ } }
+        paintVoice(); stayIn();
+    });
     autoButton.addEventListener('click', () => {
         auto = !auto;
         if (!auto) disarm();
@@ -5395,10 +5411,12 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
         /* Send pressed while a phrase is still being heard or written: it goes with it. */
         if (stopping && (hearing === 'hearing' || hearing === 'transcribing')) {
             if (!writing) writing = setTimeout(sendWritten, WRITE_WAIT_MS);
+            closeAfter = stopOnSend;
             paintVoice(); stayIn();
             return;
         }
         void sendBox();
+        if (stopping && stopOnSend) quiet();
         stayIn();
     });
     /* ---- what was sent, again: ↑ on the first line of the box brings back the messages sent before, ↓ on its

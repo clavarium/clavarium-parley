@@ -46,7 +46,8 @@ function chat(t, options = {}) {
 }
 
 test('dictating grows nothing: what the microphone does is said inside the box, and nothing below it takes room', async (t) => {
-    const { root, $, on, closed, refuse } = chat(t);
+    /* The microphone kept on after a send here (its own choice): see the test after for the default. */
+    const { root, $, on, closed, refuse } = chat(t, { stopOnSend: false });
     const words = texts('en');
     await settle();
     const idle = room(root);
@@ -292,4 +293,32 @@ test('the bars follow the level the application gives, are decorative, and stop 
     assert.deepEqual(bars.map((b) => b.style.transform), Array(5).fill(''), 'stopped: drawn no more');
     on().level(1); await frame();
     assert.equal(voice.dataset.level, undefined, 'a level after the end changes nothing');
+});
+
+test("19-11, the owner: the person's Send turns the microphone off (the default), a phrase being written goes first; an automatic send keeps it on; a choice of the device", async (t) => {
+    const told = [];
+    const { $, on, closed, sent } = chat(t, { onStopOnSend: (v) => told.push(v) });
+    await settle();
+    const mic = $('.parley-mic');
+    mic.click(); await settle();
+    on().phrase('first thing'); await settle();
+    $('.parley-send').click(); await settle();
+    assert.equal(closed(), 1, 'sent: the microphone off');
+    assert.equal(mic.getAttribute('aria-pressed'), 'false');
+    assert.ok(sent.includes('first thing'));
+    mic.click(); await settle();
+    on().state('hearing');
+    $('.parley-send').click();
+    on().phrase('said while sending'); await settle();
+    assert.equal(closed(), 2, 'the phrase being written went first, then the microphone off');
+    assert.ok(sent.includes('said while sending'));
+    const stop = $('.parley-stop-on-send');
+    assert.equal(stop.getAttribute('aria-pressed'), 'true');
+    stop.click();
+    assert.deepEqual(told, [false], 'its choice told to the application');
+    mic.click(); await settle();
+    on().phrase('kept on'); await settle();
+    $('.parley-send').click(); await settle();
+    assert.equal(closed(), 2, 'off: the microphone stays on');
+    assert.equal(mic.getAttribute('aria-pressed'), 'true');
 });

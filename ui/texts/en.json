@@ -144,6 +144,8 @@
   "found": "{n} of {m}",
   "newest": "Back to the newest",
   "auto-send-off": "Off: what you dictate waits in the box until you press Send.",
+  "stop-on-send": "Turn the microphone off when I send",
+  "stop-on-send-off": "Off: the microphone stays on after sending.",
   "dictation": "Dictation",
   "react": "React",
   "react-remove": "Take back",

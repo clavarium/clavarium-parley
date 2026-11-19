@@ -144,6 +144,8 @@
   "found": "{n} sur {m}",
   "newest": "Revenir aux derniers messages",
   "auto-send-off": "Désactivé : le texte dicté attend dans la case que vous appuyiez sur Envoyer.",
+  "stop-on-send": "Couper le micro quand j'envoie",
+  "stop-on-send-off": "Désactivé : le micro reste ouvert après l'envoi.",
   "dictation": "Dictée",
   "react": "Réagir",
   "react-remove": "Retirer",
