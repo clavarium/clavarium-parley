@@ -124,3 +124,24 @@ test('in French: the words of the bar and of the menu', async (t) => {
     root.querySelector('.parley-said[data-id="a1"]').querySelector('.parley-react-open').click();
     assert.equal(root.querySelector('.parley-react-pin').textContent, 'Désépingler');
 });
+
+test("a pinned message stays unfolded; a click on its pin opens its menu, Unpin in it (20-11)", async (t) => {
+    const long = Array.from({ length: 30 }, (_, i) => `Line ${i + 1}.`).join('\n\n');
+    const msgs = [
+        { from: 'agent', id: 'L1', at: at(0), kind: 'say', text: long },
+        { from: 'agent', id: 'L2', at: at(1), kind: 'say', text: long },
+        { from: 'agent', id: 'z', at: at(2), kind: 'say', text: 'The newest.' },
+    ];
+    const pinned = [];
+    const c = chat(t, { messages: msgs, pins: [pin('L1', 3, 'Line 1.')] }, { pin: async (id, on) => { pinned.push([id, on]); } });
+    await settle(); await settle();
+    assert.equal(c.$('.parley-said[data-id="L1"]').querySelector('[data-clip="true"]'), null, 'pinned: whole');
+    assert.ok(c.$('.parley-said[data-id="L2"]').querySelector('[data-clip="true"]'), 'not pinned: folded as before');
+    const mark = c.$('.parley-said[data-id="L1"]').querySelector('.parley-pinned-mark');
+    assert.equal(mark.tagName.toLowerCase(), 'button');
+    mark.click();
+    assert.equal(c.$('.parley-react').hidden, false); const unpin = c.$('.parley-react').querySelectorAll('button').find((b) => /Unpin/.test(b.textContent));
+    assert.ok(unpin, 'its menu, with Unpin');
+    unpin.click(); await settle();
+    assert.deepEqual(pinned, [['L1', false]]);
+});

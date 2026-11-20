@@ -3360,7 +3360,7 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
     /* Only a message that will really look different once folded gets the countdown: one with
        a short version, or longer than the fold. Anything else would show "folds soon" and
        then stay as it was. */
-    const foldsAway = (item) => Boolean(item.short) || linesOf(item.text) > FOLD_LINES + 2;
+    const foldsAway = (item) => !item.pinned && (Boolean(item.short) || linesOf(item.text) > FOLD_LINES + 2);
     const reduceMotion = () => typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
     /* Drawings and coloured code, made once each; the addresses of drawings, let go at the end. */
     const cache = new Map();
@@ -4109,7 +4109,8 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
         const more = (key, open2) => { const b = button(said(words, open2 ? 'see-less' : key), 'parley-unfold', () => { if (open2) expanded.delete(item.id); else expanded.add(item.id); repaint(); }); b.setAttribute('aria-expanded', String(open2)); return b; };
         /* A question is never folded; the detailed view and a search unfold everything. */
         /* Nor is the newest message of the agent: nothing seems left below it, nothing to scroll for. */
-        if (item.kind === 'ask' || item.last || v.view === 'detailed' || searching || foldKept.has(item.id)) return item.short ? [shortLine(), whole2()] : [whole2()];
+        /* Nor a pinned one (20-11, the owner: pinned is kept to be read). */
+        if (item.kind === 'ask' || item.last || item.pinned || v.view === 'detailed' || searching || foldKept.has(item.id)) return item.short ? [shortLine(), whole2()] : [whole2()];
         /* #87: a message the newest just pushed up stays full, with a slow countdown bar, until the countdown ends -- then it folds. A tap on the bar keeps it open. */
         if (!reduceMotion() && foldAt.has(item.id)) {
             const elapsed = Date.now() - foldAt.get(item.id);
@@ -4256,7 +4257,7 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
             if (item.time) head.append(time(item.trail ? `${item.time} - ${item.trail.label}` : item.time, item.when));
             bubble.append(head);
             /* React to it: a button that shows on hover (a right click too); on a touch screen, a short tap on the message shows it a few seconds, in its corner. */
-            if (item.pinned) head.append(pinMark());
+            if (item.pinned) head.append(pinMark(item, bubble));
             if (['say', 'ask', 'show'].includes(item.kind) && ((react && reactions.length) || pinHook || (item.text ?? '').trim())) {
                 const r = el('button', 'parley-react-open'); r.type = 'button'; r.title = said(words, 'react'); r.setAttribute('aria-label', r.title); r.setAttribute('aria-haspopup', 'true');
                 r.append(icon('smile-plus', 'parley-sign'));
@@ -4266,7 +4267,7 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
         } else {
             if (item.name) { const who = el('p', 'parley-who-person'); if (item.look) who.append(lookSign(item.look)); who.append(item.name); bubble.append(who); }
             /* Its pin, on a line of its own: the name above may be left out when the same one speaks again. */
-            if (item.pinned) { const line = el('p', 'parley-pinned-person'); line.append(pinMark()); bubble.append(line); }
+            if (item.pinned) { const line = el('p', 'parley-pinned-person'); line.append(pinMark(item, bubble)); bubble.append(line); }
         }
         /* Why a voice box listened, and what it cut short: small, beside the words (01-11). */
         if (item.byWhy) bubble.append(el('p', 'parley-by-why', item.byWhy));
@@ -4831,7 +4832,14 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
     /* Which messages take a pin: the person's, and what the agent said, asked or showed. */
     function pinnable(item) { return Boolean(pinHook && item?.id && (item.from === 'person' || ['say', 'ask', 'show'].includes(item.kind))); }
     /* A pinned message's small mark, beside its name and time. */
-    function pinMark() { const m = el('span', 'parley-pinned-mark'); m.title = said(words, 'pinned-mark'); m.setAttribute('role', 'img'); m.setAttribute('aria-label', m.title); m.append(icon('pin', 'parley-sign')); return m; }
+    /* With pins handled here, a button (20-11, the owner): a click opens its menu, Unpin in it. */
+    function pinMark(item, bubble) {
+        const can = Boolean(pinHook && item && bubble);
+        const m = el(can ? 'button' : 'span', 'parley-pinned-mark'); m.title = said(words, 'pinned-mark'); m.setAttribute('aria-label', m.title); m.append(icon('pin', 'parley-sign'));
+        if (can) { m.type = 'button'; m.setAttribute('aria-haspopup', 'true'); m.addEventListener('click', (event) => { event.stopPropagation(); reacting.open(item, bubble); }); }
+        else m.setAttribute('role', 'img');
+        return m;
+    }
     const paintJump = () => { jump.hidden = sticky; jumpCount.textContent = awayCount > 0 ? String(awayCount) : ''; jumpCount.hidden = awayCount === 0; };
     jump.addEventListener('click', () => { sticky = true; awayCount = 0; bottom(); paintJump(); });
     thread.addEventListener('scroll', () => { const was = sticky; sticky = thread.scrollHeight - thread.scrollTop - thread.clientHeight < 40; if (sticky) awayCount = 0; if (was !== sticky || sticky) paintJump(); }, { passive: true });
@@ -5029,6 +5037,21 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
     });
     /* A long press on a touch screen is the browser's: it selects the text, to copy it (#38). Nothing
        of the message shows then; a short tap shows its button and time (below). */
+    /* A message's menu button kept in sight and clear of the settings eye above the thread (20-11, the owner:
+       on a long message, its button in its top corner sat under the eye): moved down within the message. */
+    function clearOfTop(bubble) {
+        const b = [...(bubble?.children ?? [])].find((c) => c.classList?.contains('parley-react-open')); if (!b?.style) return;
+        b.style.top = '';
+        try {
+            const box = bubble.getBoundingClientRect(); const own = b.getBoundingClientRect();
+            let above = thread.getBoundingClientRect().top;
+            const eye = prefs.hidden ? null : prefsButton.getBoundingClientRect();
+            if (eye && eye.width > 0 && own.left < eye.right && own.right > eye.left) above = Math.max(above, eye.bottom + 4);
+            const room = box.height - own.height;
+            if (own.top < above && room > 0) b.style.top = `${Math.min(room, above - box.top)}px`;
+        } catch { /* no layout: left in its corner */ }
+    }
+    thread.addEventListener('pointerover', (event) => { if (event.pointerType !== 'mouse' || !(event.target instanceof Element)) return; const bubble = event.target.closest('.parley-said'); if (bubble && !bubble.contains(event.relatedTarget instanceof Node ? event.relatedTarget : null)) clearOfTop(bubble); }, { passive: true });
     let hiding;
     /* A short tap on a message, on a touch screen: its button and time shown a few seconds (a tap again, hidden). */
     let tapped = null;
@@ -5044,6 +5067,7 @@ export function mount(root, { load, send, words = {}, open, terminal, remind, vi
         clearTimeout(hiding);
         if (on) { revealed = ''; return; }
         bubble.dataset.reveal = 'true'; revealed = bubble.dataset.id ?? '';
+        clearOfTop(bubble);
         hiding = setTimeout(() => { revealed = ''; for (const other of thread.querySelectorAll('.parley-said[data-reveal]')) delete other.dataset.reveal; }, 6000);
     }, { passive: true });
     /* ---- the reply to a question ---- */

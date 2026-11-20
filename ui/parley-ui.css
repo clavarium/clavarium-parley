@@ -1192,5 +1192,7 @@ mark.parley-found[data-now="true"] { outline: 2px solid var(--parley-ask); }
 .parley[data-view="simple"] .parley-pins { margin-right: 3em; }
 .parley-pinned-mark { display: inline-flex; align-items: center; color: var(--parley-pinned); }
 .parley-pinned-mark .parley-sign { width: .95em; height: .95em; }
+.parley button.parley-pinned-mark { min-height: 0; min-width: 0; padding: .15em; margin: -.15em; border: 0; border-radius: 999px; background: transparent; cursor: pointer; font: inherit; }
+.parley button.parley-pinned-mark:hover, .parley button.parley-pinned-mark:focus-visible { background: var(--parley-agent); }
 .parley-pinned-person { margin: 0 0 .1em; font-size: .8em; text-align: right; line-height: 1; }
 @media (prefers-reduced-motion: reduce) { .parley-said.parley-flash { transition: none; } }
